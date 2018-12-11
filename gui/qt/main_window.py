@@ -1178,6 +1178,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if x:
                     text +=  " [%s unmatured]"%(self.format_amount(x, True).strip())
 
+                extra = run_hook("balance_label_extra", self)
+                if isinstance(extra, str) and extra:
+                    text += " [{}]".format(extra)
+
                 # append fiat balance and price
                 if self.fx.is_enabled():
                     text += self.fx.get_fiat_status_text(c + u + x,
@@ -1198,6 +1202,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     locked_in_slp = self.wallet.get_slp_locked_balance()
                     if locked_in_slp > 0:
                         self._warn_slp_prefers_slp_wallets_if_not_slp_wallet()
+
         else:
             text = _("Not connected")
             icon = icon_dict["status_disconnected"]
@@ -2153,6 +2158,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 slp = self.wallet.get_slp_locked_balance()
                 if slp > 0:
                     text += " (" + self.format_amount(slp).strip() + " BCH held in tokens)"
+
                 extra = run_hook("not_enough_funds_extra", self)
                 if isinstance(extra, str) and extra:
                     text += " ({})".format(extra)
@@ -3518,10 +3524,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.clear_receive_tab()
 
     def get_coins(self, isInvoice = False):
+        coins = []
         if self.pay_from:
-            return copy.deepcopy(self.pay_from)
+            coins =  copy.deepcopy(self.pay_from)
         else:
-            return self.wallet.get_spendable_coins(None, self.config, isInvoice)
+            coins = self.wallet.get_spendable_coins(None, self.config, isInvoice)
+        run_hook("spendable_coin_filter", self, coins) # may modify coins -- used by CashShuffle if in shuffle = ENABLED mode.
+        return coins
 
     # def get_slp_coins(self, isInvoice = False):
     #     isInvoice = False
