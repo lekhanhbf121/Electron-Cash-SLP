@@ -522,12 +522,7 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
 
     @classmethod
     def show_cashaddr(cls, format):
-        if format==1:
-            cls.FMT_UI = cls.FMT_CASHADDR
-        elif format==2:
-            cls.FMT_UI = cls.FMT_SLPADDR
-        else:
-            cls.FMT_UI = cls.FMT_LEGACY
+        cls.FMT_UI = format
 
 
     @classmethod
