@@ -35,10 +35,11 @@ from electroncash import bitcoin
 from electroncash.address import Address, ScriptOutput, AddressError
 from electroncash import networks
 from electroncash.util import PrintError
+from electroncash.contacts import Contact
 
 from . import util
 
-RE_ALIAS = '^(.*?)\s*\<([0-9A-Za-z:]{26,})\>$'
+RE_ALIAS = r'^(.*?)\s*<\s*([0-9A-Za-z:]{26,})\s*>$'
 
 RX_ALIAS = re.compile(RE_ALIAS)
 
@@ -340,7 +341,7 @@ class PayToEdit(PrintError, ScanQRTextEdit):
         try:
             data = self.win.contacts.resolve(key)
         except Exception as e:
-            print_error(f'error resolving alias: {repr(e)}')
+            self.print_error(f'error resolving alias: {repr(e)}')
             return
         if not data:
             return
@@ -366,8 +367,7 @@ class PayToEdit(PrintError, ScanQRTextEdit):
         self.setText(new_url)
         self.previous_payto = new_url
 
-        self.win.contacts[key] = ('openalias', name)
-        self.win.contact_list.update()
+        self.win.contacts.add(Contact(name=name, address=key, type='openalias'), unique=True)
 
         self.setFrozen(True)
 
