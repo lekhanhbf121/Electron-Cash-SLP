@@ -3280,6 +3280,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def do_clear(self):
         ''' Clears the send tab, reseting its UI state to its initiatial state.'''
+        self.payto_e.is_alias, self.payto_e.validated = False, False  # clear flags to avoid bad things
         for e in [self.payto_e, self.message_e, self.amount_e, self.fiat_send_e, self.fee_e, self.message_opreturn_e]:
             e.setText('')
             e.setFrozen(False)
