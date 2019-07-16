@@ -2497,6 +2497,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         mod_type = _type
         mine_str = ''
         if _type.startswith('cashacct'):  # picks up cashacct and the cashacct_W pseudo-contacts
+            if _type == 'cashacct_T':
+                # temporary "pending verification" registration pseudo-contact. Never offer it as a completion!
+                return None
             mod_type = 'cashacct'
             info = self.wallet.cashacct.get_verified(label)
             if info:
@@ -6239,6 +6242,7 @@ class TxUpdateMgr(QObject, PrintError):
                 # Combine the transactions
                 n_ok, n_cashacct, total_amount = 0, 0, 0
                 last_seen_ca_name = ''
+                ca_txs = dict()  # 'txid' -> ('name', address)  -- will be given to contacts_list for "unconfirmed registrations" display
                 tokens_included = set()
                 for tx in txns:
                     if tx:
@@ -6248,6 +6252,8 @@ class TxUpdateMgr(QObject, PrintError):
                             if isinstance(addr, cashacct.ScriptOutput) and parent.wallet.is_mine(addr.address):
                                 n_cashacct += 1
                                 last_seen_ca_name = addr.name
+                                txid = tx.txid_fast()
+                                if txid: ca_txs[txid] = (addr.name, addr.address)
                         if not is_relevant:
                             continue
                         total_amount += v
@@ -6272,6 +6278,9 @@ class TxUpdateMgr(QObject, PrintError):
                         # their cash accounts now that they have them --
                         # and part of the UI is *IN* the Console tab.
                         parent.toggle_tab(parent.contacts_tab)
+                    if ca_txs:
+                        # Notify contact_list of potentially unconfirmed txs
+                        parent.contact_list.ca_update_potentially_unconfirmed_registrations(ca_txs)
                 if parent.wallet.storage.get('gui_notify_tx', True):
                     additional_text = ''
                     if n_cashacct > 1:
