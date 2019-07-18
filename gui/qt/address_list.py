@@ -261,6 +261,8 @@ class AddressList(MyTreeWidget):
 
         menu = QMenu()
 
+        where_to_insert_dupe_copy_cash_account = None
+
         def doCopy(txt):
             txt = txt.strip()
             self.parent.copy_to_clipboard(txt)
@@ -290,7 +292,9 @@ class AddressList(MyTreeWidget):
             if alt_copy_text and alt_column_title:
                 # Add 'Copy Legacy Address' and 'Copy Cash Address' alternates if right-click is on column 0
                 menu.addAction(_("Copy {}").format(alt_column_title), lambda: doCopy(alt_copy_text))
-            menu.addAction(_('Details') + "...", lambda: self.parent.show_address(addr))
+            a = menu.addAction(_('Details') + "...", lambda: self.parent.show_address(addr))
+            if col == 0:
+                where_to_insert_dupe_copy_cash_account = a
             if col in self.editable_columns:
                 menu.addAction(_("Edit {}").format(column_title), lambda: self.editItem(self.itemAt(position), # NB: C++ item may go away if this widget is refreshed while menu is up -- so need to re-grab and not store in lamba. See #953
                                                                                         col))
@@ -357,11 +361,14 @@ class AddressList(MyTreeWidget):
                     ca_text_em = self.wallet.cashacct.fmt_info(ca_info, ca_info.minimal_chash, emoji=True)
                     m = menu.addMenu(ca_info.emoji + " " + ca_text)
                     #a = menu.addAction(ca_info.emoji + " " + self.wallet.cashacct.fmt_info(ca_info, ca_info.minimal_chash), lambda: None)
-                    a = m.addAction(_("Copy Cash Account"), lambda x=None, text=ca_text_em: doCopy(text))
+                    a_ca_copy = m.addAction(_("Copy Cash Account"), lambda x=None, text=ca_text_em: doCopy(text))
                     a = m.addAction(_("Details") + "...", lambda: self.parent.show_address(addr))
                     a = m.addAction(_("View registration tx") + "...", lambda x=None, ca=ca_info: self.parent.do_process_from_txid(txid=ca.txid))
                     a = a_def = m.addAction(_("Make default for address"), lambda x=None, ca=ca_info: self._ca_set_default(ca, True))
                     if ca_info == ca_default:
+                        if where_to_insert_dupe_copy_cash_account and a_ca_copy:
+                            # insert a dupe of "Copy Cash Account" for the default cash account for this address in the top-level menu
+                            menu.insertAction(where_to_insert_dupe_copy_cash_account, a_ca_copy)
                         m.setTitle(m.title() + "    " + "★")
                         a_def.setDisabled(True)
                         a_def.setCheckable(True)
