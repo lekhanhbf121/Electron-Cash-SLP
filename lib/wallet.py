@@ -1177,8 +1177,13 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 unvalidated_token_bal += coin['token_value']
         return (valid_token_bal, unvalidated_token_bal, invalid_token_bal, unfrozen_valid_token_bal, valid_token_bal - unfrozen_valid_token_bal)
 
-    def get_utxos(self, *, domain = None, exclude_frozen = False, mature = False, confirmed_only = False, exclude_slp = True):
-        ''' Note that exclude_frozen = True checks for BOTH address-level and coin-level frozen status. '''
+    def get_utxos(self, domain = None, exclude_frozen = False, mature = False, confirmed_only = False,
+                  *, addr_set_out = None, exclude_slp = True):
+        '''Note that exclude_frozen = True checks for BOTH address-level and
+        coin-level frozen status.
+
+        Optional kw-only arg `addr_set_out` specifies a set in which to add all
+        addresses encountered in the utxos returned. '''
         with self.lock:
             coins = []
             if domain is None:
@@ -1187,6 +1192,7 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 domain = set(domain) - self.frozen_addresses
             for addr in domain:
                 utxos = self.get_addr_utxo(addr, exclude_slp=exclude_slp)
+                len_before = len(coins)
                 for x in utxos.values():
                     if exclude_frozen and x['is_frozen_coin']:
                         continue
@@ -1195,11 +1201,18 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                     if mature and x['coinbase'] and x['height'] + COINBASE_MATURITY > self.get_local_height():
                         continue
                     coins.append(x)
-                    continue
+                if addr_set_out is not None and len(coins) > len_before:
+                    # add this address to the address set if it has results
+                    addr_set_out.add(addr)
             return coins
 
-    def get_slp_utxos(self, slpTokenId, *, domain = None, exclude_frozen = False, confirmed_only = False, slp_include_invalid=False, slp_include_baton=False):
-        ''' Note that exclude_frozen = True checks for BOTH address-level and coin-level frozen status. '''
+    def get_slp_utxos(self, slpTokenId, domain = None, exclude_frozen = False, confirmed_only = False, slp_include_invalid=False, slp_include_baton=False,
+                      *, addr_set_out = None):
+        '''Note that exclude_frozen = True checks for BOTH address-level and
+        coin-level frozen status.
+
+        Optional kw-only arg `addr_set_out` specifies a set in which to add all
+        addresses encountered in the utxos returned. '''
         with self.lock:
             coins = []
             if domain is None:
@@ -1208,6 +1221,7 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 domain = set(domain) - self.frozen_addresses
             for addr in domain:
                 utxos = self.get_slp_addr_utxo(addr, slpTokenId, slp_include_invalid=slp_include_invalid, slp_include_baton=slp_include_baton)
+                len_before = len(coins)
                 for x in utxos.values():
                     if exclude_frozen and x['is_frozen_coin']:
                         continue
@@ -1215,6 +1229,9 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                         continue
                     coins.append(x)
                     continue
+                if addr_set_out is not None and len(coins) > len_before:
+                    # add this address to the address set if it has results
+                    addr_set_out.add(addr)
             return coins
 
     def dummy_address(self):
