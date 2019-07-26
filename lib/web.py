@@ -33,6 +33,7 @@ from .address import Address
 from . import bitcoin
 from . import networks
 from .util import format_satoshis_plain, bh2u, bfh, print_error, do_in_main_thread
+from . import cashacct
 from .i18n import _
 
 
@@ -90,14 +91,21 @@ def BE_URL(config, kind, item):
 def BE_sorted_list():
     return sorted(BE_info())
 
+def _strip_cashacct_str(s: str) -> str:
+    '''Strips emojis and ';' characters from a cashacct string
+    of the form name#number[.123]'''
+    return cashacct.CashAcct.strip_emoji(s).replace(';', '').strip()
 
 def create_URI(addr, amount, message, *, op_return=None, op_return_raw=None, token_id=None, net=None):
-    if not isinstance(addr, Address):
+    is_cashacct = bool(isinstance(addr, str) and cashacct.CashAcct.parse_string(addr))
+    if not isinstance(addr, Address) and not is_cashacct:
         return ""
     if op_return is not None and op_return_raw is not None:
-        raise ValueError('Must specify exactly one of op_return or \
-                            op_return_hex as kwargs to create_URI')
-    scheme, path = addr.to_URI_components(net=net)
+        raise ValueError('Must specify exactly one of op_return or op_return_hex as kwargs to create_URI')
+    if is_cashacct:
+        scheme, path = cashacct.URI_SCHEME, _strip_cashacct_str(addr)
+    else:
+        scheme, path = addr.to_URI_components(net=net)
     query = []
     if token_id:
         query.append('amount=%s-%s'%( amount, token_id ))
@@ -125,7 +133,7 @@ def urldecode(url):
 def parseable_schemes(net = None) -> tuple:
     if net is None:
         net = networks.net
-    return (net.CASHADDR_PREFIX, net.SLPADDR_PREFIX)
+    return (net.CASHADDR_PREFIX, net.SLPADDR_PREFIX, cashacct.URI_SCHEME)
 
 class ExtraParametersInURIWarning(RuntimeWarning):
     ''' Raised by parse_URI to indicate the parsing succeeded but that
@@ -179,16 +187,14 @@ def parse_URI(uri, on_pr=None, *, net=None, strict=False, on_exc=None):
         Address.from_string(uri, net=net)
         return {'address': uri}
 
-    if (uri.strip().lower().split(':', 1)[0] != networks.net.CASHADDR_PREFIX
-        and uri.strip().lower().split(':', 1)[0] !=  networks.net.SLPADDR_PREFIX):
-        raise Exception("Not a URI starting with '{}:' or '{}:'".format(networks.net.CASHADDR_PREFIX, networks.net.SLPADDR_PREFIX))
-
     u = urllib.parse.urlparse(uri, allow_fragments=False)  # allow_fragments=False allows for cashacct:name#number URIs
     # The scheme always comes back in lower case
     accept_schemes = parseable_schemes(net=net)
     if u.scheme not in accept_schemes:
         raise BadSchemeError(_("Not a {schemes} URI")).format(schemes=str(accept_schemes))
     address = u.path
+
+    is_cashacct = u.scheme == cashacct.URI_SCHEME
 
     # python for android fails to parse query
     if address.find('?') > 0:
@@ -204,9 +210,19 @@ def parse_URI(uri, on_pr=None, *, net=None, strict=False, on_exc=None):
     out = {k: v[0] for k, v in pq.items()}
     out['scheme'] = u.scheme
     if address:
-        # validate
-        try: Address.from_string(address, net=net)
-        except Exception as e: raise BadURIParameter('address', e) from e
+        if is_cashacct:
+            if '%' in address:
+                # on macOS and perhaps other platforms the '#' character may
+                # get passed-in as a '%23' if opened from a link or from
+                # some other source.  The below call is safe and won't raise.
+                address = urldecode(address)
+            if not cashacct.CashAcct.parse_string(address):
+                raise ValueError("{} is not a valid cashacct string".format(address))
+            address = _strip_cashacct_str(address)
+        else:
+            # validate
+            try: Address.from_string(address, net=net)
+            except Exception as e: raise BadURIParameter('address', e) from e
         out['address'] = address
 
     amounts = dict()
@@ -272,6 +288,9 @@ def parse_URI(uri, on_pr=None, *, net=None, strict=False, on_exc=None):
     sig = out.get('sig')
     name = out.get('name')
     is_pr = bool(r or (name and sig))
+
+    if is_pr and is_cashacct:
+        raise ValueError(cashacct.URI_SCHEME + ' payment requests are not currently supported')
 
     if on_pr and is_pr:
         def get_payment_request_thread():

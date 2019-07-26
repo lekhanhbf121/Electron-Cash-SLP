@@ -36,6 +36,7 @@ from electroncash.address import Address, ScriptOutput, AddressError
 from electroncash import networks
 from electroncash.util import PrintError
 from electroncash.contacts import Contact
+from electroncash import web
 
 from . import util
 from . import cashacctqt
@@ -153,15 +154,9 @@ class PayToEdit(PrintError, ScanQRTextEdit):
         self.payto_address = None
         if len(lines) == 1:
             data = lines[0]
-            if ':' in data and '?' in data and len(data) > 35:
-                try:
-                    self.scan_f(data)
-                except AddressError as e:
-                    self.errors.append((0, str(e)))
-                else:
-                    return
-            elif ':' not in data and len(data) > 35:
-                self.setText(Address.prefix_from_address_string(data) + ':' + data)
+            lc_data = data.lower()
+            if any(lc_data.startswith(scheme + ":") for scheme in web.parseable_schemes()):
+                self.scan_f(data)
                 return
             try:
                 self.parse_address(data)
