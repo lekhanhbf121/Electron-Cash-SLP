@@ -3047,11 +3047,31 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if not URI:
             return
         try:
-            out = web.parse_URI(URI, self.on_pr)
+            out = web.parse_URI(URI, self.on_pr, strict=True)
+        except web.ExtraParametersInURIWarning as e:
+            out = e.args[0]  # out dict is in e.args[0]
+            extra_params = e.args[1:]
+            self.show_warning(ngettext('Extra parameter in URI was ignored:\n\n{extra_params}',
+                                       'Extra parameters in URI were ignored:\n\n{extra_params}',
+                                       len(extra_params)
+                              ).format(extra_params=', '.join(extra_params)))
+            # fall through ...
+        except web.BadURIParameter as e:
+            extra_info = (len(e.args) > 1 and str(e.args[1])) or ''
+            self.print_error('Bad URI Parameter:', *[repr(i) for i in e.args])
+            if extra_info:
+                extra_info = '\n\n' + extra_info  # prepend newlines
+            self.show_error(_('Bad parameter: {bad_param_name}{extra_info}').format(bad_param_name=e.args[0], extra_info=extra_info))
+            return
+        except web.DuplicateKeyInURIError as e:
+            # this exception always has a translated message as args[0]
+            # plus a list of keys as args[1:], see web.parse_URI
+            self.show_error(e.args[0] + ":\n\n" + ', '.join(e.args[1:]))
+            return
         except Exception as e:
             if 'ms-python' in URI:  # this is needed for visual studio code debugger
                 return
-            self.show_error(_('Invalid Address URI:') + '\n' + str(e))
+            self.show_error(_('Invalid Address URI:') + '\n\n' + str(e))
             return
         self.show_send_tab()
         r = out.get('r')
@@ -3071,7 +3091,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         # use label as description (not BIP21 compliant)
         if label and not message:
             message = label
-        if address:
+        if address or URI.strip().lower().split(':', 1)[0] in web.parseable_schemes():
             self.payto_e.setText(URI.split('?')[0])
         if message:
             self.message_e.setText(message)
