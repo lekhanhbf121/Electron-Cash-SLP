@@ -103,7 +103,12 @@ class NetworkDialog(QDialog, MessageBoxMixin):
 
     def showEvent(self, e):
         super().showEvent(e)
-        QDialog.update(self)  # hax to work around Ubuntu 16 bugs -- James Cramer observed that if this isn't here dialog sometimes doesn't paint properly on show.
+        # Hack to work around strange behavior on some Linux:
+        # On some Linux systems (Debian based), the dialog sometimes is empty
+        # and glitchy if we don't do this. Note this .update() call is a Qt
+        # C++ QWidget::update() call and has nothing to do with our own
+        # same-named `update` methods.
+        QDialog.update(self)
 
 
 
