@@ -2761,8 +2761,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if run_hook('abort_send', self):
             return
 
-        r = self.read_send_tab(preview=preview)
+        # paranoia -- force a resolve right away in case user pasted an
+        # openalias or cashacct and hit preview too quickly.
+        self.payto_e.resolve(force_if_has_focus=True)
 
+        r = self.read_send_tab(preview=preview)
         if not r:
             return
         outputs, fee, tx_desc, coins, slp_coins = r
