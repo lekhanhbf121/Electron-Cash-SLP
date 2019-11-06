@@ -54,6 +54,7 @@ import electroncash.web as web
 from electroncash import Transaction
 from electroncash import util, bitcoin, commands, cashacct
 from electroncash import paymentrequest
+from electroncash.transaction import OPReturn
 from electroncash.wallet import Multisig_Wallet, Deterministic_Wallet, sweep_preparations
 from electroncash.contacts import Contact
 try:
@@ -2296,41 +2297,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             if fee_rate is None: fee_rate = self.config.custom_fee_rate() / 1000.0
             return str(round(fee_rate*100)/100) + " sats/B"
 
-    @staticmethod
-    def output_for_opreturn_stringdata(op_return):
-        if not isinstance(op_return, str):
-            raise OPReturnError('OP_RETURN parameter needs to be of type str!')
-        pushes = op_return.split('<push>')
-        script = "OP_RETURN"
-        for data in pushes:
-            if data.startswith("<hex>"):
-                data = data.replace("<hex>", "")
-            elif data.startswith("<empty>"):
-                pass
-            else:
-                data = data.encode('utf-8').hex()
-            script = script + " " + data
-        scriptBuffer = ScriptOutput.from_string(script)
-        if len(scriptBuffer.script) > 223:
-            raise OPReturnTooLarge(_("OP_RETURN message too large, needs to be no longer than 220 bytes"))
-        amount = 0
-        return (TYPE_SCRIPT, scriptBuffer, amount)
-
-    @staticmethod
-    def output_for_opreturn_rawhex(op_return):
-        if not isinstance(op_return, str):
-            raise OPReturnError('OP_RETURN parameter needs to be of type str!')
-        if op_return == 'empty':
-            op_return = ''
-        try:
-            op_return_script = b'\x6a' + bytes.fromhex(op_return.strip())
-        except ValueError:
-            raise OPReturnError(_('OP_RETURN script expected to be hexadecimal bytes'))
-        if len(op_return_script) > 223:
-            raise OPReturnTooLarge(_("OP_RETURN script too large, needs to be no longer than 223 bytes"))
-        amount = 0
-        return (TYPE_SCRIPT, ScriptOutput.protocol_factory(op_return_script), amount)
-
     def do_update_fee(self):
         '''Recalculate the fee.  If the fee was manually input, retain it, but
         still build the TX to see if there are enough funds.
@@ -2432,9 +2398,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 opreturn_message = self.message_opreturn_e.text() if self.config.get('enable_opreturn') else None
                 if (opreturn_message != '' and opreturn_message is not None):
                     if self.opreturn_rawhex_cb.isChecked():
-                        bch_outputs.insert(0, self.output_for_opreturn_rawhex(opreturn_message))
+                        bch_outputs.insert(0, OPReturn.output_for_rawhex(opreturn_message))
                     else:
-                        bch_outputs.insert(0, self.output_for_opreturn_stringdata(opreturn_message))
+                        bch_outputs.insert(0, OPReturn.output_for_stringdata(opreturn_message))
 
             fee = self.fee_e.get_amount() if freeze_fee else None
             tx = self.wallet.make_unsigned_transaction(self.get_coins(isInvoice = False), bch_outputs, self.config, fee, mandatory_coins=selected_slp_coins)
@@ -2455,10 +2421,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             if not freeze_fee:
                 self.fee_e.setAmount(None)
             return
-        except OPReturnTooLarge:
+        except OPReturn.TooLarge:
             self.op_return_toolong = True
             return
-        except OPReturnError as e:
+        except OPReturn.Error as e:
             self.statusBar().showMessage(str(e))
             return
         except BaseException:
@@ -2723,13 +2689,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 opreturn_message = self.message_opreturn_e.text()
                 if opreturn_message:
                     if self.opreturn_rawhex_cb.isChecked():
-                        bch_outputs.append(self.output_for_opreturn_rawhex(opreturn_message))
+                        bch_outputs.append(OPReturn.output_for_rawhex(opreturn_message))
                     else:
-                        bch_outputs.append(self.output_for_opreturn_stringdata(opreturn_message))
-            except OPReturnTooLarge as e:
+                        bch_outputs.append(OPReturn.output_for_stringdata(opreturn_message))
+            except OPReturn.TooLarge as e:
                 self.show_error(str(e))
                 return
-            except OPReturnError as e:
+            except OPReturn.Error as e:
                 self.show_error(str(e))
                 return
 
