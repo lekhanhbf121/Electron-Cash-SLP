@@ -284,6 +284,8 @@ class AddressList(MyTreeWidget):
             menu.addAction(_("Spend from"),
                            partial(self.parent.spend_coins, coins))
 
+        run_hook('address_list_context_menu_setup', self, menu, addrs)
+
         run_hook('receive_menu', menu, addrs, self.wallet)
         menu.exec_(self.viewport().mapToGlobal(position))
 
