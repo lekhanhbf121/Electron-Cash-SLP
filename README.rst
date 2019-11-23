@@ -80,7 +80,7 @@ Create translations (optional)::
 
 For plugin development, see the `plugin documentation <plugins/README.rst>`_.
 
-Running unit tests::
+Running unit tests (very optional, advanced users only)::
 
     pip install tox
     tox
