@@ -123,7 +123,7 @@ class NodesListWidget(QTreeWidget):
             if item and col > -1:
                 self.on_activated(item, col)
         else:
-            QTreeWidget.keyPressEvent(self, event)
+            super().keyPressEvent(event)
 
     def on_activated(self, item, column):
         # on 'enter' we show the menu
@@ -222,7 +222,7 @@ class ServerListWidget(QTreeWidget):
             if item and col > -1:
                 self.on_activated(item, col)
         else:
-            QTreeWidget.keyPressEvent(self, event)
+            super().keyPressEvent(event)
 
     def on_activated(self, item, column):
         # on 'enter' we show the menu

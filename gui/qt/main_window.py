@@ -118,6 +118,8 @@ class StatusBarButton(QPushButton):
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Return:
             self.func()
+        else:
+            super().keyPressEvent(e)
 
     def _flash(self):
         if self.flash_state:
