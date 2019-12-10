@@ -94,6 +94,12 @@ class ContactList(MyTreeWidget):
                 menu.addAction(_("Edit {}").format(column_title), lambda: self.editItem(item, column))
             menu.addAction(_("Pay to"), lambda: self.parent.payto_contacts(keys))
             menu.addAction(_("Delete"), lambda: self.parent.delete_contacts(keys))
+            # Add sign/verify and encrypt/decrypt menu - but only if just 1 thing selected
+            if len(keys) == 1 and Address.is_valid(keys[0]):
+                signAddr = Address.from_string(keys[0])
+                a = menu.addAction(_("Sign/verify message") + "...", lambda: self.parent.sign_verify_message(signAddr))
+                if signAddr.kind != Address.ADDR_P2PKH:
+                    a.setDisabled(True)  # We only allow this for P2PKH since it makes no sense for P2SH (ambiguous public key)
             URLs = [web.BE_URL(self.config, 'addr', Address.from_string(key))
                     for key in keys if Address.is_valid(key)]
             if any(URLs):
