@@ -38,6 +38,7 @@ from electroncash.slp_graph_search import slp_gs_mgr
 from electroncash.tor import TorController
 
 from .util import *
+from .utils import UserPortValidator
 
 protocol_names = ['TCP', 'SSL']
 protocol_letters = 'ts'
@@ -679,6 +680,9 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.tor_socks_port.setFixedWidth(60)
         self.tor_socks_port.editingFinished.connect(self.set_tor_socks_port)
         self.tor_socks_port.setText(str(self.network.tor_controller.get_socks_port()))
+        port_validator = UserPortValidator(self.tor_socks_port)
+        port_validator.stateChanged.connect(UserPortValidator.setRedBorder)
+        self.tor_socks_port.setValidator(port_validator)
 
         grid.addWidget(self.tor_cb, 1, 0, 1, 3)
         grid.addWidget(self.tor_enabled, 2, 0, 1, 2)
