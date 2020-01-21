@@ -227,7 +227,7 @@ class HistoryList(MyTreeWidget):
         token_id = item.data(4, Qt.UserRole)
         if not tx_hash:
             return
-        if column is 0:
+        if column == 0:
             column_title = "ID"
             column_data = tx_hash
         else:
