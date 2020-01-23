@@ -3361,7 +3361,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def get_coins(self, isInvoice = False):
         if self.pay_from:
-            return self.pay_from
+            return copy.deepcopy(self.pay_from)
         else:
             return self.wallet.get_spendable_coins(None, self.config, isInvoice)
 
