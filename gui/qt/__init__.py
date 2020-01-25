@@ -525,16 +525,18 @@ class ElectrumGui(QObject, PrintError):
         # Use a signal as can be called from daemon thread
         self.new_window_signal.emit(path, uri)
 
-    def show_network_dialog(self, parent):
+    def show_network_dialog(self, parent, *, jumpto : str = ''):
         if self.warn_if_no_network(parent):
             return
         if self.nd:
             self.nd.on_update()
             self.nd.show()
             self.nd.raise_()
+            if jumpto: self.nd.jumpto(jumpto)
             return
         self.nd = NetworkDialog(self.daemon.network, self.config)
         self.nd.show()
+        if jumpto: self.nd.jumpto(jumpto)
 
     def create_window_for_wallet(self, wallet):
         w = ElectrumWindow(self, wallet)

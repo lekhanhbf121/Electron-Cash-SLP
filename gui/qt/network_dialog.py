@@ -37,6 +37,7 @@ from electroncash import networks
 from electroncash.util import print_error, Weak, PrintError
 from electroncash.network import serialize_server, deserialize_server, get_eligible_servers
 from electroncash.slp_graph_search import slp_gs_mgr
+from electroncash.plugins import run_hook
 from electroncash.tor import TorController
 
 from .util import *
@@ -55,9 +56,15 @@ class NetworkDialog(QDialog, MessageBoxMixin):
         self.nlayout = NetworkChoiceLayout(self, network, config)
         vbox = QVBoxLayout(self)
         vbox.addLayout(self.nlayout.layout())
-        vbox.addLayout(Buttons(CloseButton(self)))
+        # We don't want the close button's behavior to have the enter key close
+        # the window because user may edit text fields, etc, so we do the below:
+        close_but = CloseButton(self); close_but.setDefault(False); close_but.setAutoDefault(False)
+        vbox.addLayout(Buttons(close_but))
         self.network_updated_signal.connect(self.on_update)
         network.register_callback(self.on_network, ['blockchain_updated', 'interfaces', 'status'])
+
+    def jumpto(self, location : str):
+        self.nlayout.jumpto(location)
 
     def on_network(self, event, *args):
         ''' This may run in network thread '''
@@ -548,7 +555,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.td.found_proxy.connect(self.suggest_proxy)
 
         self.tabs = tabs = QTabWidget()
-        server_tab = QWidget()
+        self.server_tab = server_tab = QWidget()
         weakTd = Weak.ref(self.td)
         class ProxyTab(QWidget):
             def showEvent(slf, e):
@@ -561,10 +568,10 @@ class NetworkChoiceLayout(QObject, PrintError):
                 td = weakTd()
                 if e.isAccepted() and td:
                     td.stop() # stops the tor detector when proxy_tab disappears
-        proxy_tab = ProxyTab()
-        blockchain_tab = QWidget()
-        slp_tab = QWidget()
-        post_office_tab = QWidget()
+        self.proxy_tab = proxy_tab = ProxyTab()
+        self.blockchain_tab = blockchain_tab = QWidget()
+        self.slp_tab = slp_tab = QWidget()
+        self.post_office_tab = post_office_tab = QWidget()
         tabs.addTab(blockchain_tab, _('Overview'))
         tabs.addTab(server_tab, _('Server'))
         tabs.addTab(proxy_tab, _('Proxy'))
@@ -709,9 +716,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.tor_socks_port.editingFinished.connect(self.set_tor_socks_port)
         self.tor_socks_port.setText(str(self.network.tor_controller.get_socks_port()))
         self.tor_socks_port.setToolTip(custom_port_tooltip)
-        port_validator = UserPortValidator(self.tor_socks_port)
-        port_validator.stateChanged.connect(UserPortValidator.setRedBorder)
-        self.tor_socks_port.setValidator(port_validator)
+        self.tor_socks_port.setValidator(UserPortValidator(self.tor_socks_port, accept_zero=True))
         self.tor_socks_port.setEnabled(self.tor_custom_port_cb.isChecked())
 
         # Start integrated Tor
@@ -830,6 +835,19 @@ class NetworkChoiceLayout(QObject, PrintError):
     def use_slp_gs(self):
         slp_gs_mgr.toggle_graph_search(self.slp_gs_enable_cb.isChecked())
         self.slp_gs_list_widget.update()
+
+    def jumpto(self, location : str):
+        if not isinstance(location, str):
+            return
+        location = location.strip().lower()
+        if location in ('proxy', 'tor'):
+            self.tabs.setCurrentWidget(self.proxy_tab)
+        elif location in ('servers', 'server'):
+            self.tabs.setCurrentWidget(self.server_tab)
+        elif location in ('blockchain', 'overview', 'main'):
+            self.tabs.setCurrentWidget(self.blockchain_tab)
+        elif not run_hook('on_network_dialog_jumpto', self, location):
+            self.print_error(f"jumpto: unknown location '{location}'")
 
     def on_tor_port_changed(self, controller: TorController):
         if not controller.active_socks_port or not controller.is_enabled() or not self.tor_use:
