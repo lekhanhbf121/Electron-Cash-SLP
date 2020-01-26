@@ -986,6 +986,9 @@ class ColorSchemeItem:
         color = self._get_color(background)
         return QColor(color)
 
+    def get_html(self, background=False):
+        return self._get_color(background)
+
 
 class _ColorScheme:
     def __init__(self):
