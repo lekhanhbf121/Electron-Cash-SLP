@@ -1693,6 +1693,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.update_receive_address_widget()
 
     def update_receive_qr(self):
+        if not self.receive_address:
+            return
         if self.receive_token_type_combo.currentData() != None and self.receive_slp_amount_e.text() != '':
             amount = self.receive_slp_amount_e.text() # if self.receive_slp_amount_e.text() is not '' else None
             token_id = self.receive_token_type_combo.currentData()
