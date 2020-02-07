@@ -172,6 +172,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         self.gui_object = gui_object
         self.wallet = wallet
+        assert not self.wallet.weak_window
+        self.wallet.weak_window = Weak.ref(self)  # This enables plugins such as CashFusion to keep just a reference to the wallet, but eventually be able to find the window it belongs to.
+
         self.config = config = gui_object.config
         self.non_slp_wallet_warning_shown = False
         self.force_use_single_change_addr = _('Change addresses behavior is not customizable for SLP wallets') if self.is_slp_wallet else False
