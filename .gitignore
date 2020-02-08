@@ -31,6 +31,10 @@ xcuserdata/
 
 # IntelliJ Pycharm IDE
 /.idea
+# vs code
+.vscode/
+# mypy
+.mypy_cache/
 
 # osx build files
 libsecp256k1.0.dylib
