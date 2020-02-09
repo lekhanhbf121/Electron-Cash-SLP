@@ -32,10 +32,12 @@ from .util import *
 from .qrtextedit import ShowQRTextEdit, ScanQRTextEdit
 
 
-def seed_warning_msg(seed):
+def seed_warning_msg(seed, has_der=False):
+    der = (' ' + _('Additionally, save the derivation path as well.') + ' ') if has_der else ''
     return ''.join([
         "<p>",
         _("Please save these %d words on paper (order is important). "),
+        der,
         _("This seed will allow you to recover your wallet in case "
           "of computer failure."),
         "</p>",
@@ -118,7 +120,7 @@ class SeedLayout(QVBoxLayout):
         self.is_bip39_145 = False #cb_bip39_145.isChecked() if 'bip39_145' in self.options else False
 
     def __init__(self, seed=None, title=None, icon=True, msg=None, options=None, is_seed=None, passphrase=None, parent=None, editable=True,
-                 can_skip=None):
+                 derivation=None, can_skip=None):
         QVBoxLayout.__init__(self)
         self.parent = parent
         self.options = options
@@ -166,10 +168,15 @@ class SeedLayout(QVBoxLayout):
             hbox.addWidget(QLabel(_("Your seed extension is") + ':'))
             hbox.addWidget(passphrase_e)
             self.addLayout(hbox)
+        if derivation:
+            hbox = QHBoxLayout()
+            hbox.addWidget(QLabel(_("Wallet derivation path") + ':'))
+            hbox.addWidget(WWLabel(f'<b>{derivation}</b>'))
+            self.addLayout(hbox)
         self.addStretch(1)
         self.seed_warning = WWLabel('')
         if msg:
-            self.seed_warning.setText(seed_warning_msg(seed))
+            self.seed_warning.setText(seed_warning_msg(seed, derivation))
         self.addWidget(self.seed_warning)
 
     def get_seed(self):
@@ -236,26 +243,27 @@ class KeysLayout(QVBoxLayout):
 
 
 class AbstractSeedDialog(WindowModalDialog):
-    def __init__(self, parent, seed, passphrase, *, wallet=None):
+    def __init__(self, parent, seed, passphrase, *, wallet=None, derivation=None):
         super().__init__(parent, ('Electron Cash - ' + _('Seed')))
         self.wallet = wallet
         self.seed = seed
         self.passphrase = passphrase
+        self.derivation = derivation
         self.setMinimumWidth(400)
 
 
 class SeedDialog(AbstractSeedDialog):
-    def __init__(self, parent, seed, passphrase, *, wallet=None):
+    def __init__(self, parent, seed, passphrase, *, wallet=None, derivation=None):
         super().__init__(parent, seed, passphrase, wallet=wallet)
         vbox = QVBoxLayout(self)
         title =  _("Your wallet generation seed is:")
-        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False)
+        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False, derivation=derivation)
         vbox.addLayout(slayout)
         vbox.addLayout(Buttons(CloseButton(self)))
 
 
 class SeedBackupDialog(AbstractSeedDialog):
-    def __init__(self, parent, seed, passphrase, *, wallet=None):
+    def __init__(self, parent, seed, passphrase, *, wallet=None, derivation=None):
         super().__init__(parent, seed, passphrase, wallet=wallet)
         assert self.wallet is not None
         self.vbox = vbox = QVBoxLayout(self)
@@ -263,7 +271,7 @@ class SeedBackupDialog(AbstractSeedDialog):
         self.slayout_widget = QWidget()
         vbox2 = QVBoxLayout(self.slayout_widget)
         vbox2.setContentsMargins(0,0,0,0)
-        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False, parent=self)
+        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False, derivation=derivation, parent=self)
         vbox2.addLayout(slayout)
         vbox.addWidget(self.slayout_widget)
         self.next_button = next_button = QPushButton(_("Next"))
@@ -284,7 +292,7 @@ class SeedBackupDialog(AbstractSeedDialog):
         vbox2 = QVBoxLayout(self.slayout_widget)
         vbox2.setContentsMargins(0,0,0,0)
         title = _('To make sure that you have properly saved your seed, please retype it here.') + "<br><br>"
-        slayout = SeedLayout(title=title, seed=None, msg=False, passphrase=self.passphrase, editable=True, parent=self)
+        slayout = SeedLayout(title=title, seed=None, msg=False, passphrase=self.passphrase, editable=True, derivation=self.derivation, parent=self)
         vbox2.addLayout(slayout)
         self.vbox.insertWidget(0, self.slayout_widget)
         # clear clipboard so they can't copy-paste
