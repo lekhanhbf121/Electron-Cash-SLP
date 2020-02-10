@@ -249,8 +249,8 @@ class Commands(PrintError):
     @command('')
     def check_seed(self, seed, entropy=1, language=None):
         """Check that a seed was generated with given entropy"""
-        from .mnemonic import Mnemonic
-        return Mnemonic(language).check_seed(seed, entropy)
+        from .mnemonic import Mnemonic_Electrum
+        return Mnemonic_Electrum(language).check_seed(seed, entropy)
 
     @command('n')
     def getaddresshistory(self, address):

@@ -3681,7 +3681,7 @@ class UnknownWalletType(RuntimeError):
     pass
 
 # former WalletFactory
-class Wallet(object):
+class Wallet:
     """The main wallet "entry point".
     This class is actually a factory that will return a wallet of the correct
     type when passed a WalletStorage instance."""
