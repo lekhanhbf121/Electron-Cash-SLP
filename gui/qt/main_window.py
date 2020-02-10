@@ -5789,6 +5789,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             if descr.get('registers_keystore'):
                 continue
             try:
+                plugins.retranslate_internal_plugin_metadata(name)
                 cb = QCheckBox(descr['fullname'])
                 weakCb = Weak.ref(cb)
                 plugin_is_loaded = p is not None
