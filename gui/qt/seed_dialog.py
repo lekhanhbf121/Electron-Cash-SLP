@@ -27,17 +27,25 @@ from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from electroncash.i18n import _
+from electroncash import mnemonic
 
 from .util import *
 from .qrtextedit import ShowQRTextEdit, ScanQRTextEdit
 
 
-def seed_warning_msg(seed, has_der=False):
-    der = (' ' + _('Additionally, save the derivation path as well.') + ' ') if has_der else ''
+def seed_warning_msg(seed, has_der=False, has_ext=False):
+    extra = ''
+    if has_der:
+        if has_ext:
+            extra = (' ' + _('Additionally, save the seed extension and derivation path as well.') + ' ')
+        else:
+            extra = (' ' + _('Additionally, save the derivation path as well.') + ' ')
+    elif has_ext:
+        extra = (' ' + _('Additionally, save the seed extension as well.') + ' ')
     return ''.join([
         "<p>",
         _("Please save these %d words on paper (order is important). "),
-        der,
+        extra,
         _("This seed will allow you to recover your wallet in case "
           "of computer failure."),
         "</p>",
@@ -55,7 +63,6 @@ class SeedLayout(QVBoxLayout):
     #options
     is_bip39 = False
     is_ext = False
-    is_bip39_145 = False
 
     def seed_options(self):
         dialog = QDialog()
@@ -64,74 +71,33 @@ class SeedLayout(QVBoxLayout):
             cb_ext = QCheckBox(_('Extend this seed with custom words') + " " + _("(aka 'passphrase')"))
             cb_ext.setChecked(self.is_ext)
             vbox.addWidget(cb_ext)
-        '''
-        if 'bip39' in self.options:  # SLP hack -- never allow user to uncheck this
+        if 'bip39' in self.options:
             def f(b):
                 self.is_seed = (lambda x: bool(x)) if b else self.saved_is_seed
                 self.is_bip39 = b
                 self.on_edit()
-                if b:
-                    msg = ' '.join([
-                        '<b>' + _('Warning') + ':</b>  ',
-                        _('BIP39 seeds can be imported in Electron Cash, so that users can access funds locked in other wallets.'),
-                        _('However, we do not generate BIP39 seeds, because they do not meet our safety standard.'),
-                        _('BIP39 seeds do not include a version number, which compromises compatibility with future software.'),
-                        _('We do not guarantee that BIP39 imports will always be supported in Electron Cash.'),
-                    ])
-                else:
-                    msg = ''
-                self.seed_warning.setText(msg)
-            #cb_bip39 = QCheckBox(_('BIP39 seed'))
-            #cb_bip39.toggled.connect(f)
-            #cb_bip39.setChecked(self.is_bip39)
-            #vbox.addWidget(cb_bip39)
-
-
-
-        if 'bip39_145' in self.options:  # hard coded off for SLP
-            def f(b):
-                self.is_seed = (lambda x: bool(x)) if b else self.saved_is_seed
-                self.on_edit()
-                self.is_bip39 = b
-                if b:
-                    msg = ' '.join([
-                        '<b>' + _('Warning') + ': BIP39 seeds are dangerous!' + '</b><br/><br/>',
-                        _('BIP39 seeds can be imported in Electron Cash so that users can access funds locked in other wallets.'),
-                        _('However, BIP39 seeds do not include a version number, which compromises compatibility with future wallet software.'),
-                        '<br/><br/>',
-                        _('We do not guarantee that BIP39 imports will always be supported in Electron Cash.'),
-                        _('In addition, Electron Cash does not verify the checksum of BIP39 seeds; make sure you type your seed correctly.'),
-                    ])
-                else:
-                    msg = ''
-                self.seed_warning.setText(msg)
-            cb_bip39_145 = QCheckBox(_('Use Coin Type 145 with bip39'))
-            cb_bip39_145.toggled.connect(f)
-            cb_bip39_145.setChecked(self.is_bip39_145)
-            vbox.addWidget(cb_bip39_145)
-
-        '''
+            cb_bip39 = QCheckBox(_('Force BIP39 interpretation of this seed'))
+            cb_bip39.toggled.connect(f)
+            cb_bip39.setChecked(self.is_bip39)
+            vbox.addWidget(cb_bip39)
         vbox.addLayout(Buttons(OkButton(dialog)))
         dialog.setWindowModality(Qt.WindowModal)
         if not dialog.exec_():
             return None
         self.is_ext = cb_ext.isChecked() if 'ext' in self.options else False
-        self.is_bip39 = True #Hard coded for SLP #cb_bip39.isChecked() if 'bip39' in self.options else False
-        self.is_bip39_145 = False #cb_bip39_145.isChecked() if 'bip39_145' in self.options else False
+        self.is_bip39 = cb_bip39.isChecked() if 'bip39' in self.options else False
 
     def __init__(self, seed=None, title=None, icon=True, msg=None, options=None, is_seed=None, passphrase=None, parent=None, editable=True,
-                 derivation=None, can_skip=None):
+                 derivation=None, seed_type=None, can_skip=None):
         QVBoxLayout.__init__(self)
         self.parent = parent
-        self.options = options
-        self.is_bip39 = True  # Hard-coded for SLP
-        self.is_bip39_145 = False # Hard-coded for SLP
-        self.is_seed = is_seed = lambda x: bool(x) # Hard-coded for SLP
+        self.options = options or ()
         self.was_skipped = False
         if title:
             self.addWidget(WWLabel(title))
         self.seed_e = ButtonsTextEdit()
-        self.seed_e.setReadOnly(not editable)
+        self.editable = bool(editable)
+        self.seed_e.setReadOnly(not self.editable)
         if seed:
             self.seed_e.setText(seed)
         else:
@@ -152,7 +118,7 @@ class SeedLayout(QVBoxLayout):
         hbox.addStretch(1)
         self.seed_type_label = QLabel('')
         hbox.addWidget(self.seed_type_label)
-        if options:
+        if self.options:
             opt_button = EnterButton(_('Options'), self.seed_options)
             hbox.addWidget(opt_button)
             self.addLayout(hbox)
@@ -160,10 +126,15 @@ class SeedLayout(QVBoxLayout):
             skip_button = EnterButton(_('Skip this step'), self.on_skip_button)
             hbox.addWidget(skip_button)
             self.addLayout(hbox)
-        grid_maybe = None
+        grid_maybe = QGridLayout()  # may not be used if none of the below if expressions evaluates to true, that's ok.
+        grid_maybe.setColumnStretch(1, 1)  # we want the right-hand column to take up as much space as it needs.
         grid_row = 0
+        if seed_type:
+            seed_type_text = mnemonic.format_seed_type_name_for_ui(seed_type)
+            grid_maybe.addWidget(QLabel(_("Seed format") + ':'), grid_row, 0)
+            grid_maybe.addWidget(QLabel(f'<b>{seed_type_text}</b>'), grid_row, 1, Qt.AlignLeft)
+            grid_row += 1
         if passphrase:
-            grid_maybe = QGridLayout()
             passphrase_e = QLineEdit()
             passphrase_e.setText(passphrase)
             passphrase_e.setReadOnly(True)
@@ -171,58 +142,55 @@ class SeedLayout(QVBoxLayout):
             grid_maybe.addWidget(passphrase_e, grid_row, 1)
             grid_row += 1
         if derivation:
-            grid_maybe = grid_maybe or QGridLayout()
             der_e = QLineEdit()
             der_e.setText(str(derivation))
             der_e.setReadOnly(True)
             grid_maybe.addWidget(QLabel(_("Wallet derivation path") + ':'), grid_row, 0)
             grid_maybe.addWidget(der_e, grid_row, 1)
             grid_row += 1
-        if grid_maybe:
+        if grid_row > 0:  # only if above actually added widgets
             self.addLayout(grid_maybe)
         self.addStretch(1)
         self.seed_warning = WWLabel('')
-        if msg:
-            self.seed_warning.setText(seed_warning_msg(seed, derivation))
+        self.has_warning_message = bool(msg)
+        if self.has_warning_message:
+            self.seed_warning.setText(seed_warning_msg(seed, bool(derivation), bool(passphrase)))
         self.addWidget(self.seed_warning)
 
     def get_seed(self):
         text = self.seed_e.text().lower()
         return ' '.join(text.split())
 
-    @staticmethod
-    def _slp_custom_chk(s, is_seed):
-        from electroncash.bitcoin import seed_type
-        from electroncash.keystore import bip39_is_checksum_valid
-        is_checksum, is_wordlist = bip39_is_checksum_valid(s)
-        if not is_seed:
-            return '', 'no seed', False, False, False
-        if not is_wordlist:
-            return '', 'unknown wordlist', is_checksum, is_wordlist, False
-        else:
-            if is_checksum:
-                return 'BIP39', 'checksum: ok', is_checksum, is_wordlist, False
-            else:
-                try:
-                    st = seed_type(s)
-                    if st in ('old', 'standard'):
-                        return 'Electron Cash regular seed', 'not SLP', is_checksum, is_wordlist, True
-                except:
-                    # seed_type may raise i think
-                    pass
-                return 'BIP39', 'checksum: failed', is_checksum, is_wordlist, False
-
+    _mnem = None
     def on_edit(self):
-        # NOTE: this has been heavily modified for SLP -- it completely
-        # does not support non-BIP39 seeds (Electron Cash standard + old seeds)
-        # When merging SLP into mainline in the future -- this function
-        # will need to be resurrected with the original Electron Cash logic
+        may_clear_warning = not self.has_warning_message and self.editable
+        if not self._mnem:
+            # cache the lang wordlist so it doesn't need to get loaded each time.
+            # This speeds up seed_type_name and Mnemonic.is_checksum_valid
+            self._mnem = mnemonic.Mnemonic('en')
         s = self.get_seed()
-        b = self.is_seed(s)  # this is just a test for non-empty string on SLP
-        label, status, is_checksum, is_wordlist, is_electrum_seed = self._slp_custom_chk(s, b)
-        label_text = label + (' ' if label else '') + ('(%s)'%status)
-        self.seed_type_label.setText(label_text)
-        self.parent.next_button.setEnabled(is_checksum) # only allow "Next" button if checksum is good. Note this is different behavior than Electron Cash and Electrum which allows bad checksum biip39
+        b = self.is_seed(s)
+        if not self.is_bip39:
+            t = mnemonic.format_seed_type_name_for_ui(mnemonic.seed_type_name(s))
+            label = _('Seed Type') + ': ' + t if t else ''
+            if t and may_clear_warning and 'bip39' in self.options:
+                match_set = mnemonic.autodetect_seed_type(s)
+                if len(match_set) > 1 and mnemonic.SeedType.BIP39 in match_set:
+                    may_clear_warning = False
+                    self.seed_warning.setText(
+                        _('This seed is ambiguous and may also be interpreted as a <b>BIP39</b> seed.')
+                        + '<br/><br/>'
+                        + _('If you wish this seed to be interpreted as a BIP39 seed, '
+                            'then use the Options button to force BIP39 interpretation of this seed.')
+                    )
+        else:
+            is_checksum, is_wordlist = self._mnem.is_checksum_valid(s)
+            status = ('checksum: ' + ('ok' if is_checksum else 'failed')) if is_wordlist else 'unknown wordlist'
+            label = 'BIP39' + ' (%s)'%status
+        self.seed_type_label.setText(label)
+        self.parent.next_button.setEnabled(b)
+        if may_clear_warning:
+            self.seed_warning.setText('')
 
     def on_skip_button(self):
         if self.parent.question(_('As the old adage says: \n\n"No backup, no bitcoin"\n\nAre you sure you wish to skip this step? (You will be offered the opportunity to backup your seed later.)')):
@@ -250,35 +218,36 @@ class KeysLayout(QVBoxLayout):
 
 
 class AbstractSeedDialog(WindowModalDialog):
-    def __init__(self, parent, seed, passphrase, *, wallet=None, derivation=None):
-        super().__init__(parent, ('Electron Cash - ' + _('Seed')))
+    def __init__(self, parent, seed, passphrase, derivation, seed_type, *, wallet=None):
+        WindowModalDialog.__init__(self, parent, ('Electron Cash - ' + _('Seed')))
         self.wallet = wallet
         self.seed = seed
         self.passphrase = passphrase
         self.derivation = derivation
+        self.seed_type = seed_type
         self.setMinimumWidth(400)
 
 
 class SeedDialog(AbstractSeedDialog):
-    def __init__(self, parent, seed, passphrase, *, wallet=None, derivation=None):
-        super().__init__(parent, seed, passphrase, wallet=wallet)
+    def __init__(self, parent, seed, passphrase, derivation=None, seed_type=None, *, wallet=None):
+        super().__init__(parent, seed, passphrase, derivation, seed_type, wallet=wallet)
         vbox = QVBoxLayout(self)
         title =  _("Your wallet generation seed is:")
-        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False, derivation=derivation)
+        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False, derivation=derivation, seed_type=seed_type)
         vbox.addLayout(slayout)
         vbox.addLayout(Buttons(CloseButton(self)))
 
 
 class SeedBackupDialog(AbstractSeedDialog):
-    def __init__(self, parent, seed, passphrase, *, wallet=None, derivation=None):
-        super().__init__(parent, seed, passphrase, wallet=wallet)
+    def __init__(self, parent, seed, passphrase, derivation=None, seed_type=None, *, wallet=None):
+        super().__init__(parent, seed, passphrase, derivation, seed_type, wallet=wallet)
         assert self.wallet is not None
         self.vbox = vbox = QVBoxLayout(self)
         title =  _("<b>Warning:</b> Your wallet generation seed has <i>not</i> yet been confirmed to have been backed-up by you!  It is important you save your seed somewhere (perferably on paper).<br><br>In order to confirm that your seed is backed-up, please write your seed down and proceed to the next screen:<br><br>")
         self.slayout_widget = QWidget()
         vbox2 = QVBoxLayout(self.slayout_widget)
         vbox2.setContentsMargins(0,0,0,0)
-        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False, derivation=derivation, parent=self)
+        slayout = SeedLayout(title=title, seed=seed, msg=True, passphrase=passphrase, editable=False, derivation=derivation, seed_type=seed_type, parent=self)
         vbox2.addLayout(slayout)
         vbox.addWidget(self.slayout_widget)
         self.next_button = next_button = QPushButton(_("Next"))
@@ -299,7 +268,7 @@ class SeedBackupDialog(AbstractSeedDialog):
         vbox2 = QVBoxLayout(self.slayout_widget)
         vbox2.setContentsMargins(0,0,0,0)
         title = _('To make sure that you have properly saved your seed, please retype it here.') + "<br><br>"
-        slayout = SeedLayout(title=title, seed=None, msg=False, passphrase=self.passphrase, editable=True, derivation=self.derivation, parent=self)
+        slayout = SeedLayout(title=title, seed=None, msg=False, passphrase=self.passphrase, editable=True, derivation=self.derivation, seed_type=self.seed_type, parent=self)
         vbox2.addLayout(slayout)
         self.vbox.insertWidget(0, self.slayout_widget)
         # clear clipboard so they can't copy-paste

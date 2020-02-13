@@ -4009,14 +4009,15 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             seed = keystore.get_seed(password)
             passphrase = keystore.get_passphrase(password)  # may be None or ''
             derivation = keystore.has_derivation() and keystore.derivation  # may be None or ''
-            if derivation == 'm/':
+            seed_type = getattr(keystore, 'seed_type', '')
+            if derivation == 'm/' and seed_type in ['electrum', 'standard']:
                 derivation = None  # suppress Electrum seed 'm/' derivation from UI
         except BaseException as e:
             self.show_error(str(e))
             return
         from .seed_dialog import SeedDialog, SeedBackupDialog
         WhichClass = SeedBackupDialog if self.wallet.storage.get('wallet_seed_needs_backup') else SeedDialog
-        d = WhichClass(self.top_level_window(), seed, passphrase, wallet=self.wallet, derivation=derivation)
+        d = WhichClass(self.top_level_window(), seed, passphrase, derivation, seed_type, wallet=self.wallet)
         if d.exec_() == QDialog.Accepted:
             # This banch is in case they were in the SeedBackupDialog; below
             # makes the new non-warning icon (if any) take effect

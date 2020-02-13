@@ -736,18 +736,18 @@ class SatochipPlugin(HW_PluginBase):
             wizard.line_dialog(run_next=f, title=title, message=message, default='', test=lambda x: x==passphrase)
         else:
             f('')
-    
+
     def derive_electrum_seed(self, seed, passphrase):
         self.bip32_seed = mnemonic.Mnemonic_Electrum('en').mnemonic_to_seed(seed, passphrase)
-    
+
     def derive_bip39_seed(self, seed, passphrase):
         self.bip32_seed = mnemonic.Mnemonic('en').mnemonic_to_seed(seed, passphrase)
-        
+
     #restore from seed
     def restore_from_seed(self, wizard):
         wizard.opt_bip39 = True
         wizard.opt_ext = True
-        test = bitcoin.is_seed #mnemonic.is_seed 
+        test = mnemonic.is_seed
         f= lambda seed, is_bip39, is_ext: self.on_restore_seed(wizard, seed, is_bip39, is_ext)
         wizard.restore_seed_dialog(run_next=f, test=test)
 
