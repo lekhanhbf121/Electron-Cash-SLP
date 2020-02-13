@@ -41,7 +41,7 @@ from collections import defaultdict
 from functools import partial
 
 from .i18n import ngettext
-from .util import NotEnoughFunds, NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp, ExcessiveFee, PrintError, UserCancelled, profiler, format_satoshis, format_time, finalization_print_error, is_verbose
+from .util import NotEnoughFunds, NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp, ExcessiveFee, PrintError, UserCancelled, profiler, format_satoshis, format_time, finalization_print_error, to_string, is_verbose
 
 from .address import Address, Script, ScriptOutput, PublicKey, OpCodes
 from .bitcoin import *
@@ -2962,7 +2962,7 @@ class Abstract_Wallet(PrintError, SPVDelegate):
         alias_privkey = self.export_private_key(alias_addr, password)
         pr = paymentrequest.make_unsigned_request(req)
         paymentrequest.sign_request_with_alias(pr, alias, alias_privkey)
-        req['name'] = pr.pki_data
+        req['name'] = to_string(pr.pki_data)
         req['sig'] = bh2u(pr.signature)
         self.receive_requests[key] = req
         self.save_payment_requests()
