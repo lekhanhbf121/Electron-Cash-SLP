@@ -281,7 +281,8 @@ class SlpSearchJobListWidget(QTreeWidget):
         self.slp_validation_fetch_signal = None
 
     def on_validation_fetch(self, total_data_received):
-        # TODO: Update an total bytes received in the UI.
+        if total_data_received > 0:
+            self.parent.data_label.setText(self.humanbytes(total_data_received))
         self.update()
 
     def create_menu(self, position):
@@ -641,6 +642,13 @@ class NetworkChoiceLayout(QObject, PrintError):
         grid.addWidget(QLabel(_("Current Graph Search Jobs:")), 3, 0)
         self.slp_search_job_list_widget = SlpSearchJobListWidget(self)
         grid.addWidget(self.slp_search_job_list_widget, 4, 0, 1, 5)
+
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel(_('GS Data Downloaded') + ':'))
+        self.data_label = QLabel('?')
+        hbox.addWidget(self.data_label)
+        hbox.addStretch(1)
+        grid.addLayout(hbox, 5, 0)
 
         # Blockchain Tab
         grid = QGridLayout(blockchain_tab)
