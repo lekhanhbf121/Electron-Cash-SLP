@@ -373,8 +373,9 @@ class ValidationJob:
             if self.debug > 0:
                 print("DEBUG-DAG: SKIPPING: " + txid)
             node = self.graph.get_node(txid)
-            node.set_validity(False,2)
-            
+            val = self.validitycache.get(txid, 2)
+            node.set_validity(False, val)
+
             # temp for debugging
             # f = open("dag-"+self.txids[0][0:5]+".txt","a")
             # f.write(txid+","+str(self.currentdepth)+",false,\n")
@@ -497,9 +498,7 @@ class ValidationJob:
         # =====
         # Here we determine if missing txids can just be inferred to be invalid
         #   because they are not currently in graph search results. The benefit is to
-        #   prevent network calls to fetch non-contributing/invalid txns.
-        #
-        #   This optimization requires all cache item source are equal to "graph_search"
+        #   prevent making network calls to fetch non-contributing/invalid txns.
         # 
         if self.graph_search_job and self.graph_search_job.search_success:
             for tx in cached:

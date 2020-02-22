@@ -20,6 +20,9 @@ from .util import print_error, PrintError
 from . import slp_proxying # loading this module starts a thread.
 from .slp_graph_search import SlpGraphSearchManager # thread is started upon instantiation
 
+from operator import itemgetter
+import codecs
+
 class GraphContext(PrintError):
     ''' Instance of the DAG cache. Uses a single per-instance
     ValidationJobManager to validate SLP tokens if is_parallel=False.
@@ -202,18 +205,28 @@ class GraphContext(PrintError):
             network.slp_gs_host = gs_host
 
             nonlocal first_fetch_complete
+            nonlocal wallet
 
             if gs_enable \
                 and gs_host \
-                and self.graph_search_mgr \
                 and not val_job.graph_search_job:
+                    # handle edge case where search job is completed and needs run again (e.g., restart)
                     if val_job.root_txid in self.graph_search_mgr.search_jobs.keys() \
                         and self.graph_search_mgr.search_jobs[val_job.root_txid].job_complete \
                         and not self.graph_search_mgr.search_jobs[val_job.root_txid].search_success:
                             self.graph_search_mgr.search_jobs.pop(val_job.root_txid)
-                    search_job = self.graph_search_mgr.new_search(val_job)
+                    # get 10 most recent valid SLP txid for this token
+                    try:
+                        gs_cache = [[key, wallet.verified_tx[key][0]] for key in wallet.slpv1_validity.keys() \
+                            if wallet.tx_tokinfo[key]["token_id"] == graph.validator.token_id_hex and wallet.slpv1_validity[key] == 1]
+                        gs_cache = [codecs.encode(codecs.decode(item[0], 'hex')[::-1], 'hex').decode()
+                                        for item in sorted(gs_cache, key=itemgetter(1), reverse=True)][:10]
+                    except KeyError:
+                        gs_cache = []
+                    # create and set the new graph search job
+                    search_job = self.graph_search_mgr.new_search(val_job, gs_cache.copy())
                     val_job.graph_search_job = search_job if search_job else None
-            elif not gs_enable and self.graph_search_mgr:
+            elif not gs_enable:
                 for job in self.graph_search_mgr.search_jobs.values():
                     job.sched_cancel()
 
@@ -253,7 +266,6 @@ class GraphContext(PrintError):
                 val = n.validity
                 if val != 0:
                     wallet.slpv1_validity[t] = val
-
 
         job = ValidationJob(graph, txid, network,
                             fetch_hook=fetch_hook,
