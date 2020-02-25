@@ -401,6 +401,26 @@ class Commands(PrintError):
         out["unconfirmed"] =  str(PyDecimal(out["unconfirmed"])/COIN)
         return out
 
+    @command('w')
+    def getbalance_slp(self, token_id):
+        """Return the token balance of your wallet. """
+        if not self.wallet.is_slp:
+            raise RuntimeError('Not an SLP wallet')
+        token_id = token_id.lower()
+        if len(token_id) != 64 or bytes.fromhex(token_id).hex() != token_id:
+            raise RuntimeError('Invalid token_id; must be a 32-byte hex-encoded string (64 characters)')
+        tok = self.wallet.token_types.get(token_id, None)
+        if not tok:
+            raise RuntimeError('Unknown token id')
+        decimals = tok['decimals']
+        if not isinstance(decimals, int):
+            # token is unverified or other funny business -- has decimals field as '?'
+            raise RuntimeError("Unverified token-id; please verify this token before proceeding")
+
+        valid_balance = self.wallet.get_slp_token_balance(token_id, self.config)[0]
+        out = {"valid":str(PyDecimal(valid_balance)/10**decimals)}
+        return out
+
     @command('n')
     def getmerkle(self, txid, height):
         """Get Merkle branch of a transaction included in a block. Electron Cash
