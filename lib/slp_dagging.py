@@ -504,10 +504,13 @@ class ValidationJob:
             for tx in cached:
                 dl_callback(tx)
             for txid in txid_set:
-                skip_callback(txid)
+                if not self.validitycache[txid]:
+                    skip_callback(txid)
+                else:
+                    print("VALID SKIP")
             txid_set.clear()
             return txid_set
-        
+
         # build requests list from remaining txids.
         requests = []
         if self.network:
