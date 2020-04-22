@@ -1,11 +1,14 @@
 """
+SLP Graph Search Client
 
-Background search and batch download for graph transactions.
+Performs a background search and batch download of graph
+transactions from gs++ server. For more information about
+the gs++ server see:
 
-This is used by slp_validator_0x01.py.
+https://github.com/blockparty-sh/cpp_slp_graph_search
 
-To generate proto files use the following command:
-python3 -m grpc_tools.protoc --proto_path=lib/ --python_out=lib/ --grpc_python_out=lib/ lib/slp_graphsearchrpc.proto
+This class is currently only used by slp_validator_0x01.py.
+The NFT1 validator has not yet been attached to the NFT1 validator.
 
 """
 
@@ -53,6 +56,9 @@ class GraphSearchJob:
         # host for graph search
         self.host = self.valjob.network.slp_gs_host
 
+        # gs job results cache - clears data after 30 minutes
+        self._txdata = ExpiringCache(maxlen=10000000, name="GraphSearchTxnFetchCache", timeout=1800)
+
     def sched_cancel(self, callback=None, reason='job canceled'):
         self.exit_msg = reason
         if self.job_complete:
@@ -77,6 +83,24 @@ class GraphSearchJob:
         self.search_success = False
         self.job_complete = True
         self.exit_msg = reason
+
+    def get_tx(self, txid: str) -> object:
+        ''' Attempts to retrieve txid from the tx cache that this class
+        keeps in-memory.  Returns None on failure. The returned tx is
+        not deserialized, and is a copy of the one in the cache. '''
+        tx = self._txdata.get(txid)
+        if tx is not None and tx.raw:
+            # make sure to return a copy of the transaction from the cache
+            # so that if caller does .deserialize(), *his* instance will
+            # use up 10x memory consumption, and not the cached instance which
+            # should just be an undeserialized raw tx.
+            return Transaction(tx.raw)
+        return None
+
+    def put_tx(self, tx: bytes, txid: str = None):
+        ''' Puts a non-deserialized copy of tx into the tx_cache. '''
+        txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
+        self._txdata.put(txid, tx)
 
 class SlpGraphSearchManager:
     """
@@ -194,41 +218,7 @@ class SlpGraphSearchManager:
         for txn in txns:
             job.txn_count_progress += 1
             tx = Transaction(base64.b64decode(txn).hex())
-            SlpGraphSearchManager.tx_cache_put(tx)
+            job.put_tx(tx)
+            #SlpGraphSearchManager.tx_cache_put(tx)
         job.set_success()
         print("[SLP Graph Search] job success.")
-
-    # This cache stores foreign (non-wallet) tx's we fetched from the network
-    # for the purposes of the "fetch_input_data" mechanism. Its max size has
-    # been thoughtfully calibrated to provide a decent tradeoff between
-    # memory consumption and UX.
-    #
-    # In even aggressive/pathological cases this cache won't ever exceed
-    # 100MB even when full. [see ExpiringCache.size_bytes() to test it].
-    # This is acceptable considering this is Python + Qt and it eats memory
-    # anyway.. and also this is 2019 ;). Note that all tx's in this cache
-    # are in the non-deserialized state (hex encoded bytes only) as a memory
-    # savings optimization.  Please maintain that invariant if you modify this
-    # code, otherwise the cache may grow to 10x memory consumption if you
-    # put deserialized tx's in here.
-    _fetched_tx_cache = ExpiringCache(maxlen=100000, name="GraphSearchTxnFetchCache")
-
-    @classmethod
-    def tx_cache_get(cls, txid: str) -> object:
-        ''' Attempts to retrieve txid from the tx cache that this class
-        keeps in-memory.  Returns None on failure. The returned tx is
-        not deserialized, and is a copy of the one in the cache. '''
-        tx = cls._fetched_tx_cache.get(txid)
-        if tx is not None and tx.raw:
-            # make sure to return a copy of the transaction from the cache
-            # so that if caller does .deserialize(), *his* instance will
-            # use up 10x memory consumption, and not the cached instance which
-            # should just be an undeserialized raw tx.
-            return Transaction(tx.raw)
-        return None
-
-    @classmethod
-    def tx_cache_put(cls, tx: bytes, txid: str = None):
-        ''' Puts a non-deserialized copy of tx into the tx_cache. '''
-        txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
-        cls._fetched_tx_cache.put(txid, tx)

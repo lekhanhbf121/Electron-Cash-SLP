@@ -222,7 +222,8 @@ class GraphContext(PrintError):
                 first_fetch_complete = True
 
             for txid in txids:
-                txn = SlpGraphSearchManager.tx_cache_get(txid)
+                if val_job.graph_search_job:
+                    txn = val_job.graph_search_job.get_tx(txid)
                 if txn:
                     l.append(txn)
                 else:
