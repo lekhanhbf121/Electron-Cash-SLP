@@ -119,10 +119,14 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
         if self.baton_txo != None:
             self.token_burn_baton_cb.setDisabled(False)
 
-        self.token_burn_invalid_cb = cb = QCheckBox(_("Burn invalid SLP transactions for this token"))
-        self.token_burn_invalid_cb.setChecked(True)
-        grid.addWidget(self.token_burn_invalid_cb, row, 1)
-        row += 1
+        '''
+            This feature is currently disabled. More work should be done on the
+            validation before this is re-introduced as a feature.
+        '''
+        # self.token_burn_invalid_cb = cb = QCheckBox(_("Burn invalid SLP transactions for this token"))
+        # self.token_burn_invalid_cb.setChecked(False)
+        # grid.addWidget(self.token_burn_invalid_cb, row, 1)
+        # row += 1
 
         self.cancel_button = b = QPushButton(_("Cancel"))
         self.cancel_button.setAutoDefault(True)
@@ -269,7 +273,7 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                         domain=None,
                         exclude_frozen=True,
                         confirmed_only=self.main_window.config.get('confirmed_only', False),
-                        slp_include_invalid=self.token_burn_invalid_cb.isChecked(),
+                        slp_include_invalid=False, #self.token_burn_invalid_cb.isChecked(),
                         slp_include_baton=self.token_burn_baton_cb.isChecked()
                         )
             if multisig_tx_to_sign is None:
@@ -350,10 +354,10 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                 if coin['token_value'] == "MINT_BATON" and coin['token_validation_state'] == 1:
                     selected_slp_coins.append(coin)
 
-        if self.token_burn_invalid_cb.isChecked():
-            for coin in slp_coins:
-                if coin['token_validation_state'] != 1:
-                    selected_slp_coins.append(coin)
+        # if self.token_burn_invalid_cb.isChecked():
+        #     for coin in slp_coins:
+        #         if coin['token_validation_state'] != 1:
+        #             selected_slp_coins.append(coin)
 
         try:
             if multisig_tx_to_sign is None:
