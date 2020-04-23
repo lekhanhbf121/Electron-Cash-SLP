@@ -1765,7 +1765,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 "<li> Bitcoin Legacy <b>Address</b> <b>★</b>"
                 "<li> Simple Ledger <b>Address</b>"
                 "<li> <b>Contact name</b> <b>★</b> from the Contacts tab"
-                "<li> <b>CoinText</b> e.g. <i>cointext:+1234567</i>"
+                #"<li> <b>CoinText</b> e.g. <i>cointext:+1234567</i>"
                 "<li> <b>OpenAlias</b> e.g. <i>satoshi@domain.com</i>"
                 "</ul><br>"
                 "&nbsp;&nbsp;&nbsp;<b>★</b> = Supports <b>pay-to-many</b>, where"
