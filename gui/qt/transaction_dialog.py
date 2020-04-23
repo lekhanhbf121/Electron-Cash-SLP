@@ -840,7 +840,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
             if isinstance(value, int):
                 value_fmtd = self.main_window.format_amount(value)
                 copy_list += [ ( _("Copy Amount"), lambda: self._copy_to_clipboard(value_fmtd, o_text) ) ]
-        except (TypeError, ValueError, IndexError, KeyError) as e:
+        except (TypeError, ValueError, IndexError, KeyError, AttributeError) as e:
             self.print_error("Outputs right-click menu exception:", repr(e))
 
         for item in show_list:
