@@ -440,10 +440,10 @@ class Abstract_Wallet(PrintError):
             return False
 
         #token name validation
-        if len(token_name) < 1 or len(token_name) > 20:
-            if error_callback:
-                error_callback(_('Token name should be 1-20 characters'))
-            return False
+        # if len(token_name) < 1 or len(token_name) > 20:
+        #     if error_callback:
+        #         error_callback(_('Token name should be 1-20 characters'))
+        #     return False
 
 
         new_entry = {
