@@ -422,6 +422,7 @@ class Abstract_Wallet(PrintError):
 
         # Check for duplication error
         d = self.token_types.get(token_id)
+        group_id = d.get('group_id', None)
         if d is not None and not allow_overwrite:
             if error_callback:
                 error_callback(_('Token with this hash id already exists'))
@@ -452,7 +453,10 @@ class Abstract_Wallet(PrintError):
         }
 
         if token_class == "SLP65":
-            new_entry['group_id'] = "?"
+            if group_id is None:
+                new_entry['group_id'] = "?"
+            else:
+                new_entry['group_id'] = group_id
 
         self.add_token_type(token_id, new_entry)
         self.save_transactions(bool(write_storage))
