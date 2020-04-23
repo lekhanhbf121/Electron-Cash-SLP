@@ -278,7 +278,10 @@ class SlpAddTokenDialog(QDialog, MessageBoxMixin):
         name_ext = ''
         for key in [ 'ticker', 'token_name' ]:
             if self.token_name_e.text() == '' and slpMsg.op_return_fields[key] != b'':
-                base_name = slpMsg.op_return_fields[key].decode("utf-8")
+                try:
+                    base_name = slpMsg.op_return_fields[key].decode("utf-8")
+                except UnicodeDecodeError:
+                    base_name = ""
                 for k,v in self.wallet.token_types.copy().items():
                     if v['name'] == base_name:
                         name_ext = "-" + self.token_id_e.text()[:3]
