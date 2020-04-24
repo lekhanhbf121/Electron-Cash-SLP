@@ -421,6 +421,10 @@ class SlpCreateTokenGenesisDialog(QDialog, MessageBoxMixin):
                     selected_coin = coin
                     break
 
+            if selected_coin is None:
+                self.show_message(_("NFT Group balance is 0. Before you can create an NFT you need to have a group balance > 0."))
+                return
+
             if selected_coin['token_value'] < 19:
                 slp_qtys = [1] * selected_coin['token_value']
             elif selected_coin['token_value'] >= 19:
@@ -448,7 +452,7 @@ class SlpCreateTokenGenesisDialog(QDialog, MessageBoxMixin):
                 tx = self.main_window.wallet.make_unsigned_transaction(coins,
                         outputs, self.main_window.config, fee, None, mandatory_coins=[selected_coin])
             else:
-                self.show_message(_("Unable to select a parent coin to prepare."))
+                self.show_message(_("Unable to select a group coin to prepare."))
                 return 
         except NotEnoughFunds:
             self.show_message(_("Insufficient funds"))
@@ -593,7 +597,7 @@ class SlpCreateTokenGenesisDialog(QDialog, MessageBoxMixin):
                     tx = self.main_window.wallet.make_unsigned_transaction(coins,
                             outputs, self.main_window.config, fee, None, mandatory_coins=[selected_coin])
                 else:
-                    raise Exception('Must have a parent NFT coin with value of 1 first.')
+                    raise Exception(_('Must have a group NFT coin with value of 1 first.'))
             else:
                 tx = self.main_window.wallet.make_unsigned_transaction(coins,
                                     outputs, self.main_window.config, fee, None)
