@@ -54,7 +54,7 @@ from .util import FileImportFailed, FileImportFailedEncrypted
 from .transaction import Transaction
 
 
-REQUEST_HEADERS = {'Accept': 'application/bitcoincash-paymentrequest', 'User-Agent': 'Electron-Cash'}
+REQUEST_HEADERS = {'Accept': 'application/bitcoincash-paymentrequest', 'User-Agent': 'Electron-Cash/' + version.PACKAGE_VERSION + version.get_extensions()}
 ACK_HEADERS = {'Content-Type':'application/bitcoincash-payment','Accept':'application/bitcoincash-paymentack','User-Agent':'Electron-Cash'}
 
 ca_path = requests.certs.where()

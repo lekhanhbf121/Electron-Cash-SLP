@@ -1,5 +1,6 @@
 PACKAGE_VERSION = '3.6.2'  # version of the client package
 PROTOCOL_VERSION = '1.4'     # protocol version requested
+EXTENSIONS = { 'SLP': "1" }
 
 # The hash of the mnemonic seed must begin with this
 SEED_PREFIX      = '01'      # Standard wallet
@@ -13,6 +14,12 @@ import re
 
 _RX_NORMALIZER = re.compile(r'(\.0+)*$')
 _RX_VARIANT_TOKEN_PARSE = re.compile(r'^(\d+)(.+)$')
+
+def get_extensions():
+    extension_string = ''
+    for extension in EXTENSIONS:
+        extension_string = ' ' + extension + '/' + EXTENSIONS[extension]
+    return extension_string
 
 def normalize_version(v):
     """Used for PROTOCOL_VERSION normalization, e.g '1.4.0' -> (1,4) """
