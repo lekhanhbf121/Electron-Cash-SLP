@@ -249,7 +249,7 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
             self.show_message(_("Invalid token quantity entered."))
             return
         if burn_amt > unfrozen_token_qty:
-            self.show_message(_("Cannot burn more tokens than the unfrozen amount available."))
+            self.show_message(_("Cannot burn more tokens than your available unfrozen balance."))
             return
 
         reply = QMessageBox.question(self, "Continue?", "Destroy " + self.token_qty_e.text() + " " + self.token_name.text() + " tokens?", QMessageBox.Yes, QMessageBox.No)
