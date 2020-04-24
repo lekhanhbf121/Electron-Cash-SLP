@@ -274,7 +274,7 @@ class SlpSearchJobListWidget(QTreeWidget):
         QTreeWidget.__init__(self)
         self.parent = parent
         self.network = parent.network
-        self.setHeaderLabels([_("Job Id"), _("Txn Count"), _("Data"), _("Search Status")])
+        self.setHeaderLabels([_("Job Id"), _("Txn Count"), _("Data"), _("Status")])
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
         self.slp_validity_signal = None
@@ -296,7 +296,7 @@ class SlpSearchJobListWidget(QTreeWidget):
         txid = item.data(0, Qt.UserRole)
         if item.data(3, Qt.UserRole) in ['Exited']:
             menu.addAction(_("Restart Search"), lambda: self.restart_job(txid))
-        elif item.data(3, Qt.UserRole) not in ['Exited', 'Completed']:
+        elif item.data(3, Qt.UserRole) not in ['Exited', 'Downloaded']:
             menu.addAction(_("Cancel"), lambda: self.cancel_job(txid))
         menu.exec_(self.viewport().mapToGlobal(position))
 
@@ -368,21 +368,21 @@ class SlpSearchJobListWidget(QTreeWidget):
                 tx_count = str(job.txn_count_progress)
                 status = 'In Queue'
                 if job.search_success:
-                    status = 'Completed'
+                    status = 'Downloaded'
                 elif job.job_complete:
                     status = 'Exited'
                 elif job.waiting_to_cancel:
                     status = 'Stopping...'
                 elif job.search_started:
-                    status = 'Working...'
+                    status = 'Downloading...'
                 success = str(job.search_success) if job.search_success else ''
-                exit_msg = ' ('+job.exit_msg+')' if job.exit_msg and status != 'Completed' else ''
+                exit_msg = ' ('+job.exit_msg+')' if job.exit_msg and status != 'Downloaded' else ''
                 x = QTreeWidgetItem([job.root_txid[:6], tx_count, self.humanbytes(job.gs_response_size), status + exit_msg])
                 x.setData(0, Qt.UserRole, k)
                 x.setData(3, Qt.UserRole, status)
-                if status == 'Working...':
+                if status == 'Downloading...':
                     working_item = x
-                elif status == "Completed":
+                elif status == "Downloaded":
                     completed_items.append(x)
                 else:
                     other_items.append(x)
