@@ -2087,7 +2087,7 @@ class Abstract_Wallet(PrintError):
                 if not change_addrs:
                     change_addrs = [random.choice(addrs)]
             else:
-                change_addrs = [inputs[0]['address']]
+                change_addrs = [self.get_addresses()[0]]
 
         assert all(isinstance(addr, Address) for addr in change_addrs)
 
