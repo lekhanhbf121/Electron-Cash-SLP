@@ -157,3 +157,12 @@ Electron Cash - SLP Token Edition
 - Fixed issues caused by shared pyqtSignal in graph search network dialog
 - Fixed issue with stopping and restarting graph search on closing wallets
 - Ported fix for occational issue related to Satochip hardware wallet
+
+3.6.2 Updates
+-----
+- Critical patch for Mint Tool vulnerability
+- Fix bugs related to using SLP Mint/Burn tools with imported_priv_key wallet type
+- Added counter for Graph Search data downloaded in token tab of the network dialog
+- Fixed dialog message for graph search high data usage
+- Fixed graph search cache issue for large DAGs > 100000 transactions
+- Removed option to "Burn invalid SLP transactions for this token" from Burn Tool
