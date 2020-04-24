@@ -907,9 +907,9 @@ class Abstract_Wallet(PrintError):
     def get_slp_token_baton(self, slpTokenId):
         # look for our minting baton
         with self.lock:
-            for addr, addrdict in copy.deepcopy(self._slp_txo).items():
-                for txid, txdict in addrdict.items():
-                    for idx, txo in txdict.items():
+            for addr, addrdict in self._slp_txo.copy().items():
+                for txid, txdict in addrdict.copy().items():
+                    for idx, txo in txdict.copy().items():
                         if txo['qty'] == 'MINT_BATON' and txo['token_id'] == slpTokenId:
                             try:
                                 coins = self.get_slp_utxos(slpTokenId, domain = None, exclude_frozen = False, confirmed_only = False, slp_include_baton=True)
