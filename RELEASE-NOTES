@@ -166,3 +166,4 @@ Electron Cash - SLP Token Edition
 - Fixed dialog message for graph search high data usage
 - Fixed graph search cache issue for large DAGs > 100000 transactions
 - Removed option to "Burn invalid SLP transactions for this token" from Burn Tool
+- Add more verbose user agent when paying with BIP70
