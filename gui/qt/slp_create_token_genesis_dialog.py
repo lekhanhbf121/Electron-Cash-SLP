@@ -184,10 +184,11 @@ class SlpCreateTokenGenesisDialog(QDialog, MessageBoxMixin):
 
         try:
             slpAddr = self.wallet.get_unused_address().to_slpaddr()
-            self.token_pay_to_e.setText(Address.prefix_from_address_string(slpAddr) + ":" + slpAddr)
-            self.token_baton_to_e.setText(Address.prefix_from_address_string(slpAddr) + ":" + slpAddr)
         except Exception as e:
-            pass
+            slpAddr = self.wallet.get_addresses()[0].to_slpaddr()
+
+        self.token_pay_to_e.setText(Address.prefix_from_address_string(slpAddr) + ":" + slpAddr)
+        self.token_baton_to_e.setText(Address.prefix_from_address_string(slpAddr) + ":" + slpAddr)
 
         if nft_parent_id: 
             nft_parent_coin = get_nft_parent_coin(nft_parent_id, main_window)

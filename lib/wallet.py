@@ -422,7 +422,7 @@ class Abstract_Wallet(PrintError):
 
         # Check for duplication error
         d = self.token_types.get(token_id)
-        group_id = d.get('group_id', None)
+        group_id = d.get('group_id', None) if d else None
         if d is not None and not allow_overwrite:
             if error_callback:
                 error_callback(_('Token with this hash id already exists'))
