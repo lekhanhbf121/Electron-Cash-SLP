@@ -160,9 +160,9 @@ class SlpMgt(MyTreeWidget):
             if i['class'] == "SLP1":
                 typestr = "Type 1"
             elif i['class'] == "SLP65":
-                typestr = "NFT1 Child"
+                typestr = "NFT1"
             elif i['class'] == "SLP129":
-                typestr = "NFT1 Parent"
+                typestr = "NFT1 Group"
 
             try:
                 self.parent.wallet.get_slp_token_baton(token_id)

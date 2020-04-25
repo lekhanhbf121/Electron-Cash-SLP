@@ -184,7 +184,7 @@ class HistoryList(MyTreeWidget):
                 icontooltip = "SLP invalid (tokens burned!)"
         elif validity == 4:
             icon=QIcon(":icons/expired.svg")
-            icontooltip = "Bad NFT1 Parent"
+            icontooltip = "Bad NFT1 Group"
         elif validity == 1:
             # For SLP valid known txes, show the confirmation status (gears, few-confirmations, or green check)
             icon = QIcon(":icons/" + TX_ICONS[status])
