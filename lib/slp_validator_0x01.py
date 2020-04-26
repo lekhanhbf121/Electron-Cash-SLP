@@ -224,8 +224,8 @@ class GraphContext(PrintError):
             for txid in txids:
                 if val_job.graph_search_job:
                     txn = val_job.graph_search_job.get_tx(txid)
-                if txn:
-                    l.append(txn)
+                    if txn:
+                        l.append(txn)
                 else:
                     try:
                         l.append(wallet.transactions[txid])
