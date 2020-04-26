@@ -1,4 +1,4 @@
-PACKAGE_VERSION = '3.6.2'  # version of the client package
+PACKAGE_VERSION = '3.6.3'  # version of the client package
 PROTOCOL_VERSION = '1.4'     # protocol version requested
 EXTENSIONS = { 'SLP': "1" }
 
