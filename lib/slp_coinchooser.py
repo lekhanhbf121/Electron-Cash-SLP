@@ -1,5 +1,5 @@
-from electroncash.util import NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp
-from electroncash import slp
+from .util import NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp
+from . import slp
 
 class SlpCoinChooser:
 

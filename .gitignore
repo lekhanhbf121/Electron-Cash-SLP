@@ -36,3 +36,7 @@ xcuserdata/
 libsecp256k1.0.dylib
 libusb-1.0.dylib
 libzbar.0.dylib
+
+tx_input_tests_gen.py
+tx_input_tests.json
+.python-version

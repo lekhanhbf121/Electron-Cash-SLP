@@ -65,9 +65,9 @@ errorcodes = {
     ('More than 19 output amounts',): 21,
 
     # specific - NFT1 GENESIS 
-    ('Cannot have a minting baton in a NFT_CHILD token.', ): 22,
-    ('NFT1 child token must have divisibility set to 0 decimal places.', ): 22,
-    ('NFT1 child token must have GENESIS quantity of 1.', ): 22,
+    ('NFT1 child token must have divisibility set to 0 decimal places', ): 22,
+    ('NFT1 child token must have GENESIS quantity of 1', ): 22,
+    ('Cannot have a minting baton in a NFT_CHILD token', ): 23,
 
     #SlpUnsupportedSlpTokenType : 255 below
 }

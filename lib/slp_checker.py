@@ -1,8 +1,8 @@
-from electroncash.util import NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp, print_error
-from electroncash import slp
-from electroncash.slp import SlpParsingError, SlpInvalidOutputMessage, SlpUnsupportedSlpTokenType
-from electroncash.transaction import Transaction
-from electroncash.address import Address
+from .util import NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp, print_error
+from . import slp
+from .slp import SlpParsingError, SlpInvalidOutputMessage, SlpUnsupportedSlpTokenType
+from .transaction import Transaction
+from .address import Address
 
 class SlpTransactionChecker:
     @staticmethod
