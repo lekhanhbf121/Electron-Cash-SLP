@@ -171,3 +171,7 @@ Electron Cash - SLP Token Edition
 3.6.3 Updates
 ----
 - Hotfix for a crash occurring when Graph Search is disabled
+
+3.6.4 Updates
+----
+- Turning of parallel validation as it is causing problems on Windows
