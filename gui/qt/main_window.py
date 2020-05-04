@@ -2879,7 +2879,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                                     index+=1
                                 self.slp_amount_e.setAmount(amounts[tokenid]['amount'] * pow(10, self.slp_amount_e.token_decimals))
                                 self.slp_amount_e.textEdited.emit("")
-                            SlpAddTokenDialog(self, token_id_hex = tokenid, token_name=None, allow_overwrite=None, add_callback=add_token_callback)
+                            SlpAddTokenDialog(self, token_id_hex = tokenid, token_name=None, allow_overwrite=True, add_callback=add_token_callback)
                             return
                         self.slp_amount_e.setAmount(amounts[tokenid]['amount'] * pow(10, self.slp_amount_e.token_decimals))
                         self.slp_amount_e.textEdited.emit("")
