@@ -174,4 +174,7 @@ Electron Cash - SLP Token Edition
 
 3.6.4 Updates
 ----
-- Turning of parallel validation as it is causing problems on Windows
+- Disable parallel validation due to thread related issues with windows
+- Fixed issue with SLP URI scheme not allowing token
+- Minor update in SLP unit tests runner
+- Fix issue with burning minting baton with 0 token quantity
