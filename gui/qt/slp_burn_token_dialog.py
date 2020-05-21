@@ -245,8 +245,8 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
     def burn_token(self, preview=False, multisig_tx_to_sign=None):
         unfrozen_token_qty = self.wallet.get_slp_token_balance(self.token_id_e.text(), self.main_window.config)[3]
         burn_amt = self.token_qty_e.get_amount()
-        if burn_amt == 0 or burn_amt == None:
-            self.show_message(_("Enter a quantity greater than 0."))
+        if burn_amt < 0 or burn_amt == None:
+            self.show_message(_("Enter a valid token quantity."))
             return
         elif burn_amt > unfrozen_token_qty:
             self.show_message(_("Cannot burn a quantity greater than your unfrozen token balance."))
