@@ -757,7 +757,7 @@ def bip44_derivation_245(account_id):
 
 def bip39_normalize_passphrase(passphrase):
     """ This is called by some plugins """
-    return Mnemonic.normalize_text(passphrase or '')
+    return Mnemonic.normalize_text(passphrase or '', is_passphrase=True)
 
 def bip39_to_seed(seed: str, passphrase: str) -> bytes:
     """This is called by some plugins """
