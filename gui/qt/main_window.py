@@ -2158,12 +2158,16 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         try:
             selected_slp_coins = []
             if self.slp_token_id:
-                amt = slp_amount or 0
+                if self.payto_e.is_pr:
+                    slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                    amt = list(slpmsg.op_return_fields['token_output'][1:])
+                else:
+                    amt = slp_amount or 0
                 selected_slp_coins, slp_op_return_msg = SlpCoinChooser.select_coins(self.wallet, self.slp_token_id, amt, self.config)
                 if slp_op_return_msg:
                     bch_outputs = [ slp_op_return_msg ]
                     token_output_amts = slp.SlpMessage.parseSlpOutputScript(bch_outputs[0][1]).op_return_fields['token_output']
-                    for amt in token_output_amts:
+                    for _amt in token_output_amts:
                         # just grab a dummy address for this fee calculation - safe for imported_privkey wallets
                         bch_outputs.append((TYPE_ADDRESS, self.wallet.get_addresses()[0], 546))
 
@@ -2314,7 +2318,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if self.payto_e.is_multiline():
                     self.show_error(_("Too many receivers listed.\n\nCurrently this wallet only supports a single SLP token receiver."))
                     return
-                amt = self.slp_amount_e.get_amount()
+                elif self.payto_e.is_pr:
+                    slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                    amt = list(slpmsg.op_return_fields['token_output'][1:])
+                else:
+                    amt = self.slp_amount_e.get_amount()
                 selected_slp_coins, slp_op_return_msg = SlpCoinChooser.select_coins(self.wallet, self.slp_token_id, amt, self.config)
                 if not self.payment_request:
                     """ Guard against bad address encoding """
@@ -2638,7 +2646,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 return False, _("Payment request has expired")
             if pr:
                 refund_address = self.wallet.get_receiving_addresses()[0]
-                ack_status, ack_msg = pr.send_payment(str(tx), refund_address)
+                is_slp = False
+                try:
+                    slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                    is_slp = True
+                except:
+                    pass                
+                ack_status, ack_msg = pr.send_payment(str(tx), refund_address, is_slp=is_slp)
                 if not ack_status:
                     if ack_msg == "no url":
                         # "no url" hard-coded in send_payment method
@@ -2805,7 +2819,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         else:
             self.payto_e.setText(pr.get_slp_requestor())
             tokenid = slpmsg.op_return_fields['token_id_hex']
-            amount = slpmsg.op_return_fields['token_output'][1]
+            amount = sum(slpmsg.op_return_fields['token_output'][1:])
             index = 1
             while index < self.token_type_combo.count():
                 self.token_type_combo.setCurrentIndex(index)
@@ -3153,8 +3167,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         else:
             return self.wallet.get_spendable_coins(None, self.config, isInvoice)
 
-    def get_slp_coins(self, isInvoice = False):
-        return self.wallet.get_slp_spendable_coins(self.slp_token_id, None, self.config, isInvoice)
+    # def get_slp_coins(self, isInvoice = False):
+    #     isInvoice = False
+    #     return self.wallet.get_slp_spendable_coins(self.slp_token_id, None, self.config, isInvoice)
 
     def spend_coins(self, coins):
         self.set_pay_from(coins)

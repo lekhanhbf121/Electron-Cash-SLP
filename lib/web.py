@@ -199,7 +199,7 @@ def parse_URI(uri, on_pr=None):
                 s = pr.serialize_request(out).SerializeToString()
                 request = pr.PaymentRequest(s)
             else:
-                request = pr.get_payment_request(r)
+                request = pr.get_payment_request(r, is_slp=(u.scheme == "simpleledger"))
             if on_pr:
                 on_pr(request)
         t = threading.Thread(target=get_payment_request_thread, daemon=True)

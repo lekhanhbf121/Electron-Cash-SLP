@@ -78,7 +78,7 @@ PR_PAID    = 3     # send and propagated
 
 
 
-def get_payment_request(url):
+def get_payment_request(url, *, is_slp):
     data = error = None
     try:
         u = urllib.parse.urlparse(url)
@@ -92,7 +92,10 @@ def get_payment_request(url):
         #.. else, try regular BIP70
         if u.scheme in ['http', 'https']:
             try:
-                response = requests.request('GET', url, headers=REQUEST_HEADERS)
+                headers = REQUEST_HEADERS
+                if is_slp:
+                    headers = REQUEST_HEADERS_SLP
+                response = requests.request('GET', url, headers=headers)
                 response.raise_for_status()
                 # Guard against `bitcoincash:`-URIs with invalid payment request URLs
                 if "Content-Type" not in response.headers \
@@ -282,7 +285,7 @@ class PaymentRequest:
     def get_outputs(self):
         return self.outputs[:]
 
-    def send_payment(self, raw_tx, refund_addr):
+    def send_payment(self, raw_tx, refund_addr, *, is_slp):
         pay_det = self.details
         if not self.details.payment_url:
             return False, "no url"  # note caller is expecting this exact string in the "no payment url specified" case. see main_window.py and/or ios_native/gui.py
@@ -295,7 +298,10 @@ class PaymentRequest:
         pm = paymnt.SerializeToString()
         payurl = urllib.parse.urlparse(pay_det.payment_url)
         try:
-            r = requests.post(payurl.geturl(), data=pm, headers=ACK_HEADERS, verify=ca_path)
+            headers = ACK_HEADERS
+            if is_slp:
+                headers = ACK_HEADERS_SLP
+            r = requests.post(payurl.geturl(), data=pm, headers=headers, verify=ca_path)
         except requests.exceptions.RequestException as e:
             return False, str(e)
         if r.status_code != 200:
