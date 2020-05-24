@@ -1766,7 +1766,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 "<ul>"
                 "<li> Bitcoin Cash <b>Address</b> <b>★</b>"
                 "<li> Bitcoin Legacy <b>Address</b> <b>★</b>"
-                "<li> Simple Ledger <b>Address</b>"
+                "<li> Simple Ledger <b>Address</b> <b>★</b>"
                 "<li> <b>Contact name</b> <b>★</b> from the Contacts tab"
                 #"<li> <b>CoinText</b> e.g. <i>cointext:+1234567</i>"
                 "<li> <b>OpenAlias</b> e.g. <i>satoshi@domain.com</i>"
@@ -2138,6 +2138,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         bch_outputs = []
         token_output_amts = []
         self.not_enough_funds = False
+        self.op_return_toolong = False
         self.not_enough_funds_slp = False
         self.not_enough_unfrozen_funds_slp = False
         freeze_fee = (self.fee_e.isModified()
@@ -2145,7 +2146,31 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         amount = '!' if self.max_button.isChecked() else self.amount_e.get_amount()
         fee_rate = None
         if self.is_slp_wallet:
-            slp_amount = self.slp_amount_e.get_amount()
+            slp_amount = None
+            if self.slp_token_id:
+                try:
+                    if len(self.payto_e.get_outputs(self.max_button.isChecked())) > 1:
+                        self.slp_extra_bch_cb.setDisabled(True)
+                        self.slp_extra_bch_cb.setChecked(False)
+                        self.slp_amount_e.setDisabled(True)
+                        self.slp_max_button.setDisabled(True)
+                        self.amount_e.setText('')
+                        self.max_button.setDisabled(True)
+                        amt = []
+                        precision = self.wallet.token_types.get(self.slp_token_id)['decimals']
+                        for _out in self.payto_e.get_outputs(self.max_button.isChecked()):
+                            if _out[2] >= 0:
+                                amt.append(int(_out[2] / 10**8 * 10**precision))
+                        slp_amount = sum(amt)
+                        self.slp_amount_e.setAmount(slp_amount)
+                    else:
+                        self.slp_max_button.setDisabled(False)
+                        self.slp_amount_e.setDisabled(False)
+                        self.slp_extra_bch_cb.setDisabled(False)
+                        slp_amount = self.slp_amount_e.get_amount()
+                except TypeError:
+                    self.slp_extra_bch_cb.setDisabled(False)
+                    slp_amount = self.slp_amount_e.get_amount()
             if amount is None and slp_amount is None:
                 if not freeze_fee:
                     self.fee_e.setAmount(None)
@@ -2161,11 +2186,28 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         try:
             selected_slp_coins = []
             if self.slp_token_id:
-                if self.payto_e.is_pr:
-                    slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
-                    amt = list(slpmsg.op_return_fields['token_output'][1:])
-                else:
-                    amt = slp_amount or 0
+                amt = []
+                try: # first, try to read amount from payto for multi-output
+                    if len(self.payto_e.get_outputs(self.max_button.isChecked())) > 1:
+                        precision = self.wallet.token_types.get(self.slp_token_id)['decimals']
+                        for _out in self.payto_e.get_outputs(self.max_button.isChecked()):
+                            if _out[2] >= 0:
+                                amt.append(int(_out[2] / 10**8 * 10**precision))
+                        slp_amount = sum(amt)
+                        self.slp_amount_e.setAmount(slp_amount)
+                    else:
+                        if self.payto_e.is_pr:
+                            slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                            amt = list(slpmsg.op_return_fields['token_output'][1:])
+                        else:
+                            amt = slp_amount or 0
+                except TypeError:
+                    if self.payto_e.is_pr:
+                        slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                        amt = list(slpmsg.op_return_fields['token_output'][1:])
+                    else:
+                        amt = slp_amount or 0
+
                 selected_slp_coins, slp_op_return_msg = SlpCoinChooser.select_coins(self.wallet, self.slp_token_id, amt, self.config)
                 if slp_op_return_msg:
                     bch_outputs = [ slp_op_return_msg ]
@@ -2175,7 +2217,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                         bch_outputs.append((TYPE_ADDRESS, self.wallet.get_addresses()[0], 546))
 
             bch_payto_outputs = self.payto_e.get_outputs(self.max_button.isChecked())
-            if bch_payto_outputs and bch_payto_outputs[0][2]:
+            if bch_payto_outputs and bch_payto_outputs[0][2]: # and not self.slp_token_id:
                 bch_outputs.extend(bch_payto_outputs)
             elif self.slp_token_id and amount and not bch_payto_outputs:
                 _type, addr = self.get_payto_or_dummy()
@@ -2196,8 +2238,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             tx = self.wallet.make_unsigned_transaction(self.get_coins(isInvoice = False), bch_outputs, self.config, fee, mandatory_coins=selected_slp_coins)
             if self.slp_token_id:
                 self.wallet.check_sufficient_slp_balance(slp.SlpMessage.parseSlpOutputScript(slp_op_return_msg[1]), self.config)
-            self.not_enough_funds = False
-            self.op_return_toolong = False
         except NotEnoughFunds:
             self.not_enough_funds = True
             if not freeze_fee:
@@ -2230,7 +2270,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if self.max_button.isChecked():
             amount = tx.output_value()
             if self.is_slp_wallet:
-                amount = tx.output_value() - len(token_output_amts) * 546
+                amount = tx.output_value() - (len(token_output_amts)-1) * 546
             self.amount_e.setAmount(amount)
         if fee is not None:
             fee_rate = fee / tx.estimated_size()
@@ -2318,22 +2358,35 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 return
             try:
                 """ Guard against multiline 'Pay To' field """
-                if self.payto_e.is_multiline():
-                    self.show_error(_("Too many receivers listed.\n\nCurrently this wallet only supports a single SLP token receiver."))
-                    return
-                elif self.payto_e.is_pr:
-                    slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
-                    amt = list(slpmsg.op_return_fields['token_output'][1:])
-                else:
-                    amt = self.slp_amount_e.get_amount()
+                amt = []
+                is_paytomany_slp = False
+                try: # first, try to read amount from payto for multi-output
+                    if len(self.payto_e.get_outputs(self.max_button.isChecked())) > 1:
+                        precision = self.wallet.token_types.get(self.slp_token_id)['decimals']
+                        for _out in self.payto_e.get_outputs(self.max_button.isChecked()):
+                            if _out[2] >= 0:
+                                amt.append(int(_out[2] / 10**8 * 10**precision))
+                                is_paytomany_slp = True
+                    else:
+                        if self.payto_e.is_pr:
+                            slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                            amt = list(slpmsg.op_return_fields['token_output'][1:])
+                        else:
+                            amt = self.slp_amount_e.get_amount()
+                except TypeError:
+                    if self.payto_e.is_pr:
+                        slpmsg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                        amt = list(slpmsg.op_return_fields['token_output'][1:])
+                    else:
+                        amt = self.slp_amount_e.get_amount()
                 selected_slp_coins, slp_op_return_msg = SlpCoinChooser.select_coins(self.wallet, self.slp_token_id, amt, self.config)
                 if not self.payment_request:
                     """ Guard against bad address encoding """
-                    if not self.payto_e.payto_address: # and not self.payto_e.text():
-                        self.show_error(_("Receiver SLP address is missing."))
+                    if not self.payto_e.payto_address and not is_paytomany_slp: # and not self.payto_e.text():
+                        self.show_error(_("Receiver SLP address is missing or is not formatted properly."))
                         return
                     """ Require SLPADDR prefix in 'Pay To' field. """
-                    if networks.net.SLPADDR_PREFIX not in self.payto_e.address_string_for_slp_check:
+                    if networks.net.SLPADDR_PREFIX not in self.payto_e.address_string_for_slp_check and not is_paytomany_slp:
                         self.show_error(_("Address provided is not in SLP Address format.\n\nThe address should be encoded using 'simpleledger:' or 'slptest:' URI prefix."))
                         return
                     if slp_op_return_msg:
@@ -2366,8 +2419,16 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_warning(_("Invalid lines found:") + "\n\n" + '\n'.join([ _("Line #") + str(x[0]+1) + ": " + x[1] for x in errors]))
                 return
             if self.slp_token_id:
-                _type, _addr = self.payto_e.payto_address
-                bch_outputs.append((_type, _addr, 546))
+                if self.payto_e.payto_address:
+                    _type, _addr = self.payto_e.payto_address
+                    bch_outputs.append((_type, _addr, 546))
+                else:
+                    try:
+                        for _out in self.payto_e.get_outputs(self.max_button.isChecked()):
+                            if _out[2] >= 0:
+                                bch_outputs.append((_out[0], _out[1], 546))
+                    except:
+                        pass
 
             if self.payto_e.is_alias and not self.payto_e.validated:
                 alias = self.payto_e.toPlainText()
@@ -2406,7 +2467,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     change_addr = self.wallet.get_addresses()[0]
                 bch_outputs.append((TYPE_ADDRESS, change_addr, 546))
 
-        # add normal BCH amounts
+        # add non-SLP related BCH amounts
         if not self.payment_request and self.amount_e.get_amount():
             bch_outputs.extend(self.payto_e.get_outputs(self.max_button.isChecked()))
 
