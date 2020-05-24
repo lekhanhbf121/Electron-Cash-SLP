@@ -2169,6 +2169,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                         self.slp_extra_bch_cb.setDisabled(False)
                         slp_amount = self.slp_amount_e.get_amount()
                 except TypeError:
+                    self.slp_max_button.setDisabled(False)
+                    self.slp_amount_e.setDisabled(False)
                     self.slp_extra_bch_cb.setDisabled(False)
                     slp_amount = self.slp_amount_e.get_amount()
             if amount is None and slp_amount is None:
@@ -2395,6 +2397,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_error(str(e))
                 return
             except OPReturnError as e:
+                self.show_error(str(e))
+                return
+            except slp.SlpSerializingError as e:
                 self.show_error(str(e))
                 return
             except (NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp) as e:
