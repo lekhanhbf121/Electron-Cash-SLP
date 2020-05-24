@@ -244,8 +244,9 @@ if ((DARWIN_VER >= 18 && FORCE_MOJAVE_DARK)); then
       || fail "Could not set Info.plist NSRequiresAquaSystemAppearance"
 fi
 
-# Sign the Tor binary separately
-DoCodeSignMaybe "tor binary" "dist/${PACKAGE}.app/Contents/Resources/electroncash/tor/bin/tor" "$APP_SIGN"
+# Sign the Tor binary separately -- This doesn't exist in EC SLP but the below
+# is left here in case we add it.
+#DoCodeSignMaybe "tor binary" "dist/${PACKAGE}.app/Contents/Resources/electroncash/tor/bin/tor" "$APP_SIGN"
 # Finally, codesign the whole thing
 DoCodeSignMaybe ".app bundle" "dist/${PACKAGE}.app" "$APP_SIGN"
 
