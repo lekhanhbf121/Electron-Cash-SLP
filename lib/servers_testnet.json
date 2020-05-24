@@ -15,12 +15,22 @@
         "s": "50004",
         "t": "50003"
     },
-    "testnet.electroncash.de": {
+    "jktsologn7uprtwn7gsgmwuddj6rxsqmwc2vaug7jwcwzm2bxqnfpwad.onion": {
+        "s": "50004",
+        "t": "50003",
+        "display": "electroncash.de"
+    },
+    "electroncash.de": {
         "s": "50004",
         "t": "50003"
     },
     "tbch.loping.net": {
         "s": "60002",
         "t": "60001"
+    },
+    "scgjgc67226l65u52wyvulioxixv34p5dth73oj35ej7ham2zavdtxid.onion": {
+        "s": "60002",
+        "t": "60001",
+        "display": "tbch.loping.net"
     }
 }
