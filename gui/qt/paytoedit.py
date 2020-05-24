@@ -79,6 +79,7 @@ class PayToEdit(ScanQRTextEdit):
         self.payto_address = None
         self.address_string_for_slp_check = ''
         self.cointext = None
+        self._original_style_sheet = self.styleSheet() or ''
 
         self.previous_payto = ''
 
@@ -96,14 +97,18 @@ class PayToEdit(ScanQRTextEdit):
 
     def setFrozen(self, b):
         self.setReadOnly(b)
-        self.setStyleSheet(frozen_style if b else normal_style)
+        self.setStyleSheet(self._original_style_sheet + (frozen_style if b else normal_style))
         self.overlay_widget.setHidden(b)
 
     def setGreen(self):
-        self.setStyleSheet(util.ColorScheme.GREEN.as_stylesheet(True))
+        if sys.platform in ('darwin',) and util.ColorScheme.dark_scheme:
+            # MacOS dark mode requires special treatment here
+            self.setStyleSheet(self._original_style_sheet + util.ColorScheme.DEEPGREEN.as_stylesheet(True))
+        else:
+            self.setStyleSheet(self._original_style_sheet + util.ColorScheme.GREEN.as_stylesheet(True))
 
     def setExpired(self):
-        self.setStyleSheet(util.ColorScheme.RED.as_stylesheet(True))
+        self.setStyleSheet(self._original_style_sheet + util.ColorScheme.RED.as_stylesheet(True))
 
     def parse_address_and_amount(self, line):
         x, y = line.split(',')
