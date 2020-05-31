@@ -1,6 +1,6 @@
 """
 Creates and parses transactions that hold file data chunk at vout0 OP_RETURN.  Multi-chunk uploads are handled using
-    vout1 as a pointer to the location of the next file chunk.  Visit http://bitcoinfiles.com for more info.
+    vout1 as a pointer to the location of the next file chunk.  Visit https://slp.dev/specs/bitcoinfiles/#bitcoin-files-protocol-specification for more info.
 
 Multi-part file chunks are committed to the blockchain as transactions using the following sequence:
 1. File is partitioned into 220 byte chunks.

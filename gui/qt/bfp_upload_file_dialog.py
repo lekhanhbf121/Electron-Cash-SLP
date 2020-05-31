@@ -67,7 +67,7 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
         vbox = QVBoxLayout()
         self.setLayout(vbox)
 
-        vbox.addWidget(QLabel("Upload and download documents using the Bitcoin Files Protocol (<a href=https://bitcoinfiles.com>bitcoinfiles.com</a>)"))
+        vbox.addWidget(QLabel("Upload and download documents using the <a href=https://slp.dev/specs/bitcoinfiles/#bitcoin-files-protocol-specification>Bitcoin Files Protocol</a>"))
 
         # Select File
         self.select_file_button = b = QPushButton(_("Select File..."))

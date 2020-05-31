@@ -66,7 +66,7 @@ class BfpDownloadFileDialog(QDialog, MessageBoxMixin):
         vbox = QVBoxLayout()
         self.setLayout(vbox)
 
-        vbox.addWidget(QLabel("Upload and download documents using the Bitcoin Files Protocol (<a href=https://bitcoinfiles.com>bitcoinfiles.com</a>)"))
+        vbox.addWidget(QLabel("Upload and download documents using the <a href=https://slp.dev/specs/bitcoinfiles/#bitcoin-files-protocol-specification>Bitcoin Files Protocol</a>"))
 
         vbox.addWidget(QLabel(_('File URI (e.g., bitcoinfile:<txid>):')))
         self.file_id_e = ButtonsLineEdit()
