@@ -2271,7 +2271,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         if self.max_button.isChecked():
             amount = tx.output_value()
-            if self.is_slp_wallet:
+            if self.is_slp_wallet and token_output_amts:
                 amount = tx.output_value() - (len(token_output_amts)-1) * 546
             self.amount_e.setAmount(amount)
         if fee is not None:
