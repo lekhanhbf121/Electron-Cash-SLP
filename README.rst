@@ -14,6 +14,9 @@ Electron Cash - Lightweight Bitcoin Cash client
     :alt: Help translate Electron Cash online
 
 
+.. image:: https://img.shields.io/travis/simpleledger/Electron-Cash-SLP
+    :target: https://travis-ci.org/github/simpleledger/Electron-Cash-SLP
+    :alt: Travis CI
 
 
 
