@@ -19,6 +19,11 @@ Electron Cash - Lightweight Bitcoin Cash client
     :alt: Travis CI
 
 
+.. image:: https://img.shields.io/coveralls/github/simpleledger/Electron-Cash-SLP
+    :target: https://coveralls.io/github/simpleledger/Electron-Cash-SLP
+    :alt: Coveralls code coverage
+
+
 
 Getting started
 ===============
