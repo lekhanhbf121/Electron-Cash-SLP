@@ -509,7 +509,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     " blazingly fast. This does, however, mean that your client"
                     " uses additional data and bandwidth to download"
                     " all of the transactions it needs to validate your tokens.\n\n"
-                    "Disabling Graph Search will reduce the speed of "
+                    "Disabling Graph Search will reduce the speed of validation."
                     "If unsure what to answer now, you may always toggle this"
                     " facility on/off from the Network Dialog later."),
                 checkbox_text=_("Don't ask again")
