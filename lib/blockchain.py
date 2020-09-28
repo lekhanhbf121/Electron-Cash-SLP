@@ -25,9 +25,12 @@ import os
 import sys
 import threading
 
+from typing import Optional
 
-from . import util
+from . import asert_daa
 from . import networks
+from . import util
+
 from .bitcoin import *
 
 class VerifyError(Exception):
@@ -77,7 +80,9 @@ HEADER_SIZE = 80 # bytes
 MAX_BITS = 0x1d00ffff
 MAX_TARGET = bits_to_target(MAX_BITS)
 # indicates no header in data file
-_NULL_HEADER = bytes([0]) * HEADER_SIZE
+NULL_HEADER = bytes([0]) * HEADER_SIZE
+NULL_HASH_BYTES = bytes([0]) * 32
+NULL_HASH_HEX = NULL_HASH_BYTES.hex()
 
 def serialize_header(res):
     s = int_to_hex(res.get('version'), 4) \
@@ -99,13 +104,15 @@ def deserialize_header(s, height):
     h['block_height'] = height
     return h
 
+def hash_header_hex(header_hex):
+    return hash_encode(Hash(bfh(header_hex)))
+
 def hash_header(header):
     if header is None:
-        return '0' * 64
+        return NULL_HASH_HEX
     if header.get('prev_block_hash') is None:
         header['prev_block_hash'] = '00'*32
-    return hash_encode(Hash(bfh(serialize_header(header))))
-
+    return hash_header_hex(serialize_header(header))
 
 blockchains = {}
 
@@ -374,13 +381,13 @@ class Blockchain(util.PrintError):
                 f.seek(delta * HEADER_SIZE)
                 h = f.read(HEADER_SIZE)
             # Is it a pre-checkpoint header that has never been requested?
-            if h == _NULL_HEADER:
+            if h == NULL_HEADER:
                 return None
             return deserialize_header(h, height)
 
     def get_hash(self, height):
         if height == -1:
-            return '0000000000000000000000000000000000000000000000000000000000000000'
+            return NULL_HASH_HEX
         elif height == 0:
             return networks.net.GENESIS
         return hash_header(self.read_header(height))
@@ -416,6 +423,37 @@ class Blockchain(util.PrintError):
 
         return blocks1['block_height']
 
+    _cached_asert_anchor: Optional[asert_daa.Anchor] = None  # cached Anchor, per-Blockchain instance
+    def get_asert_anchor(self, prevheader, mtp, chunk=None):
+        if networks.net.asert_daa.anchor is not None:
+            # Checkpointed (hard-coded) value exists, just use that
+            return networks.net.asert_daa.anchor
+        if (self._cached_asert_anchor is not None
+                and self._cached_asert_anchor.height <= prevheader['block_height']):
+            return self._cached_asert_anchor
+        # ****
+        # This may be slow -- we really should be leveraging the hard-coded
+        # checkpointed value. TODO: add hard-coded value to networks.py after
+        # Nov. 15th 2020 HF to ASERT DAA
+        # ****
+        anchor = prevheader
+        activation_mtp = networks.net.asert_daa.MTP_ACTIVATION_TIME
+        while mtp >= activation_mtp:
+            ht = anchor['block_height']
+            prev = self.read_header(ht - 1, chunk)
+            if prev is None:
+                self.print_error("get_asert_anchor missing header {}".format(ht - 1))
+                return None
+            prev_mtp = self.get_median_time_past(ht - 1, chunk)
+            if prev_mtp < activation_mtp:
+                # Ok, use this as anchor -- since it is the first in the chain
+                # after activation.
+                bits = anchor['bits']
+                self._cached_asert_anchor = asert_daa.Anchor(ht, bits, prev['timestamp'])
+                return self._cached_asert_anchor
+            mtp = prev_mtp
+            anchor = prev
+
     def get_bits(self, header, chunk=None):
         '''Return bits for the given height.'''
         # Difficulty adjustment interval?
@@ -429,13 +467,31 @@ class Blockchain(util.PrintError):
             raise Exception("get_bits missing header {} with chunk {!r}".format(height - 1, chunk))
         bits = prior['bits']
 
-        #NOV 13 HF DAA
+        # NOV 13 HF DAA and/or ASERT DAA
 
-        prevheight = height -1
+        prevheight = height - 1
         daa_mtp = self.get_median_time_past(prevheight, chunk)
 
-        #if (daa_mtp >= 1509559291):  #leave this here for testing
-        if (daa_mtp >= 1510600000):
+
+        # ASERTi3-2d DAA activated on Nov. 15th 2020 HF
+        if daa_mtp >= networks.net.asert_daa.MTP_ACTIVATION_TIME:
+            header_ts = header['timestamp']
+            prev_ts = prior['timestamp']
+            if networks.net.TESTNET:
+                # testnet 20 minute rule
+                if header_ts - prev_ts > 20*60:
+                    return MAX_BITS
+
+            anchor = self.get_asert_anchor(prior, daa_mtp, chunk)
+            assert anchor is not None, "Failed to find ASERT anchor block for chain {!r}".format(self)
+
+            return networks.net.asert_daa.next_bits_aserti3_2d(anchor.bits,
+                                                               prev_ts - anchor.prev_time,
+                                                               prevheight - anchor.height)
+
+
+        # Mon Nov 13 19:06:40 2017 DAA HF
+        if prevheight >= networks.net.CW144_HEIGHT:
 
             if networks.net.TESTNET:
                 # testnet 20 minute rule
@@ -471,15 +527,18 @@ class Blockchain(util.PrintError):
             return daa_retval
 
         #END OF NOV-2017 DAA
-
-        if height % 2016 == 0:
+        N_BLOCKS = networks.net.LEGACY_POW_RETARGET_BLOCKS  # Normally 2016
+        if height % N_BLOCKS == 0:
             return self.get_new_bits(height, chunk)
 
         if networks.net.TESTNET:
             # testnet 20 minute rule
             if header['timestamp'] - prior['timestamp'] > 20*60:
                 return MAX_BITS
-            return self.read_header(height // 2016 * 2016, chunk)['bits']
+            # special case for a newly started testnet (such as testnet4)
+            if height < N_BLOCKS:
+                return MAX_BITS
+            return self.read_header(height // N_BLOCKS * N_BLOCKS, chunk)['bits']
 
         # bitcoin cash EDA
         # Can't go below minimum, so early bail
@@ -497,15 +556,16 @@ class Blockchain(util.PrintError):
         return target_to_bits(target)
 
     def get_new_bits(self, height, chunk=None):
-        assert height % 2016 == 0
+        N_BLOCKS = networks.net.LEGACY_POW_RETARGET_BLOCKS
+        assert height % N_BLOCKS == 0
         # Genesis
         if height == 0:
             return MAX_BITS
-        first = self.read_header(height - 2016, chunk)
+        first = self.read_header(height - N_BLOCKS, chunk)
         prior = self.read_header(height - 1, chunk)
         prior_target = bits_to_target(prior['bits'])
 
-        target_span = 14 * 24 * 60 * 60
+        target_span = networks.net.LEGACY_POW_TARGET_TIMESPAN # usually: 14 * 24 * 60 * 60 = 2 weeks
         span = prior['timestamp'] - first['timestamp']
         span = min(max(span, target_span // 4), target_span * 4)
         new_target = (prior_target * span) // target_span

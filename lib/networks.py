@@ -1,6 +1,7 @@
 # Electron Cash - lightweight Bitcoin Cash client
 # Copyright (C) 2011 thomasv@gitorious
 # Copyright (C) 2017 Neil Booth
+# Copyright (C) 2020 Calin Culianu <calin.culianu@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -24,6 +25,8 @@
 
 import json, pkgutil
 
+from .asert_daa import ASERTDaa
+
 def _read_json_dict(filename):
     try:
         data = pkgutil.get_data(__name__, filename)
@@ -34,6 +37,10 @@ def _read_json_dict(filename):
 
 class AbstractNet:
     TESTNET = False
+    asert_daa = ASERTDaa()
+    LEGACY_POW_TARGET_TIMESPAN = 14 * 24 * 60 * 60   # 2 weeks
+    LEGACY_POW_TARGET_INTERVAL = 10 * 60  # 10 minutes
+    LEGACY_POW_RETARGET_BLOCKS = LEGACY_POW_TARGET_TIMESPAN // LEGACY_POW_TARGET_INTERVAL  # 2016 blocks
 
 
 class MainNet(AbstractNet):
@@ -56,6 +63,9 @@ class MainNet(AbstractNet):
     BITCOIN_CASH_FORK_BLOCK_HEIGHT = 478559
     BITCOIN_CASH_FORK_BLOCK_HASH = "000000000000000000651ef99cb9fcbe0dadde1d424bd9f15ff20136191a5eec"
 
+    # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
+    CW144_HEIGHT = 504031
+
     # Note: this is not the Merkle root of the verification block itself , but a Merkle root of
     # all blockchain headers up until and including this block. To get this value you need to
     # connect to an ElectrumX server you trust and issue it a protocol command. This can be
@@ -64,8 +74,8 @@ class MainNet(AbstractNet):
     #    network.synchronous_get(("blockchain.block.header", [height, height]))
     #
     # Consult the ElectrumX documentation for more details.
-    VERIFICATION_BLOCK_MERKLE_ROOT = "fcf0ac1b7d7efc16d93e8ec9211def5977827482420b5210718731ecd6c4edb4"
-    VERIFICATION_BLOCK_HEIGHT = 592911
+    VERIFICATION_BLOCK_MERKLE_ROOT = "575401e2c601590926742fc806339d99dfdbd65b867231c3d799ea9a22cf9355"
+    VERIFICATION_BLOCK_HEIGHT = 645000
 
     # Version numbers for BIP32 extended keys
     # standard: xprv, xpub
@@ -80,6 +90,7 @@ class MainNet(AbstractNet):
 
 class TestNet(AbstractNet):
     TESTNET = True
+    asert_daa = ASERTDaa(is_testnet=True)
     WIF_PREFIX = 0xef
     ADDRTYPE_P2PKH = 111
     ADDRTYPE_P2PKH_BITPAY = 111  # Unsure
@@ -94,12 +105,15 @@ class TestNet(AbstractNet):
     SLPDB_SERVERS = _read_json_dict('servers_slpdb_testnet.json')
     TITLE = 'Electron Cash SLP Testnet'
 
+    # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
+    CW144_HEIGHT = 1155875
+
     # Bitcoin Cash fork block specification
     BITCOIN_CASH_FORK_BLOCK_HEIGHT = 1155876
     BITCOIN_CASH_FORK_BLOCK_HASH = "00000000000e38fef93ed9582a7df43815d5c2ba9fd37ef70c9a0ea4a285b8f5"
 
-    VERIFICATION_BLOCK_MERKLE_ROOT = "c3cc7a7b6fe5e0ff19b750ae200ae93664b3abf09bf510e26e15ba338afe1f1a"
-    VERIFICATION_BLOCK_HEIGHT = 1273800
+    VERIFICATION_BLOCK_MERKLE_ROOT = "05389f1534c30b86268c5ea87ad9b121ed90db814267e63f5f0c6bd9c089d362"
+    VERIFICATION_BLOCK_HEIGHT = 1400000
 
     # Version numbers for BIP32 extended keys
     # standard: tprv, tpub
