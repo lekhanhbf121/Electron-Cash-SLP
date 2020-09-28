@@ -110,8 +110,13 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
             self.slp_info['type'] = slp_msg.transaction_type
             if self.slp_info['type'] == "GENESIS":
                 if self.tx_hash is not None:
-                    wallet_dat = self.wallet.token_types[self.tx_hash]
                     self.slp_info['token_id_hex'] = self.tx_hash
+                    try:
+                        wallet_dat = self.wallet.token_types[self.tx_hash]
+                    except KeyError:
+                        wallet_dat = {}
+                        wallet_dat['decimals'] = "?"
+                        wallet_dat['name'] = "Not in wallet"
                 else:
                     wallet_dat = {}
                     wallet_dat['decimals'] = slp_msg.op_return_fields['decimals']
