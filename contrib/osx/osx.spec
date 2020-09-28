@@ -31,6 +31,8 @@ datas = [
     (home+'lib/currencies.json', PYPKG),
     (home+'lib/servers.json', PYPKG),
     (home+'lib/servers_testnet.json', PYPKG),
+    (home+'lib/servers_testnet4.json', PYPKG),
+    (home+'lib/servers_scalenet.json', PYPKG),
     (home+'lib/servers_slpdb.json', PYPKG),
     (home+'lib/servers_slpdb_testnet.json', PYPKG),
     (home+'lib/wordlist/english.txt', PYPKG + '/wordlist'),

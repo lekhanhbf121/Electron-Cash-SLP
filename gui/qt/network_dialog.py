@@ -419,6 +419,9 @@ class SlpGsServeListWidget(QTreeWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
         host = self.parent.config.get('slp_gs_host', None)
+        if not networks.net.SLPDB_SERVERS:
+            # empty SLPDB_SERVERS (testnet4, scalenet)
+            return
         if not host:
             host = next(iter(networks.net.SLPDB_SERVERS))
             self.parent.config.set_key('slp_gs_host', host)

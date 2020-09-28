@@ -118,6 +118,8 @@ setup(
         'electroncash': [
             'servers.json',
             'servers_testnet.json',
+            'servers_testnet4.json',
+            'servers_scalenet.json',
             'servers_slpdb.json',
             'servers_slpdb_testnet.json',
             'currencies.json',

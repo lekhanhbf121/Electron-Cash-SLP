@@ -49,6 +49,8 @@ datas = [
     (home+'lib/currencies.json', 'electroncash'),
     (home+'lib/servers.json', 'electroncash'),
     (home+'lib/servers_testnet.json', 'electroncash'),
+    (home+'lib/servers_testnet4.json', 'electroncash'),
+    (home+'lib/servers_scalenet.json', 'electroncash'),
     (home+'lib/servers_slpdb.json', 'electroncash'),
     (home+'lib/servers_slpdb_testnet.json', 'electroncash'),
     (home+'lib/wordlist/english.txt', 'electroncash/wordlist'),
