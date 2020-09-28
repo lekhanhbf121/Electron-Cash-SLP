@@ -285,7 +285,7 @@ class PaymentRequest:
     def get_outputs(self):
         return self.outputs[:]
 
-    def send_payment(self, raw_tx, refund_addr, *, is_slp):
+    def send_payment(self, raw_tx, refund_addr, *, is_slp=False):
         pay_det = self.details
         if not self.details.payment_url:
             return False, "no url"  # note caller is expecting this exact string in the "no payment url specified" case. see main_window.py and/or ios_native/gui.py

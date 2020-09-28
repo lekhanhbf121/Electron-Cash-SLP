@@ -2721,7 +2721,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     is_slp = True
                 except:
                     pass
-                ack_status, ack_msg = pr.send_payment(str(tx), refund_address, is_slp=is_slp)
+                if is_slp:
+                    ack_status, ack_msg = pr.send_payment(str(tx), refund_address, is_slp=True)
+                else:
+                    ack_status, ack_msg = pr.send_payment(str(tx), refund_address)
                 if not ack_status:
                     if ack_msg == "no url":
                         # "no url" hard-coded in send_payment method
