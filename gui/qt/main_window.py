@@ -551,6 +551,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.hide()
         else:
             self.show()
+            self._check_eula_acceptance()
             if self._is_invalid_testnet_wallet():
                 self.gui_object.daemon.stop_wallet(self.wallet.storage.path)
                 self._rebuild_history_action.setEnabled(False)
@@ -648,6 +649,25 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             ])
             self.show_warning(msg, title=_("SLP Tokens Detected in a Non-SLP Wallet"))
             self.non_slp_wallet_warning_shown = True
+
+    def _check_eula_acceptance(self):
+        key = 'slp_eula_accepted'
+        is_accepted = self.config.get(key, False)
+        if not is_accepted:
+            res = self.question(
+                _("Disclaimer\n\n"
+                    "Please read this disclaimer carefully.\n\n"
+                    "Except when otherwise stated in writing, this software or third-party plugin software is provided 'As is' without warranty of any kind.  The entire risk as to the quality and performance of Electron Cash SLP Edition software is with you.\n\n"
+                    "Unless required by applicable law or agreed to in writing, in no event will any developer or distributor of this software be liable for damages, including any general, special, incidental, or consequential damages arising out of the use or inability to this software, or third-party plugin software.\n\n"
+                    "Do you agree?"
+                ),
+                title=_("EULA"))
+            if res:
+                self.config.set_key(key, True)
+            else:
+                # set to actual False rather than None to indicate user has not accepted EULA
+                self.config.set_key(key, False)
+                self.close()
 
     def open_wallet(self):
         try:
