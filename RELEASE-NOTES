@@ -179,3 +179,11 @@ Electron Cash - SLP Token Edition
 - Fixed issue with SLP URI scheme not allowing token
 - Minor update in SLP unit tests runner
 - Fix issue with burning minting baton with 0 token quantity
+
+3.6.5 Updates
+----
+- Ported various critical updates from Electron Cash mainline (e.g., Assert DAA, etc.)
+- Add pay-to-many SLP in send tab GUI
+- Enable Dark mode in macOS
+- Updated pyinstaller config to fix long loading time issue on macOS Catalina
+- Add EULA for config key 'slp_eula_accepted'
