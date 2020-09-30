@@ -658,7 +658,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 _("Disclaimer\n\n"
                     "Please read this disclaimer carefully.\n\n"
                     "Except when otherwise stated in writing, this software or third-party plugin software is provided 'As is' without warranty of any kind.  The entire risk as to the quality and performance of Electron Cash SLP Edition software is with you.\n\n"
-                    "Unless required by applicable law or agreed to in writing, in no event will any developer or distributor of this software be liable for damages, including any general, special, incidental, or consequential damages arising out of the use or inability to this software, or third-party plugin software.\n\n"
+                    "Unless required by applicable law or agreed to in writing, in no event will any developer or distributor of this software be liable for damages, including any general, special, incidental, or consequential damages arising out of the use or inability to use the software, or third-party plugin software.\n\n"
                     "Do you agree?"
                 ),
                 title=_("EULA"))
