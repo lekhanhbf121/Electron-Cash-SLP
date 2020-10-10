@@ -832,8 +832,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         tools_menu.addAction(_("&Sign/Verify Message") + "...", self.sign_verify_message)
         tools_menu.addAction(_("&Encrypt/Decrypt Message") + "...", self.encrypt_message)
         tools_menu.addSeparator()
-        tools_menu.addAction(_("Upload a file using BFP"), lambda: BitcoinFilesUploadDialog(self, None, True, "Upload a File Using BFP"))
-        tools_menu.addAction(_("Download a file using BFP"), lambda: BfpDownloadFileDialog(self,))
+        if "imported_addr" not in self.wallet.wallet_type:
+            tools_menu.addAction(_("Upload a file using BFP")+ "...", lambda: BitcoinFilesUploadDialog(self, None, True, "Upload a File Using BFP"))
+        tools_menu.addAction(_("Download a file using BFP")+ "...", lambda: BfpDownloadFileDialog(self,))
         tools_menu.addSeparator()
 
         paytomany_menu = tools_menu.addAction(_("&Pay to Many"), self.paytomany, QKeySequence("Ctrl+M"))
