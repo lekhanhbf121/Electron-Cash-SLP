@@ -1493,7 +1493,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def save_payment_request(self):
         if not self.receive_address:
             self.show_error(_('No receiving address'))
-        if self.receive_token_type_combo.currentData() is not None:
+        if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not "":
             amount = float(self.receive_slp_amount_e.text())
         else:
             amount = self.receive_amount_e.get_amount()
