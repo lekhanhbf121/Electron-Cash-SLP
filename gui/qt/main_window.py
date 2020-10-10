@@ -1092,16 +1092,17 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 text = ""
                 if not self.is_slp_wallet:
                     text += "Tokens Disabled - "
-                else:
-                    token_id = self.slp_token_id
+                elif self.slp_token_id:
                     try:
-                        d = self.wallet.token_types[token_id]
+                        d = self.wallet.token_types[self.slp_token_id]
+                        if isinstance(d['decimals'], int):
+                            tok_bal = self.wallet.get_slp_token_balance(self.slp_token_id, { 'user_config': { 'confirmed_only': False } })[0]
+                            bal = format_satoshis_nofloat(tok_bal, decimal_point=d['decimals'])
+                            text += "%s Token Balance: %s; "%(d['name'], bal)
+                        else:
+                            self.slp_token_id = None
                     except (AttributeError, KeyError):
-                        pass
-                    else:
-                        bal = format_satoshis_nofloat(self.wallet.get_slp_token_balance(token_id, { 'user_config': { 'confirmed_only': False } })[0],
-                                                    decimal_point=d['decimals'],)
-                        text += "%s Token Balance: %s; "%(d['name'], bal)
+                        self.slp_token_id = None
                 c, u, x = self.wallet.get_balance()
                 text +=  _("BCH Balance" ) + ": %s "%(self.format_amount_and_units(c))
                 if u:
