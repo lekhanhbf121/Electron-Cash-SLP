@@ -140,7 +140,7 @@ class Plugin(BasePlugin):
         return _("Send and receive payment requests via email")
 
     def is_available(self):
-        return True
+        return False # disabled for EC SLP Edition
 
     def __init__(self, parent, config, name):
         BasePlugin.__init__(self, parent, config, name)
