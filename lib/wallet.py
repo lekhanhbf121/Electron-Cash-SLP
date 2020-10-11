@@ -272,7 +272,7 @@ class Abstract_Wallet(PrintError):
         ''' Note that the various Slp_* classes explicitly write to storage
         to set the proper wallet_type on construction unconditionally, so
         this should always be valid for SLP wallets. '''
-        return "slp_" in self.storage.get('wallet_type', '')
+        return True #"slp_" in self.storage.get('wallet_type', '')
 
     @classmethod
     def to_Address_dict(cls, d):
