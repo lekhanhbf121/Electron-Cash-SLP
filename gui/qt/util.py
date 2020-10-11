@@ -1002,6 +1002,8 @@ class _ColorScheme:
 
     def update_from_widget(self, widget, *, force_dark=False):
         self.dark_scheme = bool(force_dark or self.has_dark_background(widget))
+        if self.dark_scheme:
+            self.BLUE = ColorSchemeItem("#6eccff", "#6eccff")
 
     @property
     def dark_scheme(self):

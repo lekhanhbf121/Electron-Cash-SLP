@@ -640,10 +640,13 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         lnk.setUnderlineStyle(QTextCharFormat.SingleUnderline)
         rec = QTextCharFormat(lnk)
         rec.setBackground(QBrush(ColorScheme.BLUE.as_color(background=True)))
+        rec.setForeground(QBrush(ColorScheme.DEFAULT.as_color()))
         chg = QTextCharFormat(lnk)
         chg.setBackground(QBrush(ColorScheme.YELLOW.as_color(True)))
+        chg.setForeground(QBrush(ColorScheme.DEFAULT.as_color()))
         slp = QTextCharFormat()
         slp.setBackground(QBrush(ColorScheme.GREEN.as_color(True)))
+        slp.setForeground(QBrush(ColorScheme.DEFAULT.as_color()))
         rec_ct, chg_ct = 0, 0
 
         def text_format(addr):
