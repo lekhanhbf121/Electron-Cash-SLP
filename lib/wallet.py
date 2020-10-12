@@ -25,6 +25,7 @@
 #   - ImportedAddressWallet: imported address, no keystore
 #   - ImportedPrivkeyWallet: imported private keys, keystore
 #   - Standard_Wallet: one keystore, P2PKH
+#   - Slp_P2sh_Wallet: one keystore, P2SH with wrapped P2PKH
 #   - Multisig_Wallet: several keystores, P2SH
 
 
@@ -3378,11 +3379,106 @@ class Standard_Wallet(Simple_Deterministic_Wallet):
 
 
 class Slp_Standard_Wallet(Standard_Wallet):
+    '''
+    This type of wallet has a default coin type of 245 instead of 145.
+    '''
     wallet_type = 'slp_standard'
     def __init__(self, storage):
         storage.put('wallet_type', self.wallet_type)
         super().__init__(storage)
 
+
+class Slp_P2sh_Wallet(Deterministic_Wallet):
+    '''
+    This wallet type uses p2sh to wrap p2pkh in provide additional security 
+    for SLP.  
+    
+    The type of address used by this wallet allows users to send tokens to ANY
+    p2pkh bitcoin address without worrying about the chance of tokens being burned.
+
+    This will use a default coin type of 145 since p2sh is being used and
+    non-SLP wallets won't see the SLP or BCH balances.
+    '''
+    wallet_type = 'slp_standard_p2sh'
+
+    def __init__(self, storage):
+        storage.put('wallet_type', self.wallet_type)
+        super().__init__(storage)
+
+    def get_pubkeys(self, c, i):
+        return self.derive_pubkeys(c, i)
+
+    def pubkeys_to_address(self, pubkeys):
+        assert len(pubkeys)==1
+        pubkeys = [bytes.fromhex(pubkey) for pubkey in pubkeys]
+        redeem_script = self.pubkeys_to_redeem_script(pubkeys)
+        return Address.from_P2SH_script(redeem_script)
+
+    def pubkeys_to_redeem_script(self, pubkeys):
+        assert len(pubkeys)==1
+        return Script.slp_p2sh_script(pubkeys[0])
+
+    def derive_pubkeys(self, c, i):
+        return [k.derive_pubkey(c, i) for k in self.get_keystores()]
+
+    def load_keystore(self):
+        self.keystores = {}
+        name = 'x1/'
+        self.keystores[name] = load_keystore(self.storage, name)
+        self.keystore = self.keystores['x1/']
+        xtype = bitcoin.xpub_type(self.keystore.xpub)
+        self.txin_type = 'slp_p2sh' if xtype == 'standard' else xtype
+
+    def save_keystore(self):
+        for name, k in self.keystores.items():
+            self.storage.put(name, k.dump())
+
+    def get_keystore(self):
+        return self.keystores.get('x1/')
+
+    def get_keystores(self):
+        return [self.get_keystore()]
+
+    def update_password(self, old_pw, new_pw, encrypt=False):
+        if old_pw is None and self.has_password():
+            raise InvalidPassword()
+        for name, keystore in self.keystores.items():
+            if keystore.can_change_password():
+                keystore.update_password(old_pw, new_pw)
+                self.storage.put(name, keystore.dump())
+        self.storage.set_password(new_pw, encrypt)
+        self.storage.write()
+
+    def has_seed(self):
+        return self.keystore.has_seed()
+
+    def can_change_password(self):
+        return self.keystore.can_change_password()
+
+    def is_watching_only(self):
+        return not any([not k.is_watching_only() for k in self.get_keystores()])
+
+    def get_master_public_key(self):
+        return self.keystore.get_master_public_key()
+
+    def get_master_public_keys(self):
+        return [k.get_master_public_key() for k in self.get_keystores()]
+
+    def get_fingerprint(self):
+        return ''.join(sorted(self.get_master_public_keys()))
+
+    def add_input_sig_info(self, txin, address):
+        # x_pubkeys are not sorted here because it would be too slow
+        # they are sorted in transaction.get_sorted_pubkeys
+        derivation = self.get_address_index(address)
+        txin['x_pubkeys'] = [k.get_xpubkey(*derivation) for k in self.get_keystores()]
+        txin['pubkeys'] = None
+        # we need n place holders
+        txin['signatures'] = [None]
+        txin['num_sig'] = 1
+
+    def is_multisig(self):
+        return False
 
 class Multisig_Wallet(Deterministic_Wallet):
     # generic m of n
@@ -3399,7 +3495,7 @@ class Multisig_Wallet(Deterministic_Wallet):
     def pubkeys_to_address(self, pubkeys):
         pubkeys = [bytes.fromhex(pubkey) for pubkey in pubkeys]
         redeem_script = self.pubkeys_to_redeem_script(pubkeys)
-        return Address.from_multisig_script(redeem_script)
+        return Address.from_P2SH_script(redeem_script)
 
     def pubkeys_to_redeem_script(self, pubkeys):
         return Script.multisig_script(self.m, sorted(pubkeys))
@@ -3468,7 +3564,7 @@ class Multisig_Wallet(Deterministic_Wallet):
         return True
 
 
-wallet_types = ['standard', 'slp_standard', 'multisig', 'slp_multisig', 'imported', 'slp_imported']
+wallet_types = ['standard', 'slp_standard', 'slp_standard_p2sh', 'multisig', 'slp_multisig', 'imported', 'slp_imported']
 
 def register_wallet_type(category):
     wallet_types.append(category)
@@ -3476,6 +3572,7 @@ def register_wallet_type(category):
 wallet_constructors = {
     'standard': Standard_Wallet,
     'slp_standard': Slp_Standard_Wallet,
+    'slp_standard_p2sh': Slp_P2sh_Wallet,
     'old': Standard_Wallet,
     'xpub': Standard_Wallet,
     'imported_privkey': ImportedPrivkeyWallet,

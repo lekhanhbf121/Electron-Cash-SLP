@@ -182,7 +182,7 @@ class AddressList(MyTreeWidget):
                     items_to_re_select.append(address_item)
 
         for item in items_to_re_select:
-            # NB: Need to select the item at the end becasue internally Qt does some index magic
+            # NB: Need to select the item at the end because internally Qt does some index magic
             # to pick out the selected item and the above code mutates the TreeList, invalidating indices
             # and other craziness, which might produce UI glitches. See #1042
             item.setSelected(True)
@@ -191,8 +191,9 @@ class AddressList(MyTreeWidget):
         restore_expanded_items(self.invisibleRootItem(), expanded_item_names)
 
     def create_menu(self, position):
-        from electroncash.wallet import Multisig_Wallet
+        from electroncash.wallet import Multisig_Wallet, Slp_P2sh_Wallet
         is_multisig = isinstance(self.wallet, Multisig_Wallet)
+        is_slp_p2sh = isinstance(self.wallet, Slp_P2sh_Wallet)
         can_delete = self.wallet.can_delete_address()
         selected = self.selectedItems()
         multi_select = len(selected) > 1
@@ -241,12 +242,12 @@ class AddressList(MyTreeWidget):
                 # This address cannot be used for a payment request because
                 # the receive tab will refuse to display it and will instead
                 # create a request with a new address, if we were to call
-                # self.parent.receive_at(addr). This is because the recieve tab
+                # self.parent.receive_at(addr). This is because the receive tab
                 # now strongly enforces no-address-reuse. See #1552.
                 a.setDisabled(True)
             if self.wallet.can_export():
                 menu.addAction(_("Private key"), lambda: self.parent.show_private_key(addr))
-            if not is_multisig and not self.wallet.is_watching_only():
+            if not (is_multisig or is_slp_p2sh) and not self.wallet.is_watching_only():
                 menu.addAction(_("Sign/verify message"), lambda: self.parent.sign_verify_message(addr))
                 menu.addAction(_("Encrypt/decrypt message"), lambda: self.parent.encrypt_message(addr))
             if can_delete:

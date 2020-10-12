@@ -52,7 +52,7 @@ import electroncash.web as web
 from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
-from electroncash.wallet import Multisig_Wallet, sweep_preparations
+from electroncash.wallet import Multisig_Wallet, Slp_P2sh_Wallet, sweep_preparations
 try:
     from electroncash.plot import plot_history
 except:
@@ -4058,7 +4058,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.show_message(_("This is a watching-only wallet"))
             return
 
-        if isinstance(self.wallet, Multisig_Wallet):
+        if isinstance(self.wallet, Multisig_Wallet) or isinstance(self.wallet, Slp_P2sh_Wallet):
             if bip38:
                 self.show_error(_('WARNING: This is a multi-signature wallet.') + '\n' +
                                 _("It cannot be used with BIP38 encrypted keys."))

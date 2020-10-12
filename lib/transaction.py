@@ -279,13 +279,45 @@ def parse_scriptSig(d, _bytes):
         d['address'] = address
         return
 
+    # p2sh wrapped p2pkh (specifically for SLP)
+    # The first two pushes are the same as normal p2pkh.
+    #
+    # The third push is the redeemScript in the form of:
+    #
+    #   03 b"SLP"
+    #   OP_DROP
+    #   OP_DUP
+    #   OP_HASH160
+    #   <hash160>
+    #   OP_EQUALVERIFY
+    #   OP_CHECKSIG
+    #
+    match = [ opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 2)
+    if not match_decoded(decoded, match):
+        sig = bh2u(decoded[0][1])
+        x_pubkey = bh2u(decoded[1][1])
+        try:
+            signatures = parse_sig([sig])
+            pubkey, _ = xpubkey_to_address(x_pubkey)
+        except:
+            print_error("cannot find address in input script", bh2u(_bytes))
+            return
+        redeemScript = _bytes[len(decoded[0][2])+len(decoded[1][2]):]
+        if decoded[2][0] == 31 and redeemScript[1:4] == b"SLP":
+            d['type'] = 'p2sh_p2pkh'
+            d['signatures'] = signatures
+            d['x_pubkeys'] = [x_pubkey]
+            d['num_sig'] = 1
+            d['pubkeys'] = [pubkey]
+            d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
+
     # p2sh transaction, m of n
     match = [ opcodes.OP_0 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 1)
     if not match_decoded(decoded, match):
         print_error("cannot find address in input script", bh2u(_bytes))
         return
     x_sig = [bh2u(x[1]) for x in decoded[1:-1]]
-    m, n, x_pubkeys, pubkeys, redeemScript = parse_redeemScript(decoded[-1][1])
+    m, n, x_pubkeys, pubkeys, redeemScript = parse_multisig_redeemScript(decoded[-1][1])
     # write result in d
     d['type'] = 'p2sh'
     d['num_sig'] = m
@@ -296,7 +328,7 @@ def parse_scriptSig(d, _bytes):
     d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
 
 
-def parse_redeemScript(s):
+def parse_multisig_redeemScript(s):
     dec2 = [ x for x in script_GetOp(s) ]
     # the following throw exception when redeemscript has one or zero opcodes
     m = dec2[0][0] - opcodes.OP_1 + 1
@@ -415,8 +447,9 @@ def multisig_script(public_keys, m):
     keylist = [op_push(len(k)//2) + k for k in public_keys]
     return op_m + ''.join(keylist) + op_n + 'ae'
 
-
-
+def slp_p2sh_script(pubkey):
+    redeemScript = Script.slp_p2sh_script(bytes.fromhex(pubkey), validate=False)
+    return redeemScript.hex()
 
 class Transaction:
 
@@ -660,6 +693,9 @@ class Transaction:
             script = '00' + script
             redeem_script = multisig_script(pubkeys, txin['num_sig'])
             script += push_script(redeem_script)
+        elif _type == 'slp_p2sh':
+            redeem_script = slp_p2sh_script(pubkeys[0])
+            script += op_push(len(pubkeys[0])//2) + pubkeys[0] + push_script(redeem_script)
         elif _type == 'p2pkh':
             script += push_script(pubkeys[0])
         elif _type == 'unknown':
@@ -686,6 +722,9 @@ class Transaction:
         elif _type == 'p2sh':
             pubkeys, x_pubkeys = self.get_sorted_pubkeys(txin)
             return multisig_script(pubkeys, txin['num_sig'])
+        elif _type == 'slp_p2sh':
+            pubkeys, x_pubkeys = self.get_sorted_pubkeys(txin)
+            return slp_p2sh_script(pubkeys[0])
         elif _type == 'p2pk':
             pubkey = txin['pubkeys'][0]
             return public_key_to_p2pk_script(pubkey)

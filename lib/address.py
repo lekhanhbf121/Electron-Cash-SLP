@@ -606,7 +606,7 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
         return cls(hash160, cls.ADDR_P2SH)
 
     @classmethod
-    def from_multisig_script(cls, script):
+    def from_P2SH_script(cls, script):
         return cls(hash160(script), cls.ADDR_P2SH)
 
     @classmethod
@@ -777,6 +777,16 @@ class Script:
         return (bytes([OpCodes.OP_1 + m - 1])
                 + b''.join(cls.push_data(pubkey) for pubkey in pubkeys)
                 + bytes([OpCodes.OP_1 + n - 1, OpCodes.OP_CHECKMULTISIG]))
+
+    @classmethod
+    def slp_p2sh_script(cls, pubkey, *, validate=True):
+        '''Returns the script for a wrapped p2pkh in p2sh used for SLP tokens'''
+        if validate:
+            PublicKey.validate(pubkey)
+        return (bytes([0x03])+ b"SLP" + bytes([OpCodes.OP_DROP])
+                + P2PKH_prefix
+                + hash160(pubkey)
+                + P2PKH_suffix)
 
     @classmethod
     def push_data(cls, data):
