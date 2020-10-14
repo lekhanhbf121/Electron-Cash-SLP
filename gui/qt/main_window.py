@@ -3118,6 +3118,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         slp_address = ButtonsLineEdit()
         slp_address.setReadOnly(True)
         slp_address.addCopyButton()
+        slp_vault_address = ButtonsLineEdit()
+        slp_vault_address.setReadOnly(True)
+        slp_vault_address.addCopyButton()
         widgets = [
             (cash_address, Address.FMT_CASHADDR),
             (legacy_address, Address.FMT_LEGACY),
@@ -3134,6 +3137,16 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     widget.setText(addr.to_full_string(fmt))
                 else:
                     widget.setText('')
+
+            # SLP P2SH vault conversion
+            slp_vault_address.setText('')
+            try:
+                if addr.kind == addr.ADDR_P2PKH:
+                    slp_vault_address.setText(addr.to_slp_vault_addr_str())
+                else:
+                    slp_vault_address.setText('none for this address')
+            except AttributeError:
+                pass
 
         source_address.textChanged.connect(convert_address)
 
@@ -3157,8 +3170,16 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         label.setBuddy(legacy_address)
         grid.addWidget(label, 2, 0)
         grid.addWidget(legacy_address, 2, 1)
-        grid.addWidget(QLabel(_('SLP address')), 3, 0)
+
+        label = QLabel(_('SLP address'))
+        label.setBuddy(slp_address)
+        grid.addWidget(label, 3, 0)
         grid.addWidget(slp_address, 3, 1)
+
+        vault_label = QLabel(_('SLP P2SH vault'))
+        label.setBuddy(slp_vault_address)
+        grid.addWidget(vault_label, 4, 0)
+        grid.addWidget(slp_vault_address, 4, 1)
         w.setLayout(grid)
 
         label = WWLabel(_(

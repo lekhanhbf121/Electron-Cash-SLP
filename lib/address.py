@@ -631,6 +631,19 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             kind  = cashaddr.SCRIPT_TYPE
         return cashaddr.encode(net.SLPADDR_PREFIX, kind, self.hash160)
 
+    def to_slp_vault_addr_str(self, *, net=None):
+        if net is None: net = networks.net
+        if self.kind == self.ADDR_P2SH:
+            return None
+        else:
+            redeemScript = (bytes([0x03]) + b"SLP"
+                            + bytes([OpCodes.OP_DROP])
+                            + P2PKH_prefix
+                            + self.hash160
+                            + P2PKH_suffix)
+            hash160 = ripemd160(sha256(redeemScript))
+            return net.SLPADDR_PREFIX + ":" + cashaddr.encode(net.SLPADDR_PREFIX, self.ADDR_P2SH, hash160)
+
     def to_string(self, fmt, *, net=None):
         '''Converts to a string of the given format.'''
         if net is None: net = networks.net
