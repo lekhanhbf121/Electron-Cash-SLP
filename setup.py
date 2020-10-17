@@ -16,7 +16,7 @@ with open('contrib/requirements/requirements.txt') as f:
 with open('contrib/requirements/requirements-hw.txt') as f:
     requirements_hw = f.read().splitlines()
 
-version = imp.load_source('version', 'lib/version.py')
+version = imp.load_source('version', 'electroncash/version.py')
 
 if sys.version_info[:3] < (3, 6):
     sys.exit("Error: Electron Cash requires Python version >= 3.6...")
@@ -121,7 +121,7 @@ platform_package_data = {}
 
 if sys.platform in ('linux'):
     platform_package_data = {
-        'electroncash_gui.qt' : [
+        'electroncash_gui.qt': [
             'data/ecsupplemental_lnx.ttf',
             'data/fonts.xml'
         ],
@@ -129,7 +129,7 @@ if sys.platform in ('linux'):
 
 if sys.platform in ('win32', 'cygwin'):
     platform_package_data = {
-        'electroncash_gui.qt' : [
+        'electroncash_gui.qt': [
             'data/ecsupplemental_win.ttf'
         ],
     }
@@ -167,9 +167,9 @@ setup(
         'electroncash_plugins.satochip',
     ],
     package_dir={
-        'electroncash': 'lib',
-        'electroncash_gui': 'gui',
-        'electroncash_plugins': 'plugins',
+        'electroncash': 'electroncash',
+        'electroncash_gui': 'electroncash_gui',
+        'electroncash_plugins': 'electroncash_plugins',
     },
     package_data={
         'electroncash': [
@@ -189,7 +189,7 @@ setup(
             'locale/*/LC_MESSAGES/electron-cash.mo',
             'tor/bin/*'
         ],
-        # On Linux and Windows this means adding gui/qt/data/*.ttf
+        # On Linux and Windows this means adding electroncash_gui/qt/data/*.ttf
         # On Darwin we don't use that font, so we don't add it to save space.
         **platform_package_data
     },
