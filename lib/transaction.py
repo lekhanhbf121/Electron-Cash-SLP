@@ -297,7 +297,7 @@ def parse_scriptSig(d, _bytes):
             print_error("cannot find address in input script", bh2u(_bytes))
             return
         redeemScript = decoded[5][1]
-        if len(redeemScript) == 184:
+        if len(redeemScript) == 21+172: # this is the length of the SLP Vault redeem script <hash160><Vault Script>
             outputs_preimage = bh2u(decoded[2][1])
             tx_preimage = bh2u(decoded[3][1])
             #slp_vault_action = 'slp_vault_sweep' if decoded[3][1] == '52' else 'slp_vault_revoke'
