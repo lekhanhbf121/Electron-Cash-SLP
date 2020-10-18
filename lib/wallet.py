@@ -25,7 +25,7 @@
 #   - ImportedAddressWallet: imported address, no keystore
 #   - ImportedPrivkeyWallet: imported private keys, keystore
 #   - Standard_Wallet: one keystore, P2PKH
-#   - Slp_P2sh_Wallet: one keystore, P2SH with wrapped P2PKH
+#   - Slp_Vault_Wallet: one keystore, P2SH with wrapped P2PKH
 #   - Multisig_Wallet: several keystores, P2SH
 
 
@@ -3388,7 +3388,7 @@ class Slp_Standard_Wallet(Standard_Wallet):
         super().__init__(storage)
 
 
-class Slp_P2sh_Wallet(Deterministic_Wallet):
+class Slp_Vault_Wallet(Deterministic_Wallet):
     '''
     This wallet type uses p2sh to wrap p2pkh in provide additional security 
     for SLP.  
@@ -3399,7 +3399,7 @@ class Slp_P2sh_Wallet(Deterministic_Wallet):
     This will use a default coin type of 145 since p2sh is being used and
     non-SLP wallets won't see the SLP or BCH balances.
     '''
-    wallet_type = 'slp_standard_p2sh'
+    wallet_type = 'slp_vault_p2sh'
 
     def __init__(self, storage):
         storage.put('wallet_type', self.wallet_type)
@@ -3416,7 +3416,7 @@ class Slp_P2sh_Wallet(Deterministic_Wallet):
 
     def pubkeys_to_redeem_script(self, pubkeys):
         assert len(pubkeys)==1
-        return Script.slp_p2sh_script(pubkeys[0])
+        return Script.slp_vault_script(pubkeys[0])
 
     def derive_pubkeys(self, c, i):
         return [k.derive_pubkey(c, i) for k in self.get_keystores()]
@@ -3427,7 +3427,7 @@ class Slp_P2sh_Wallet(Deterministic_Wallet):
         self.keystores[name] = load_keystore(self.storage, name)
         self.keystore = self.keystores['x1/']
         xtype = bitcoin.xpub_type(self.keystore.xpub)
-        self.txin_type = 'slp_p2sh' if xtype == 'standard' else xtype
+        self.txin_type = 'slp_vault' if xtype == 'standard' else xtype
 
     def save_keystore(self):
         for name, k in self.keystores.items():
@@ -3564,7 +3564,7 @@ class Multisig_Wallet(Deterministic_Wallet):
         return True
 
 
-wallet_types = ['standard', 'slp_standard', 'slp_standard_p2sh', 'multisig', 'slp_multisig', 'imported', 'slp_imported']
+wallet_types = ['standard', 'slp_standard', 'slp_vault_p2sh', 'multisig', 'slp_multisig', 'imported', 'slp_imported']
 
 def register_wallet_type(category):
     wallet_types.append(category)
@@ -3572,7 +3572,7 @@ def register_wallet_type(category):
 wallet_constructors = {
     'standard': Standard_Wallet,
     'slp_standard': Slp_Standard_Wallet,
-    'slp_standard_p2sh': Slp_P2sh_Wallet,
+    'slp_vault_p2sh': Slp_Vault_Wallet,
     'old': Standard_Wallet,
     'xpub': Standard_Wallet,
     'imported_privkey': ImportedPrivkeyWallet,

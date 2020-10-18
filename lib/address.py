@@ -792,15 +792,11 @@ class Script:
                 + bytes([OpCodes.OP_1 + n - 1, OpCodes.OP_CHECKMULTISIG]))
 
     @classmethod
-    def slp_p2sh_script(cls, pubkey, *, validate=True):
+    def slp_vault_script(cls, pubkey, *, validate=True):
         '''Returns the script for a wrapped p2pkh in p2sh used for SLP tokens'''
         if validate:
             PublicKey.validate(pubkey)
-        return (bytes([0x03])+ b"SLP" + bytes([OpCodes.OP_DROP])
-                + P2PKH_prefix
-                + hash160(pubkey)
-                + P2PKH_suffix)
-
+        return (cls.push_data(hash160(pubkey)) + hex_to_bytes("78009c635279820134947f77587f547f7701207f755579aa8876547f7581022202a1635479587f750800000000000000008876041976a9147e52797e0288ac7e55795679827752798277947f77788875685579a97b88716e7c828c7f75567aa87bbbac777777677c519d7801447f7701247f820134947f77587f547f7701207f755579aa8876547f7581022202a1635479587f750800000000000000008876041976a9147e5779a97e0288ac7e55795679827752798277947f7778887568557a56797e577a7eaa7b01207f7588716e7c828c7f75567aa87bbbac77777768"))
     @classmethod
     def push_data(cls, data):
         '''Returns the OpCodes to push the data on the stack.'''

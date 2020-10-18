@@ -279,20 +279,14 @@ def parse_scriptSig(d, _bytes):
         d['address'] = address
         return
 
-    # p2sh wrapped p2pkh (specifically for SLP)
-    # The first two pushes are the same as normal p2pkh.
+    # Slp Vault Sweep
+    # The first two pushes are the same as normal p2pkh (sig/pubkey),
+    # the third push is the hashOutputs preimage,
+    # the fourth push is the transaction preimage,
+    # the fifth push is the method choice (sweep = 0)
+    # the sixth push is the redeemScript.
     #
-    # The third push is the redeemScript in the form of:
-    #
-    #   03 b"SLP"
-    #   OP_DROP
-    #   OP_DUP
-    #   OP_HASH160
-    #   <hash160>
-    #   OP_EQUALVERIFY
-    #   OP_CHECKSIG
-    #
-    match = [ opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 2)
+    match = [ opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 5)
     if not match_decoded(decoded, match):
         sig = bh2u(decoded[0][1])
         x_pubkey = bh2u(decoded[1][1])
@@ -302,14 +296,19 @@ def parse_scriptSig(d, _bytes):
         except:
             print_error("cannot find address in input script", bh2u(_bytes))
             return
-        redeemScript = _bytes[len(decoded[0][2])+len(decoded[1][2]):]
-        if decoded[2][0] == 31 and redeemScript[1:4] == b"SLP":
-            d['type'] = 'p2sh_p2pkh'
+        redeemScript = decoded[5][1]
+        if len(redeemScript) == 243:
+            outputs_preimage = bh2u(decoded[2][1])
+            tx_preimage = bh2u(decoded[3][1])
+            #slp_vault_action = 'slp_vault_sweep' if decoded[3][1] == '52' else 'slp_vault_revoke'
+            d['type'] = 'slp_vault_sweep'
             d['signatures'] = signatures
             d['x_pubkeys'] = [x_pubkey]
             d['num_sig'] = 1
             d['pubkeys'] = [pubkey]
             d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
+            d['hashoutputs_preimage'] = outputs_preimage
+            d['tx_preimage'] = tx_preimage
 
     # p2sh transaction, m of n
     match = [ opcodes.OP_0 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 1)
@@ -447,19 +446,23 @@ def multisig_script(public_keys, m):
     keylist = [op_push(len(k)//2) + k for k in public_keys]
     return op_m + ''.join(keylist) + op_n + 'ae'
 
-def slp_p2sh_script(pubkey):
-    redeemScript = Script.slp_p2sh_script(bytes.fromhex(pubkey), validate=False)
+def slp_vault_script(pubkey):
+    redeemScript = Script.slp_vault_script(bytes.fromhex(pubkey), validate=False)
     return redeemScript.hex()
 
 class Transaction:
 
     SIGHASH_FORKID = 0x40  # do not use this; deprecated
     FORKID = 0x000000  # do not use this; deprecated
+    _last_txn = None
 
     def __str__(self):
         if self.raw is None:
             self.raw = self.serialize()
         return self.raw
+
+    def __call__(self, *args, **kwargs):
+        _last_txn = self
 
     def __init__(self, raw, sign_schnorr=False):
         if raw is None:
@@ -693,9 +696,11 @@ class Transaction:
             script = '00' + script
             redeem_script = multisig_script(pubkeys, txin['num_sig'])
             script += push_script(redeem_script)
-        elif _type == 'slp_p2sh':
-            redeem_script = slp_p2sh_script(pubkeys[0])
-            script += op_push(len(pubkeys[0])//2) + pubkeys[0] + push_script(redeem_script)
+        elif _type == 'slp_vault':
+            redeem_script = slp_vault_script(pubkeys[0])
+            outputs = txin['hashoutputs_preimage']
+            preimage = txin['tx_preimage']
+            script += push_script(pubkeys[0]) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_0) + push_script(redeem_script)
         elif _type == 'p2pkh':
             script += push_script(pubkeys[0])
         elif _type == 'unknown':
@@ -713,7 +718,6 @@ class Transaction:
         signatures = list(filter(None, x_signatures))
         return len(signatures) == num_sig
 
-
     @classmethod
     def get_preimage_script(self, txin):
         _type = txin['type']
@@ -722,9 +726,9 @@ class Transaction:
         elif _type == 'p2sh':
             pubkeys, x_pubkeys = self.get_sorted_pubkeys(txin)
             return multisig_script(pubkeys, txin['num_sig'])
-        elif _type == 'slp_p2sh':
+        elif _type == 'slp_vault':
             pubkeys, x_pubkeys = self.get_sorted_pubkeys(txin)
-            return slp_p2sh_script(pubkeys[0])
+            return slp_vault_script(pubkeys[0])
         elif _type == 'p2pk':
             pubkey = txin['pubkeys'][0]
             return public_key_to_p2pk_script(pubkey)
@@ -758,6 +762,7 @@ class Transaction:
         self._inputs.sort(key = lambda i: (i['prevout_hash'], i['prevout_n']))
         self._outputs.sort(key = lambda o: (o[2], self.pay_script(o[1])))
 
+    @classmethod
     def serialize_output(self, output):
         output_type, addr, amount = output
         s = int_to_hex(amount, 8)
@@ -853,6 +858,16 @@ class Transaction:
         nLocktime = int_to_hex(self.locktime, 4)
         inputs = self.inputs()
         outputs = self.outputs()
+
+        # we want to gather some properties from txn to make available for p2sh signing (add as needed)
+        for i in range(len(inputs)):
+            if inputs[i]['type'] == 'slp_vault':
+                inputs[i]['hashoutputs_preimage'] = ''.join(self.serialize_output(o) for o in self.outputs())
+                try:
+                    inputs[i]['tx_preimage'] = self.serialize_preimage(i)
+                except IndexError:
+                    pass
+        
         txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size, self._sign_schnorr), estimate_size) for txin in inputs)
         txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
         return nVersion + txins + txouts + nLocktime
@@ -925,6 +940,11 @@ class Transaction:
     @classmethod
     def estimated_input_size(self, txin, sign_schnorr=False):
         '''Return an estimated of serialized input size in bytes.'''
+
+        if txin['type'] == 'slp_vault':
+            txin['hashoutputs_preimage'] = '0000000000000000376a04534c500001010453454e44203c346636ec989568854d4d74e6352a756702962c5facaec75cb51f32fb5dde9108000000000000000122020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac'
+            txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(slp_vault_script('00')) + '00' * 8 + '00' * 4 + sha256(sha256((txin['hashoutputs_preimage']))).hex() + '00' * 8
+
         script = self.input_script(txin, True, sign_schnorr=sign_schnorr)
         return len(self.serialize_input(txin, script, True)) // 2  # ASCII hex string
 

@@ -43,11 +43,11 @@ class TestWalletKeystoreAddressIntegrity(unittest.TestCase):
         w.synchronize()
         return w
 
-    def _create_slp_p2sh_wallet(self, ks):
+    def _create_slp_vault_wallet(self, ks):
         store = storage.WalletStorage('if_this_exists_mocking_failed_648151893')
         store.put('keystore', ks.dump())
         store.put('gap_limit', self.gap_limit)
-        w = wallet.Slp_P2sh_Wallet(store)
+        w = wallet.Slp_Vault_Wallet(store)
         w.synchronize()
         return w
 

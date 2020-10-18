@@ -52,7 +52,7 @@ import electroncash.web as web
 from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
-from electroncash.wallet import Multisig_Wallet, Slp_P2sh_Wallet, sweep_preparations
+from electroncash.wallet import Multisig_Wallet, Slp_Vault_Wallet, sweep_preparations
 try:
     from electroncash.plot import plot_history
 except:
@@ -3138,7 +3138,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 else:
                     widget.setText('')
 
-            # SLP P2SH vault conversion
+            # SLP Vault conversion
             slp_vault_address.setText('')
             try:
                 if addr.kind == addr.ADDR_P2PKH:
@@ -3176,10 +3176,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         grid.addWidget(label, 3, 0)
         grid.addWidget(slp_address, 3, 1)
 
-        vault_label = QLabel(_('SLP P2SH vault'))
-        label.setBuddy(slp_vault_address)
-        grid.addWidget(vault_label, 4, 0)
-        grid.addWidget(slp_vault_address, 4, 1)
+        # vault_label = QLabel(_('SLP Vault'))
+        # label.setBuddy(slp_vault_address)
+        # grid.addWidget(vault_label, 4, 0)
+        # grid.addWidget(slp_vault_address, 4, 1)
         w.setLayout(grid)
 
         label = WWLabel(_(
@@ -4079,7 +4079,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.show_message(_("This is a watching-only wallet"))
             return
 
-        if isinstance(self.wallet, Multisig_Wallet) or isinstance(self.wallet, Slp_P2sh_Wallet):
+        if isinstance(self.wallet, Multisig_Wallet) or isinstance(self.wallet, Slp_Vault_Wallet):
             if bip38:
                 self.show_error(_('WARNING: This is a multi-signature wallet.') + '\n' +
                                 _("It cannot be used with BIP38 encrypted keys."))

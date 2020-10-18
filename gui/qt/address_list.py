@@ -191,9 +191,9 @@ class AddressList(MyTreeWidget):
         restore_expanded_items(self.invisibleRootItem(), expanded_item_names)
 
     def create_menu(self, position):
-        from electroncash.wallet import Multisig_Wallet, Slp_P2sh_Wallet
+        from electroncash.wallet import Multisig_Wallet, Slp_Vault_Wallet
         is_multisig = isinstance(self.wallet, Multisig_Wallet)
-        is_slp_p2sh = isinstance(self.wallet, Slp_P2sh_Wallet)
+        is_slp_vault = isinstance(self.wallet, Slp_Vault_Wallet)
         can_delete = self.wallet.can_delete_address()
         selected = self.selectedItems()
         multi_select = len(selected) > 1
@@ -247,7 +247,7 @@ class AddressList(MyTreeWidget):
                 a.setDisabled(True)
             if self.wallet.can_export():
                 menu.addAction(_("Private key"), lambda: self.parent.show_private_key(addr))
-            if not (is_multisig or is_slp_p2sh) and not self.wallet.is_watching_only():
+            if not (is_multisig or is_slp_vault) and not self.wallet.is_watching_only():
                 menu.addAction(_("Sign/verify message"), lambda: self.parent.sign_verify_message(addr))
                 menu.addAction(_("Encrypt/decrypt message"), lambda: self.parent.encrypt_message(addr))
             if can_delete:
