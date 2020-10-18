@@ -3120,7 +3120,23 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         slp_address.addCopyButton()
         slp_vault_address = ButtonsLineEdit()
         slp_vault_address.setReadOnly(True)
-        slp_vault_address.addCopyButton()
+        view_vault_btn = QPushButton(_("Display SLP Vault"))
+
+        def slp_vault_toggle():
+            if slp_vault_address.text() == '':
+                self.show_message("You must provide a P2PKH address to get the SLP Vault address.")
+            else:
+                buttons, copy_index, copy_link = [ _('Ok') ], None, slp_vault_address.text()
+                buttons.insert(0, _("Copy address"))
+                copy_index = 0
+                if self.show_message('SLP Vault Address:' + '\n' + slp_vault_address.text(),
+                                    buttons = buttons,
+                                    defaultButton = buttons[-1],
+                                    escapeButton = buttons[-1]) == copy_index:
+                    self.copy_to_clipboard(copy_link, _("SLP Vault address copied to clipboard"), self.top_level_window())
+
+        view_vault_btn.clicked.connect(slp_vault_toggle)
+
         widgets = [
             (cash_address, Address.FMT_CASHADDR),
             (legacy_address, Address.FMT_LEGACY),
@@ -3144,7 +3160,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if addr.kind == addr.ADDR_P2PKH:
                     slp_vault_address.setText(addr.to_slp_vault_addr_str())
                 else:
-                    slp_vault_address.setText('none for this address')
+                    slp_vault_address.setText('')
             except AttributeError:
                 pass
 
@@ -3176,10 +3192,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         grid.addWidget(label, 3, 0)
         grid.addWidget(slp_address, 3, 1)
 
-        # vault_label = QLabel(_('SLP Vault'))
-        # label.setBuddy(slp_vault_address)
-        # grid.addWidget(vault_label, 4, 0)
-        # grid.addWidget(slp_vault_address, 4, 1)
+        vault_label = QLabel(_('SLP Vault'))
+        label.setBuddy(slp_vault_address)
+        grid.addWidget(vault_label, 4, 0)
+        grid.addWidget(view_vault_btn, 4, 1)
+
         w.setLayout(grid)
 
         label = WWLabel(_(
