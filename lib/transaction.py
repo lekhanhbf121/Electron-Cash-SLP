@@ -297,7 +297,7 @@ def parse_scriptSig(d, _bytes):
             print_error("cannot find address in input script", bh2u(_bytes))
             return
         redeemScript = decoded[5][1]
-        if len(redeemScript) == 243:
+        if len(redeemScript) == 184:
             outputs_preimage = bh2u(decoded[2][1])
             tx_preimage = bh2u(decoded[3][1])
             #slp_vault_action = 'slp_vault_sweep' if decoded[3][1] == '52' else 'slp_vault_revoke'
@@ -942,7 +942,8 @@ class Transaction:
         '''Return an estimated of serialized input size in bytes.'''
 
         if txin['type'] == 'slp_vault':
-            txin['hashoutputs_preimage'] = '0000000000000000376a04534c500001010453454e44203c346636ec989568854d4d74e6352a756702962c5facaec75cb51f32fb5dde9108000000000000000122020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac'
+            # for fee estimation we assume 3 outputs (1 SLP send msg, 1 SLP dust, 1 BCH output)
+            txin['hashoutputs_preimage'] = '0000000000000000376a04534c500001010453454e44203c346636ec989568854d4d74e6352a756702962c5facaec75cb51f32fb5dde9108000000000000000122020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac22020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac'
             txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(slp_vault_script('00')) + '00' * 8 + '00' * 4 + sha256(sha256((txin['hashoutputs_preimage']))).hex() + '00' * 8
 
         script = self.input_script(txin, True, sign_schnorr=sign_schnorr)
