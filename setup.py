@@ -166,11 +166,6 @@ setup(
         'electroncash_plugins.virtualkeyboard',
         'electroncash_plugins.satochip',
     ],
-    package_dir={
-        'electroncash': 'electroncash',
-        'electroncash_gui': 'electroncash_gui',
-        'electroncash_plugins': 'electroncash_plugins',
-    },
     package_data={
         'electroncash': [
             'servers.json',
