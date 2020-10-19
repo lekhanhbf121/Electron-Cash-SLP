@@ -1658,7 +1658,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             try:
                 slpmsg = slp.SlpMessage.parseSlpOutputScript(txn.outputs()[0][1])
             except:
-        pass
+                pass
             if slpmsg:
                 token_id = slpmsg.op_return_fields['token_id_hex']
                 if not self.wallet.token_types.get(token_id, None):
