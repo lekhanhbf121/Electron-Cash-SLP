@@ -1213,9 +1213,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         d = address_dialog.AddressDialog(self,  addr, windowParent=parent)
         d.exec_()
 
-    def show_transaction(self, tx, tx_desc = None):
+    def show_transaction(self, tx, tx_desc=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
         '''tx_desc is set only for txs created in the Send tab'''
-        d = show_transaction(tx, self, tx_desc)
+        d = show_transaction(tx, self, tx_desc, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=require_tx_in_wallet)
         self._tx_dialogs.add(d)
 
     def addr_toggle_slp(self, force_slp=False):
@@ -1650,7 +1650,47 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.update_receive_address_widget()
 
     def sweep_slp_vault(self, addr):
+        vault_addr = addr.get_slp_vault()
+        hist = self.wallet.get_address_history(vault_addr)
+        for _tx in hist:
+            txn = self.wallet.transactions[_tx[0]]
+            slpmsg = None
+            try:
+                slpmsg = slp.SlpMessage.parseSlpOutputScript(txn.outputs()[0][1])
+            except:
         pass
+            if slpmsg:
+                token_id = slpmsg.op_return_fields['token_id_hex']
+                if not self.wallet.token_types.get(token_id, None):
+                    self.show_message("First need to add Token ID:\n" + token_id)
+            outs = txn.outputs()
+            for i in range(len(outs)):
+                if outs[i][1] == vault_addr:
+                    outputs = []
+                    if slpmsg:
+                        amts = list(slpmsg.op_return_fields['token_output'])
+                        slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [amts[i]], self.wallet.token_types.get(token_id)['class'])
+                        outputs.append(slp_op_return_msg)
+                        outputs.append((TYPE_ADDRESS, addr, 546))
+                    else:
+                        outputs.append((TYPE_ADDRESS, addr, outs[i][2]))
+                    d = {}
+                    pubkeys = self.wallet.get_public_keys(addr)
+                    d['address'] = vault_addr
+                    d['prevout_hash'] = _tx[0]
+                    d['prevout_n'] = i
+                    d['type'] = 'slp_vault'
+                    d['x_pubkeys'] = pubkeys
+                    d['num_sig'] = 1
+                    d['pubkeys'] = pubkeys
+                    d['value'] = outs[i][2]
+                    d['slp_value'] = amts[i]
+                    d['signatures'] = [None]
+                    d['height'] = _tx[1]
+                    d['coinbase'] = False
+                    d['is_frozen_coin'] = False
+                    tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[d])
+                    self.show_transaction(tx, "slp vault swept", require_tx_in_wallet=False)
 
     def update_receive_qr(self):
         if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not '':
@@ -2697,17 +2737,17 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.sign_tx_with_password(tx, sign_done, password)
 
     @protected
-    def sign_tx(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
-        self.sign_tx_with_password(tx, callback, password, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn)
+    def sign_tx(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
+        self.sign_tx_with_password(tx, callback, password, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn, require_tx_in_wallet=require_tx_in_wallet)
 
-    def sign_tx_with_password(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
+    def sign_tx_with_password(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
         '''Sign the transaction in a separate thread.  When done, calls
         the callback with a success code of True or False.
         '''
 
         # check transaction SLP validity before signing
         try:
-            assert SlpTransactionChecker.check_tx_slp(self.wallet, tx, coins_to_burn=slp_coins_to_burn, amt_to_burn=slp_amt_to_burn)
+            assert SlpTransactionChecker.check_tx_slp(self.wallet, tx, coins_to_burn=slp_coins_to_burn, amt_to_burn=slp_amt_to_burn, require_tx_in_wallet=require_tx_in_wallet)
         except (Exception, AssertionError) as e:
             self.show_warning(str(e))
             return

@@ -1000,7 +1000,6 @@ class Transaction:
                     reason.insert(0, repr(e))
             return False
 
-
     @staticmethod
     def _ecdsa_sign(sec, pre_hash):
         pkey = regenerate_key(sec)
@@ -1017,7 +1016,6 @@ class Transaction:
         sig = schnorr.sign(sec, pre_hash)
         assert schnorr.verify(pubkey, sig, pre_hash)  # verify what we just signed
         return sig
-
 
     def sign(self, keypairs, *, use_cache=False):
         for i, txin in enumerate(self.inputs()):
