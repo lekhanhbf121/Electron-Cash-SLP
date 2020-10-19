@@ -1664,14 +1664,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 token_id = slpmsg.op_return_fields['token_id_hex']
                 if not self.wallet.token_types.get(token_id, None):
                     self.show_message("First need to add Token ID:\n" + token_id)
-                    outputs = []
-                    if slpmsg:
-                        amts = list(slpmsg.op_return_fields['token_output'])
+            outputs = []
+            if slpmsg:
+                amts = list(slpmsg.op_return_fields['token_output'])
                 coin['slp_value'] = amts[coin['prevout_n']]
                 slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [coin['slp_value']], self.wallet.token_types.get(token_id)['class'])
-                        outputs.append(slp_op_return_msg)
-                        outputs.append((TYPE_ADDRESS, addr, 546))
-                    else:
+                outputs.append(slp_op_return_msg)
+                outputs.append((TYPE_ADDRESS, addr, 546))
+            else:
                 outputs.append((TYPE_ADDRESS, addr, coin['value']))
             coin['type'] = 'slp_vault'
             coin['num_sig'] = 1
