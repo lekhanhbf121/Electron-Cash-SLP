@@ -1649,6 +1649,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.show_receive_tab()
         self.update_receive_address_widget()
 
+    def sweep_slp_vault(self, addr):
+        pass
+
     def update_receive_qr(self):
         if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not '':
             amount = self.receive_slp_amount_e.text() # if self.receive_slp_amount_e.text() is not '' else None
@@ -3120,7 +3123,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         slp_address.addCopyButton()
         slp_vault_address = ButtonsLineEdit()
         slp_vault_address.setReadOnly(True)
-        view_vault_btn = QPushButton(_("Display SLP Vault"))
+        view_vault_btn = QPushButton(_("Display SLP Vault Address"))
 
         def slp_vault_toggle():
             if slp_vault_address.text() == '':

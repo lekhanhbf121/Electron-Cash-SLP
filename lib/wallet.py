@@ -631,7 +631,7 @@ class Abstract_Wallet(PrintError):
         of is_mine below is sufficient.'''
         self._recv_address_set_cached, self._change_address_set_cached = frozenset(), frozenset()
 
-    def is_mine(self, address):
+    def is_mine(self, address, *, check_slp_vault=False):
         ''' Note this method assumes that the entire address set is
         composed of self.get_change_addresses() + self.get_receiving_addresses().
         In subclasses, if that is not the case -- REIMPLEMENT this method! '''
@@ -652,10 +652,17 @@ class Abstract_Wallet(PrintError):
         # Do a 2 x O(logN) lookup using sets rather than 2 x O(N) lookups
         # if we were to use the address lists (this was the previous way).
         # For small wallets it doesn't matter -- but for wallets with 5k or 10k
-        # addresses, it starts to add up siince is_mine() is called frequently
+        # addresses, it starts to add up since is_mine() is called frequently
         # especially while downloading address history.
+
+        is_vault = False
+        if check_slp_vault and address.kind == address.ADDR_P2SH:
+            is_vault = (address in [ addr.get_slp_vault() for addr in ra ]
+                        or address in [ addr.get_slp_vault() for addr in ca ])
+
         return (address in self._recv_address_set_cached
-                    or address in self._change_address_set_cached)
+                    or address in self._change_address_set_cached
+                    or is_vault)
 
     def is_change(self, address):
         assert not isinstance(address, str)
@@ -664,6 +671,11 @@ class Abstract_Wallet(PrintError):
             # re-create cache if lengths don't match
             self._change_address_set_cached = frozenset(ca)
         return address in self._change_address_set_cached
+
+    def is_slp_vault(self, address):
+        assert not isinstance(address, str)
+        return (address in [ addr.get_slp_vault() for addr in self._recv_address_set_cached ] 
+                or address in [ addr.get_slp_vault() for addr in self._change_address_set_cached ])
 
     def get_address_index(self, address):
         try:

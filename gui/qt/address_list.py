@@ -30,7 +30,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QKeySequence
 from PyQt5.QtWidgets import QTreeWidgetItem, QAbstractItemView, QMenu
 from electroncash.i18n import _
-from electroncash.address import Address
+from electroncash.address import Address, Script, hash160
 from electroncash.plugins import run_hook
 import electroncash.web as web
 from electroncash.util import profiler
@@ -38,15 +38,14 @@ from electroncash import networks
 
 
 class AddressList(MyTreeWidget):
-    filter_columns = [0, 1, 2]  # Address, Label, Balance
-
+    filter_columns = [0, 1, 2]  # Address, Label, Balance, ?SLP Vault?
     def __init__(self, parent=None):
         super().__init__(parent, self.create_menu, [], 2, deferred_updates=True)
+        self.wallet = self.parent.wallet
         self.refresh_headers()
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSortingEnabled(True)
         # force attributes to always be defined, even if None, at construction.
-        self.wallet = self.parent.wallet
 
     def filter(self, p):
         ''' Reimplementation from superclass filter.  Chops off the
@@ -62,6 +61,9 @@ class AddressList(MyTreeWidget):
         super().filter(p)  # call super on chopped-off-piece
 
     def refresh_headers(self):
+        if self.wallet.wallet_type == 'slp_standard':
+            headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx'), _('SLP Vault')]
+        else:
         headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx')]
         fx = self.parent.fx
         if fx and fx.get_fiat_address_config():
@@ -152,7 +154,12 @@ class AddressList(MyTreeWidget):
                 address_text = address.to_ui_string()
                 label = self.wallet.labels.get(address.to_storage_string(), '')
                 balance_text = self.parent.format_amount(balance, whitespaces=True)
-                columns = [address_text, str(n), label, balance_text, str(num)]
+                if self.wallet.wallet_type == 'slp_standard':
+                    slp_vault_addr = address.get_slp_vault()
+                    slp_vault_count = len(self.wallet.get_address_history(slp_vault_addr))
+                    columns = [ address_text, str(n), label, balance_text, str(num), str(slp_vault_count) if slp_vault_count else '' ]
+                else:
+                    columns = [ address_text, str(n), label, balance_text, str(num) ]
                 if fx:
                     rate = fx.exchange_rate()
                     fiat_balance = fx.value_str(balance, rate)
@@ -229,6 +236,9 @@ class AddressList(MyTreeWidget):
                     alt_copy_text, alt_column_title = addr.to_full_string(Address.FMT_LEGACY), _('Legacy Address')
             else:
                 copy_text = item.text(col)
+            if len(self.wallet.get_address_history(addr.get_slp_vault())):
+                menu.addAction("Sweep SLP Vault", lambda: self.parent.sweep_slp_vault(addr))
+                menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: doCopy(copy_text))
             if alt_copy_text and alt_column_title:
                 # Add 'Copy Legacy Address' and 'Copy Cash Address' alternates if right-click is on column 0

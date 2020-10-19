@@ -31,6 +31,7 @@ from .transaction import Transaction
 from .util import ThreadJob, bh2u
 from . import networks
 from .bitcoin import InvalidXKeyFormat
+from .address import Address, Script, hash160
 
 
 class Synchronizer(ThreadJob):
@@ -229,6 +230,9 @@ class Synchronizer(ThreadJob):
         if self.requested_tx:
             self.print_error("missing tx", self.requested_tx)
         self.subscribe_to_addresses(self.wallet.get_addresses())
+        if self.wallet.wallet_type == 'slp_standard':
+            vaults = [ addr.get_slp_vault() for addr in self.wallet.get_addresses()]
+            self.subscribe_to_addresses(vaults)
 
     def run(self):
         '''Called from the network proxy thread main loop.'''
@@ -246,6 +250,9 @@ class Synchronizer(ThreadJob):
                 self.new_addresses = set()
             if addresses:
                 self.subscribe_to_addresses(addresses)
+                if self.wallet.wallet_type == 'slp_standard':
+                    vaults = [ addr.get_slp_vault() for addr in self.wallet.get_addresses() ]
+                    self.subscribe_to_addresses(vaults)
 
             # 3. Detect if situation has changed
             up_to_date = self.is_up_to_date()
