@@ -1307,7 +1307,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.receive_token_type_combo.setItemDelegate(QStyledItemDelegate(self.receive_token_type_combo))
         self.receive_token_type_combo.setFixedWidth(200)
         self.receive_token_type_combo.currentIndexChanged.connect(self.on_slptok_receive)
-        #self.receive_token_type_combo.currentIndexChanged.connect(self.update_buttons_on_seed)  # update 'CoinText' button, etc
         self.receive_slp_token_type_label = HelpLabel(_('Token Type'), msg)
         grid.addWidget(self.receive_slp_token_type_label, 4, 0)
         grid.addWidget(self.receive_token_type_combo, 4, 1)
@@ -1776,7 +1775,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.token_type_combo.setItemDelegate(QStyledItemDelegate(self.token_type_combo))
             self.token_type_combo.setFixedWidth(200)
             self.token_type_combo.currentIndexChanged.connect(self.on_slptok)
-            self.token_type_combo.currentIndexChanged.connect(self.update_buttons_on_seed)  # update 'CoinText' button, etc
+            self.token_type_combo.currentIndexChanged.connect(self.update_buttons_on_seed)  # update various button, etc
             self.slp_send_tab_widgets += [
                 self.slp_amount_e, self.token_type_combo
             ]
@@ -1790,7 +1789,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 "<li> Bitcoin Legacy <b>Address</b> <b>★</b>"
                 "<li> Simple Ledger <b>Address</b> <b>★</b>"
                 "<li> <b>Contact name</b> <b>★</b> from the Contacts tab"
-                #"<li> <b>CoinText</b> e.g. <i>cointext:+1234567</i>"
                 "<li> <b>OpenAlias</b> e.g. <i>satoshi@domain.com</i>"
                 "</ul><br>"
                 "&nbsp;&nbsp;&nbsp;<b>★</b> = Supports <b>pay-to-many</b>, where"
@@ -1949,18 +1947,15 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.preview_button = EnterButton(_("&Preview"), self.do_preview)
         self.preview_button.setToolTip(_('Display the details of your transactions before signing it.'))
         self.send_button = EnterButton(_("&Send"), self.do_send)
-        self.cointext_button = EnterButton(_("Coin&Text"), self.do_cointext)
-        self.cointext_button.setToolTip(_('Process CoinText, transforming it into a BIP70 payment request.'))
         self.clear_button = EnterButton(_("&Clear"), self.do_clear)
         buttons = QHBoxLayout()
         buttons.addWidget(self.clear_button)
         buttons.addWidget(self.preview_button)
         buttons.addWidget(self.send_button)
-        buttons.addWidget(self.cointext_button)
         buttons.addStretch(1)
         grid.addLayout(buttons, 11, 1, 1, 3)
 
-        self.payto_e.textChanged.connect(self.update_buttons_on_seed)  # hide/unhide cointext button, etc
+        self.payto_e.textChanged.connect(self.update_buttons_on_seed)  # hide/unhide various buttons
 
         self.amount_e.shortcut.connect(self.spend_max)
         self.payto_e.textChanged.connect(self.update_fee)
@@ -2528,64 +2523,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         fee = self.fee_e.get_amount() if freeze_fee else None
         return bch_outputs, fee, label, coins, selected_slp_coins
 
-    _cointext_popup_kill_tab_changed_connection = None
-    def do_cointext(self):
-        ''' This is called by the cointext button 'clicked' signal and it
-        initiates the processing of the cointext URL.  This should only be
-        called if self.payto_e.cointext is not None, otherwise it will do
-        nothing. '''
-        if self.payto_e.cointext and not self.payment_request:
-            if self.gui_object.warn_if_no_network(self):
-                return
-            phone = self.payto_e.cointext
-            sats = self.amount_e.get_amount()
-            if sats:
-                url = "https://pay.cointext.io/p/{}/{}".format(phone, sats)
-                def get_cointext_pr():
-                    # Runs in thread
-                    self.print_error("CoinText URL", url)
-                    pr = paymentrequest.get_payment_request(url)  # raises on error
-                    return pr
-                def on_success(pr):
-                    # Runs in main thread
-                    if pr:
-                        if pr.error:
-                            self.print_error("CoinText ERROR", pr.error)
-                            self.show_error(_("There was an error processing the CoinText. Please check the phone number and try again."))
-                            return
-                        self.print_error("CoinText RESULT", repr(pr))
-                        self.prepare_for_payment_request()
-                        def show_popup():
-                            if not self.send_button.isVisible():
-                                # likely a watching-only wallet, in which case
-                                # showing the popup label for the send button
-                                # leads to unspecified position for the button
-                                return
-                            show_it = partial(
-                                        ShowPopupLabel,
-                                        text=_("Please review payment before sending CoinText"),
-                                        target=self.send_button, timeout=15000.0,
-                                        name="CoinTextPopup",
-                                        pointer_position=PopupWidget.LeftSide,
-                                        activation_hides=True, track_target=True,
-                                        dark_mode = ColorScheme.dark_scheme
-                            )
-                            if not self._cointext_popup_kill_tab_changed_connection:
-                                # this ensures that if user changes tabs, the popup dies
-                                # ... it is only connected once per instance lifetime
-                                self._cointext_popup_kill_tab_changed_connection = self.tabs.currentChanged.connect(lambda: KillPopupLabel("CoinTextPopup"))
-                            QTimer.singleShot(0, show_it)
-                        pr.request_ok_callback = show_popup
-                        self.on_pr(pr)
-                def on_error(exc):
-                    self.print_error("CoinText EXCEPTION", repr(exc))
-                    self.on_error(exc)
-                WaitingDialog(self.top_level_window(),
-                              _("Retrieving CoinText info, please wait ..."),
-                              get_cointext_pr, on_success, on_error)
-            else:
-                self.show_error(_('CoinText: Please specify an amount'))
-
     def do_preview(self):
         self.do_send(preview = True)
 
@@ -2866,7 +2803,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def prepare_for_payment_request(self):
         self.show_send_tab()
-        self.payto_e.cointext = None
         self.payto_e.is_pr = True
         for e in [ self.payto_e, self.amount_e, self.message_e ]:
             e.setFrozen(True)
@@ -2943,12 +2879,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.message_e.setText(pr.get_memo())
         # signal to set fee
         self.amount_e.textEdited.emit("")
-        # New! Payment requests have an optional (may not be there!) attribute
-        # 'request_ok_callback' which takes 0 args and is called on request ok
-        # This facility was needed to do the CoinTextPopup label properly.
-        cb = getattr(self.payment_request, 'request_ok_callback', None)
-        if callable(cb):
-            cb()
 
     def payment_request_error(self):
         request_error = (self.payment_request and self.payment_request.error) or ''
@@ -3069,12 +2999,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             e.setText('')
             e.setFrozen(False)
         self.max_button.setDisabled(False)
-        KillPopupLabel("CoinTextPopup")  # just in case it was alive
         self.max_button.setChecked(False)
         self.not_enough_funds = False
         self.op_return_toolong = False
         self.payment_request = None
-        self.payto_e.cointext = None
         self.payto_e.is_pr = False
         self.opreturn_rawhex_cb.setChecked(False)
         self.set_pay_from([])
@@ -3529,12 +3457,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def update_buttons_on_seed(self):
         self.seed_button.setVisible(self.wallet.has_seed())
         self.password_button.setVisible(self.wallet.can_change_password())
-        is_cointext = bool(self.payto_e.cointext)
-        if is_cointext and self.slp_token_id:
-            self.token_type_combo.setCurrentIndex(0)
-        self.send_button.setVisible(not self.wallet.is_watching_only() and not is_cointext)
-        self.preview_button.setVisible(not is_cointext)
-        self.cointext_button.setVisible(is_cointext)
+        self.send_button.setVisible(not self.wallet.is_watching_only())
+        self.preview_button.setVisible(True)
 
     def change_password_dialog(self):
         from .password_dialog import ChangePasswordDialog
