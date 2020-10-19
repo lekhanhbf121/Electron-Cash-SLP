@@ -1474,6 +1474,8 @@ class Abstract_Wallet(PrintError):
                 if _type == TYPE_ADDRESS:
                     if self.wallet_type == 'slp_standard' and addr.kind == Address.ADDR_P2SH:
                         mine = self.is_mine(addr, check_slp_vault=True)
+                        if mine:
+                            self.set_label(tx_hash, 'SLP vault received new coins')
 
                 if mine or self.is_mine(addr):
                     # add coin to self.txo since it's mine.
