@@ -1678,7 +1678,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             coin['pubkeys'] = self.wallet.get_public_keys(addr)
             self.wallet.add_input_sig_info(coin, addr)
             tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[coin])
-                    self.show_transaction(tx, "SLP Vault sweep by owner", require_tx_in_wallet=False)
+            self.show_transaction(tx, "SLP vault sweep", require_tx_in_wallet=False)
 
     def update_receive_qr(self):
         if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not '':
