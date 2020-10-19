@@ -86,7 +86,7 @@ class BaseWizard(util.PrintError):
         ])
         wallet_kinds = [
             ('slp_standard',  _("Standard wallet")),
-            ('slp_vault_p2sh', _("EXPERIMENTAL SLP Vault wallet")),
+            # ('slp_vault_p2sh', _("EXPERIMENTAL SLP Vault wallet")),
             ('slp_multisig',  _("Multi-signature wallet")),
             ('slp_imported',  _("Import Bitcoin Cash addresses or private keys")),
         ]
