@@ -1652,8 +1652,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def sweep_slp_vault(self, addr):
         vault_addr = addr.get_slp_vault()
         hist = self.wallet.get_address_history(vault_addr)
-        for _tx in hist:
-            txn = self.wallet.transactions[_tx[0]]
+        coins = self.wallet.get_spendable_coins([vault_addr], self.config)
+        for coin in coins:
+            txn = self.wallet.transactions[coin['prevout_hash']]
             slpmsg = None
             try:
                 slpmsg = slp.SlpMessage.parseSlpOutputScript(txn.outputs()[0][1])
@@ -1663,34 +1664,21 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 token_id = slpmsg.op_return_fields['token_id_hex']
                 if not self.wallet.token_types.get(token_id, None):
                     self.show_message("First need to add Token ID:\n" + token_id)
-            outs = txn.outputs()
-            for i in range(len(outs)):
-                if outs[i][1] == vault_addr:
                     outputs = []
                     if slpmsg:
                         amts = list(slpmsg.op_return_fields['token_output'])
-                        slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [amts[i]], self.wallet.token_types.get(token_id)['class'])
+                coin['slp_value'] = amts[coin['prevout_n']]
+                slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [coin['slp_value']], self.wallet.token_types.get(token_id)['class'])
                         outputs.append(slp_op_return_msg)
                         outputs.append((TYPE_ADDRESS, addr, 546))
                     else:
-                        outputs.append((TYPE_ADDRESS, addr, outs[i][2]))
-                    d = {}
-                    pubkeys = self.wallet.get_public_keys(addr)
-                    d['address'] = vault_addr
-                    d['prevout_hash'] = _tx[0]
-                    d['prevout_n'] = i
-                    d['type'] = 'slp_vault'
-                    d['x_pubkeys'] = pubkeys
-                    d['num_sig'] = 1
-                    d['pubkeys'] = pubkeys
-                    d['value'] = outs[i][2]
-                    d['slp_value'] = amts[i]
-                    d['signatures'] = [None]
-                    d['height'] = _tx[1]
-                    d['coinbase'] = False
-                    d['is_frozen_coin'] = False
-                    tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[d])
-                    self.show_transaction(tx, "slp vault swept", require_tx_in_wallet=False)
+                outputs.append((TYPE_ADDRESS, addr, coin['value']))
+            coin['type'] = 'slp_vault'
+            coin['num_sig'] = 1
+            coin['pubkeys'] = self.wallet.get_public_keys(addr)
+            self.wallet.add_input_sig_info(coin, addr)
+            tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[coin])
+                    self.show_transaction(tx, "SLP Vault sweep by owner", require_tx_in_wallet=False)
 
     def update_receive_qr(self):
         if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not '':

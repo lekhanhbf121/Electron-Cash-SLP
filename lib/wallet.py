@@ -278,7 +278,8 @@ class Abstract_Wallet(PrintError):
     @classmethod
     def to_Address_dict(cls, d):
         '''Convert a dict of strings to a dict of Adddress objects.'''
-        return {Address.from_string(text): value for text, value in d.items()}
+        _d = {Address.from_string(text): value for text, value in d.items()}
+        return _d
 
     @classmethod
     def from_Address_dict(cls, d):
@@ -656,7 +657,7 @@ class Abstract_Wallet(PrintError):
         # especially while downloading address history.
 
         is_vault = False
-        if check_slp_vault and address.kind == address.ADDR_P2SH:
+        if self.wallet_type == 'slp_standard' and check_slp_vault and address.kind == address.ADDR_P2SH:
             is_vault = (address in [ addr.get_slp_vault() for addr in ra ]
                         or address in [ addr.get_slp_vault() for addr in ca ])
 
@@ -943,7 +944,7 @@ class Abstract_Wallet(PrintError):
             self.frozen_coins.discard(txi)
 
         """
-        SLP -- removes ALL SLP UTXOs that are either unrelated, or unvalidated
+        SLP -- removes ALL SLP UTXOs that are either unrelated, or not yet validated
         """
         if exclude_slp:
             with self.lock:
@@ -1095,7 +1096,7 @@ class Abstract_Wallet(PrintError):
         return self.get_utxos(domain=domain, exclude_frozen=True, mature=True, confirmed_only=confirmed_only)
 
     def get_slp_spendable_coins(self, slpTokenId, domain, config, isInvoice = False):
-        confirmed_only = config.get('confirmed_only', False)
+        confirmed_only = config.get('confirmed_only', DEFAULT_CONFIRMED_ONLY)
         # if (isInvoice):
         #     confirmed_only = True
         return self.get_slp_utxos(slpTokenId, domain=domain, exclude_frozen=True, confirmed_only=confirmed_only)
@@ -1408,8 +1409,14 @@ class Abstract_Wallet(PrintError):
                 if txi['type'] == 'coinbase':
                     continue
                 addr = txi.get('address')
+
+                mine = False
+                if addr.kind == Address.ADDR_P2SH and self.wallet_type == 'slp_standard':
+                    if txi['type'] == 'slp_vault_sweep':
+                        mine = self.is_mine(addr, check_slp_vault=True)
+
                 # find value from prev output
-                if self.is_mine(addr):
+                if mine or self.is_mine(addr):
                     prevout_hash, prevout_n, ser = txin_get_info(txi)
                     dd = self.txo.get(prevout_hash, {})
                     for n, v, is_cb in dd.get(addr, []):
@@ -1462,7 +1469,13 @@ class Abstract_Wallet(PrintError):
                 ser = tx_hash + ':%d'%n
                 _type, addr, v = txo
                 mine = False
-                if self.is_mine(addr):
+
+                # check for slp vault
+                if _type == TYPE_ADDRESS:
+                    if self.wallet_type == 'slp_standard' and addr.kind == Address.ADDR_P2SH:
+                        mine = self.is_mine(addr, check_slp_vault=True)
+
+                if mine or self.is_mine(addr):
                     # add coin to self.txo since it's mine.
                     mine = True
                     l = d.get(addr)

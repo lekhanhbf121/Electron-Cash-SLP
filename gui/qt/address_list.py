@@ -62,7 +62,7 @@ class AddressList(MyTreeWidget):
 
     def refresh_headers(self):
         if self.wallet.wallet_type == 'slp_standard':
-            headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx'), _('SLP Vault')]
+            headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx'), _('Vault Tx'), _('Vault Status')]
         else:
         headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx')]
         fx = self.parent.fx
@@ -156,8 +156,12 @@ class AddressList(MyTreeWidget):
                 balance_text = self.parent.format_amount(balance, whitespaces=True)
                 if self.wallet.wallet_type == 'slp_standard':
                     slp_vault_addr = address.get_slp_vault()
-                    slp_vault_count = len(self.wallet.get_address_history(slp_vault_addr))
-                    columns = [ address_text, str(n), label, balance_text, str(num), str(slp_vault_count) if slp_vault_count else '' ]
+                    slp_vault_tx_count = len(self.wallet.get_address_history(slp_vault_addr))
+                    slp_vault_coin_count = len(self.wallet.get_spendable_coins([slp_vault_addr], self.parent.config))
+                    if slp_vault_tx_count > 0:
+                        columns = [ address_text, str(n), label, balance_text, str(num), str(slp_vault_tx_count) if slp_vault_tx_count else '', 'Sweep me!' if slp_vault_coin_count > 0 else 'All clean.' ]
+                    else:
+                        columns = [ address_text, str(n), label, balance_text, str(num), '', '' ]
                 else:
                     columns = [ address_text, str(n), label, balance_text, str(num) ]
                 if fx:
