@@ -151,7 +151,7 @@ class BfpDownloadFileDialog(QDialog, MessageBoxMixin):
             if self.chunk_count > 1 or (self.chunk_count == 1 and metadata_chunk_is_empty):
                 self.download_chunk_data(self.txn_downloads[index]['txid'], index)
             else:
-                self.build_file()              
+                self.build_file()
         else:
             raise Exception("This file does not contain any data.")
 

@@ -289,8 +289,8 @@ class BitcoinFilesUploadDialog(QDialog, MessageBoxMixin):
                 self.bitcoinfileAddr_label.setText('')
 
                 bytes = f.read()
-                if len(bytes) > 5261:
-                    self.show_error("Files cannot be larger than 5.261kB in size.")
+                if len(bytes) > 10522:
+                    self.show_error("Files cannot be larger than 10.522 kB in size.")
                     return
                 import hashlib
                 readable_hash = hashlib.sha256(bytes).hexdigest()

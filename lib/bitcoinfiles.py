@@ -142,7 +142,7 @@ def chunksToOpreturnOutput(chunks: [bytes]) -> tuple:
         script.extend(pushChunk(c))
 
     if len(script) > 223:
-        raise OPReturnTooLarge('OP_RETURN message too large, cannot be larger than 223 bytes')
+        raise BfpOpreturnError('OP_RETURN message too large, cannot be larger than 223 bytes')
 
     return (TYPE_SCRIPT, ScriptOutput(bytes(script)), 0)
 
