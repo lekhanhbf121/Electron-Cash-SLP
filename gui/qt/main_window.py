@@ -3227,6 +3227,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         label.setBuddy(slp_vault_address)
         grid.addWidget(vault_label, 4, 0)
         grid.addWidget(view_vault_btn, 4, 1)
+        if not networks.net.TESTNET:
+            view_vault_btn.setHidden(True)
+            vault_label.setHidden(True)
 
         w.setLayout(grid)
 
