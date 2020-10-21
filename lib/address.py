@@ -457,7 +457,12 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
     FMT_BITPAY = 2   # Supported temporarily only for compatibility
     FMT_SLPADDR = 3
 
-    _NUM_FMTS = 4  # <-- Be sure to update this to be 1+ last format above!
+    # This format is used in situations with smart contracts are being used.
+    # The 'Pay To' field does not allow sending to address with this format
+    # to protect users from doing something which may lead to loss of funds
+    FMT_SCRIPTADDR = 4  
+
+    _NUM_FMTS = 5  # <-- Be sure to update this to be 1+ last format above!
 
     # Default to CashAddr using 'simpleledger' or 'slptest' prefix
     FMT_UI = FMT_SLPADDR
@@ -478,7 +483,6 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             cls.FMT_UI = cls.FMT_SLPADDR
         else:
             cls.FMT_UI = cls.FMT_LEGACY
-
 
     @classmethod
     def from_cashaddr_string(cls, string, *, net=None):
@@ -521,6 +525,24 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             raise AddressError('address has unexpected kind {}'.format(kind))
 
     @classmethod
+    def from_scriptaddr_string(cls, string, *, net=None):
+        '''Construct from a scriptaddress string.'''
+        if net is None: net = networks.net
+        prefix = net.SCRIPTADDR_PREFIX
+        if string.upper() == string:
+            prefix = prefix.upper()
+        if ':' not in string:
+            string = ':'.join([prefix, string])
+        addr_prefix, kind, addr_hash = cashaddr.decode(string)
+        if addr_prefix != prefix:
+            raise AddressError('address has unexpected prefix {}'
+                               .format(addr_prefix))
+        if kind == cashaddr.SCRIPT_TYPE:
+            return cls(addr_hash, cls.ADDR_P2SH)
+        else:
+            raise AddressError('address has unexpected kind {}'.format(kind))
+
+    @classmethod
     def from_string(cls, string, *, net=None):
         '''Construct from an address string.'''
         if net is None: net = networks.net
@@ -529,7 +551,10 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
                 try:
                     return cls.from_slpaddr_string(string, net=net)
                 except:
-                    return cls.from_cashaddr_string(string, net=net)
+                    try:
+                        return cls.from_cashaddr_string(string, net=net)
+                    except:
+                        return cls.from_scriptaddr_string(string, net=net)
             except ValueError as e:
                 raise AddressError(str(e))
 
@@ -618,25 +643,33 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
     def to_cashaddr(self, *, net=None):
         if net is None: net = networks.net
         if self.kind == self.ADDR_P2PKH:
-            kind  = cashaddr.PUBKEY_TYPE
+            kind = cashaddr.PUBKEY_TYPE
         else:
-            kind  = cashaddr.SCRIPT_TYPE
+            kind = cashaddr.SCRIPT_TYPE
         return cashaddr.encode(net.CASHADDR_PREFIX, kind, self.hash160)
 
     def to_slpaddr(self, *, net=None):
         if net is None: net = networks.net
         if self.kind == self.ADDR_P2PKH:
-            kind  = cashaddr.PUBKEY_TYPE
+            kind = cashaddr.PUBKEY_TYPE
         else:
-            kind  = cashaddr.SCRIPT_TYPE
+            kind = cashaddr.SCRIPT_TYPE
         return cashaddr.encode(net.SLPADDR_PREFIX, kind, self.hash160)
+
+    def to_scriptaddr(self, *, net=None):
+        if net is None: net = networks.net
+        if self.kind == self.ADDR_P2SH:
+            kind = cashaddr.SCRIPT_TYPE
+        else:
+            raise AddressError('cannot convert to script address from a non-p2sh format')
+        return cashaddr.encode(net.SCRIPTADDR_PREFIX, kind, self.hash160)
 
     def to_slp_vault_addr_str(self, *, net=None):
         if net is None: net = networks.net
         if self.kind == self.ADDR_P2SH:
             return None
         else:
-            return self.get_slp_vault().to_full_string(self.FMT_SLPADDR)
+            return self.get_slp_vault().to_full_string(self.FMT_SCRIPTADDR)
 
     def to_string(self, fmt, *, net=None):
         '''Converts to a string of the given format.'''
@@ -647,7 +680,7 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
                 if cached:
                     return cached
             except (IndexError, TypeError):
-                raise AddressError('unrecognised format')
+                raise AddressError('unrecognized format')
 
         try:
             cached = None
@@ -658,6 +691,10 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
 
             if fmt == self.FMT_SLPADDR:
                 cached = self.to_slpaddr(net=net)
+                return cached
+
+            if fmt == self.FMT_SCRIPTADDR:
+                cached = self.to_scriptaddr(net=net)
                 return cached
 
             if fmt == self.FMT_LEGACY:
@@ -672,7 +709,7 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
                     verbyte = net.ADDRTYPE_P2SH_BITPAY
             else:
                 # This should never be reached due to cache-lookup check above. But leaving it in as it's a harmless sanity check.
-                raise AddressError('unrecognised format')
+                raise AddressError('unrecognized format')
 
             cached = Base58.encode_check(bytes([verbyte]) + self.hash160)
             return cached
@@ -688,6 +725,8 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             text = ':'.join([net.CASHADDR_PREFIX, text])
         if fmt == self.FMT_SLPADDR:
             text = ':'.join([net.SLPADDR_PREFIX, text])
+        if fmt == self.FMT_SCRIPTADDR:
+            text = ':'.join([net.SCRIPTADDR_PREFIX, text])
         return text
 
     def to_ui_string(self, *, net=None):
@@ -735,6 +774,8 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
         return hash_to_hex_str(self.to_scripthash())
 
     def get_slp_vault(self):
+        if self.kind != self.ADDR_P2PKH:
+            raise AddressError('cannot get vault address from a non-p2pkh address')
         return Address(hash160(Script.slp_vault_script_from_hash160(self.hash160)), self.ADDR_P2SH)
 
     def __str__(self):
