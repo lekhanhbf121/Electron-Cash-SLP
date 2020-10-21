@@ -2470,7 +2470,11 @@ class Abstract_Wallet(PrintError):
             # Bitcoin Cash needs value to sign
             received, spent = self.get_addr_io(address)
             item = received.get(txin['prevout_hash']+':%d'%txin['prevout_n'])
+            try:
             tx_height, value, is_cb = item
+            except TypeError:
+                pass
+            else:
             txin['value'] = value
             self.add_input_sig_info(txin, address)
 
