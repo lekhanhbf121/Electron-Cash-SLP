@@ -34,6 +34,11 @@ seal.svg
     Author: Axel Gembe
     License: CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)
 
+slp_logo_hollow.png
+    Author: Jason Pribble
+    Copyright (c) 2018, Simple Ledger, Inc.
+    All rights reserved.
+
 split.svg
     Author: Nick Bluth from the Noun Project
     License: CC BY 3.0 US (https://creativecommons.org/licenses/by/3.0/us/)

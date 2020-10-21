@@ -88,6 +88,7 @@ class MainNet(AbstractNet):
         'standard': 0x0488b21e,
     }
 
+    SCRIPT_ARTIFACTS = _read_json_dict('cashscript_artifacts.json')
 
 class TestNet(AbstractNet):
     TESTNET = True
@@ -127,6 +128,7 @@ class TestNet(AbstractNet):
         'standard': 0x043587cf,
     }
 
+    SCRIPT_ARTIFACTS = _read_json_dict('cashscript_artifacts.json')
 
 class TestNet4(TestNet):
     GENESIS = "000000001dd410c49a788668ce26751718cc797474d3152a5fc073dd44fd9f7b"
@@ -147,6 +149,7 @@ class TestNet4(TestNet):
     # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
     CW144_HEIGHT = 3000
 
+    SCRIPT_ARTIFACTS = _read_json_dict('cashscript_artifacts.json')
 
 class ScaleNet(TestNet):
     GENESIS = "00000000e6453dc2dfe1ffa19023f86002eb11dbb8e87d0291a4599f0430be52"
@@ -167,6 +170,7 @@ class ScaleNet(TestNet):
     # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
     CW144_HEIGHT = 3000
 
+    SCRIPT_ARTIFACTS = _read_json_dict('cashscript_artifacts.json')
 
 # All new code should access this to get the current network config.
 net = MainNet

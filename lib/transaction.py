@@ -874,7 +874,7 @@ class Transaction:
                 inputs[i]['hashoutputs_preimage'] = ''.join(self.serialize_output(o) for o in self.outputs())
                 try:
                     inputs[i]['tx_preimage'] = self.serialize_preimage(i)
-                except IndexError:
+                except (IndexError, InputValueMissing):
                     pass
         
         txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size, self._sign_schnorr), estimate_size) for txin in inputs)

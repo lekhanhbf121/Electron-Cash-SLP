@@ -69,6 +69,8 @@ from .contacts import Contacts
 from .slp import SlpMessage, SlpParsingError, SlpUnsupportedSlpTokenType, SlpNoMintingBatonFound, OpreturnError
 from . import slp_validator_0x01, slp_validator_0x01_nft1
 
+from .cashscript import ScriptPin
+
 def _(message): return message
 
 TX_STATUS = [
@@ -1410,13 +1412,8 @@ class Abstract_Wallet(PrintError):
                     continue
                 addr = txi.get('address')
 
-                mine = False
-                if addr.kind == Address.ADDR_P2SH and self.wallet_type == 'slp_standard':
-                    if txi['type'] == 'slp_vault_sweep':
-                        mine = self.is_mine(addr, check_slp_vault=True)
-
                 # find value from prev output
-                if mine or self.is_mine(addr):
+                if self.is_mine(addr):
                     prevout_hash, prevout_n, ser = txin_get_info(txi)
                     dd = self.txo.get(prevout_hash, {})
                     for n, v, is_cb in dd.get(addr, []):
@@ -1476,6 +1473,15 @@ class Abstract_Wallet(PrintError):
                         mine = self.is_mine(addr, check_slp_vault=True)
                         if mine:
                             self.set_label(tx_hash, 'SLP vault received new coins')
+
+                # check for pin messages
+                if _type == TYPE_SCRIPT:
+                    try:
+                        if b'PIN' in addr.script:
+                            pin = ScriptPin.parsePinScriptOutput(addr)
+                            self.contacts.add_script_pin(pin)
+                    except:
+                        pass
 
                 if mine or self.is_mine(addr):
                     # add coin to self.txo since it's mine.
@@ -2471,11 +2477,11 @@ class Abstract_Wallet(PrintError):
             received, spent = self.get_addr_io(address)
             item = received.get(txin['prevout_hash']+':%d'%txin['prevout_n'])
             try:
-            tx_height, value, is_cb = item
+                tx_height, value, is_cb = item
             except TypeError:
                 pass
             else:
-            txin['value'] = value
+                txin['value'] = value
             self.add_input_sig_info(txin, address)
 
     def add_input_info_for_bitcoinfiles(self, txin):

@@ -53,6 +53,7 @@ from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
 from electroncash.wallet import Multisig_Wallet, Slp_Vault_Wallet, sweep_preparations
+from electroncash.contacts import Contact, ScriptContract
 try:
     from electroncash.plot import plot_history
 except:
@@ -76,6 +77,8 @@ from electroncash.util import format_satoshis_nofloat
 from .slp_create_token_genesis_dialog import SlpCreateTokenGenesisDialog
 from .bfp_download_file_dialog import BfpDownloadFileDialog
 from .bfp_upload_file_dialog import BitcoinFilesUploadDialog
+
+import electroncash.cashscript as cashscript
 
 try:
     # pre-load QtMultimedia at app start, if possible
@@ -2406,12 +2409,23 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         for item in self.pay_from:
             self.from_list.addTopLevelItem(QTreeWidgetItem( [format(item), self.format_amount(item['value']) ]))
 
-    def get_contact_payto(self, key):
-        _type, label = self.contacts.get(key)
-        return label + '  <' + key + '>' if _type == 'address' else key
+    def get_contact_payto(self, contact : Contact) -> str:
+        assert isinstance(contact, Contact) or isinstance(contact, ScriptContract)
+        _type, label = contact.type, contact.name
+        emoji_str = ''
+        mod_type = _type
+        mine_str = ''
+        if _type == 'openalias':
+            return contact.address
+        return label + emoji_str + '  ' + mine_str + '<' + contact.address + '>' if mod_type in ('address') else None
+
 
     def update_completions(self):
-        l = [self.get_contact_payto(key) for key in self.contacts.keys()]
+        l = []
+        for contact in self.contact_list.get_full_contacts(include_pseudo=True):
+            s = self.get_contact_payto(contact)
+            if s is not None: l.append(s)
+        l.sort(key=lambda x: x.lower())  # case-insensitive sort
         self.completions.setStringList(l)
 
     def protected(func):
@@ -3189,20 +3203,20 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         slp_address.addCopyButton()
         slp_vault_address = ButtonsLineEdit()
         slp_vault_address.setReadOnly(True)
-        view_vault_btn = QPushButton(_("Display SLP Vault Address"))
+        view_vault_btn = QPushButton(_("Generate SLP Vault Address"))
 
         def slp_vault_toggle():
             if slp_vault_address.text() == '':
                 self.show_message("You must provide a P2PKH address to get the SLP Vault address.")
             else:
-                buttons, copy_index, copy_link = [ _('Ok') ], None, slp_vault_address.text()
-                buttons.insert(0, _("Copy address"))
-                copy_index = 0
-                if self.show_message('SLP Vault Address:' + '\n' + slp_vault_address.text(),
-                                    buttons = buttons,
-                                    defaultButton = buttons[-1],
-                                    escapeButton = buttons[-1]) == copy_index:
-                    self.copy_to_clipboard(copy_link, _("SLP Vault address copied to clipboard"), self.top_level_window())
+                outputs = []
+                artifact_sha256 = "c1cafa422e96d6f00671de71a3e31311be8e9daf97f9af2cd8fead82f31bef5e"
+                addr = Address.from_string(source_address.text().strip())
+                pin_op_return_msg = cashscript.buildCashscriptPinMsg(artifact_sha256, [addr.hash160], [])
+                outputs.append(pin_op_return_msg)
+                outputs.append((TYPE_ADDRESS, addr, 546))
+                tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[])
+                self.show_transaction(tx, "New slp vault pin")
 
         view_vault_btn.clicked.connect(slp_vault_toggle)
 
@@ -3403,38 +3417,77 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.payto_e.setText(text)
             self.payto_e.setFocus()
 
-    def set_contact(self, label, address):
-        if not Address.is_valid(address):
+    def set_contact(self, label, address, typ='address', replace=None) -> Contact:
+        ''' Returns a reference to the newly inserted Contact object.
+        replace is optional and if specified, replace an existing contact,
+        otherwise add a new one.
+        Note that duplicate contacts will not be added multiple times, but in
+        that case the returned value would still be a valid Contact.
+        Returns None on failure.'''
+        assert typ in ('address', 'cashacct')
+        contact = None
+        if typ == 'cashacct':
+            tup = self.resolve_cashacct(label)  # this displays an error message for us
+            if not tup:
+                self.contact_list.update() # Displays original
+                return
+            info, label = tup
+            address = info.address.to_ui_string()
+            contact = Contact(name=label, address=address, type=typ)
+        elif not Address.is_valid(address):
+            # Bad 'address' code path
             self.show_error(_('Invalid Address'))
             self.contact_list.update()  # Displays original unchanged value
-            return False
-        old_entry = self.contacts.get(address, None)
-        self.contacts[address] = ('address', label)
+            return
+        else:
+            # Good 'address' code path...
+            contact = Contact(name=label, address=address, type=typ)
+        assert contact
+        if replace != contact:
+            if self.contacts.has(contact):
+                self.show_error(_(f"A contact named {contact.name} with the same address and type already exists."))
+                self.contact_list.update()
+                return replace or contact
+            self.contacts.add(contact, replace_old=replace, unique=True)
         self.contact_list.update()
         self.history_list.update()
         self.history_updated_signal.emit() # inform things like address_dialog that there's a new history
         self.update_completions()
 
         # The contact has changed, update any addresses that are displayed with the old information.
-        run_hook('update_contact', address, self.contacts[address], old_entry)
-        return True
+        run_hook('update_contact2', contact, replace)
+        return contact
 
-    def delete_contacts(self, addresses):
-        contact_str = " + ".join(addresses) if len(addresses) <= 3 else _("{} contacts").format(len(addresses))
-        if not self.question(_("Remove {} from your list of contacts?")
-                             .format(contact_str)):
+    def delete_contacts(self, contacts):
+        n = len(contacts)
+        qtext = ''
+        if n <= 3:
+            def fmt(contact):
+                if len(contact.address) > 20:
+                    addy = contact.address[:10] + '…' + contact.address[-10:]
+                else:
+                    addy = contact.address
+                return f"{contact.name} <{addy}>"
+            names = [fmt(contact) for contact in contacts]
+            contact_str = ", ".join(names)
+            qtext = _("Remove {list_of_contacts} from your contact list?").format(list_of_contacts = contact_str)
+        else:
+            # Note: we didn't use ngettext here for plural check because n > 1 in this branch
+            qtext = _("Remove {number_of_contacts} contacts from your contact list?").format(number_of_contacts=n)
+        if not self.question(qtext):
             return
         removed_entries = []
-        for address in addresses:
-            if address in self.contacts.keys():
-                removed_entries.append((address, self.contacts[address]))
-            self.contacts.pop(address)
+        for contact in contacts:
+            if self.contacts.remove(contact):
+                removed_entries.append(contact)
 
         self.history_list.update()
         self.history_updated_signal.emit() # inform things like address_dialog that there's a new history
         self.contact_list.update()
         self.update_completions()
-        run_hook('delete_contacts', removed_entries)
+
+        run_hook('delete_contacts2', removed_entries)
+
 
     def add_token_type(self, token_class, token_id, token_name, decimals_divisibility, *, error_callback=None, show_errors=True, allow_overwrite=False):
         # FIXME: are both args error_callback and show_errors both necessary?
