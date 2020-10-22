@@ -1416,6 +1416,8 @@ class Abstract_Wallet(PrintError):
                 mine = False
                 if 'slp_vault_' in txi['type']:
                     mine = self.is_mine(addr, check_slp_vault=True)
+                    if mine and txi['type'] == 'slp_vault_revoke':
+                        self.set_label(tx_hash, 'SLP vault revoked!')
 
                 # find value from prev output
                 if mine or self.is_mine(addr):

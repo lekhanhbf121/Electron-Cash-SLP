@@ -280,14 +280,7 @@ def parse_scriptSig(d, _bytes):
         return
 
     # Slp Vault Sweep
-    # The first two pushes are the same as normal p2pkh (sig/pubkey),
-    # the third push is the hashOutputs preimage,
-    # the fourth push is the transaction preimage,
-    # the fifth push is the method choice (sweep = 0)
-    # the sixth push is the redeemScript.
-    #
-    match = [ opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4, opcodes.OP_PUSHDATA4 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 5)
-    if not match_decoded(decoded, match):
+    if len(decoded) == 6 and decoded[0][1] != b'': #not match_decoded(decoded, match):
         sig = bh2u(decoded[0][1])
         x_pubkey = bh2u(decoded[1][1])
         try:
@@ -303,9 +296,37 @@ def parse_scriptSig(d, _bytes):
             #slp_vault_action = 'slp_vault_sweep' if decoded[3][1] == '52' else 'slp_vault_revoke'
             d['type'] = 'slp_vault_sweep'
             d['signatures'] = signatures
+            d['slp_vault_pkh'] = hash160(bytes.fromhex(pubkey)).hex()
             d['x_pubkeys'] = [x_pubkey]
             d['num_sig'] = 1
             d['pubkeys'] = [pubkey]
+            d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
+            d['hashoutputs_preimage'] = outputs_preimage
+            d['tx_preimage'] = tx_preimage
+
+    # Slp Vault Revoke
+    if len(decoded) == 8 and decoded[0][1] != b'':
+        sig = bh2u(decoded[0][1])
+        x_pubkey = bh2u(decoded[2][1])
+        try:
+            signatures = parse_sig([sig])
+            pubkey, _ = xpubkey_to_address(x_pubkey)
+        except:
+            print_error("cannot find address in input script", bh2u(_bytes))
+            return
+        redeemScript = decoded[7][1]
+        if len(decoded[7][1]) == 193:   #TODO: get from Script.slp_vault_script_len()
+            pkh = decoded[7][1][1:21]
+        #pkh = decoded[5][]
+        #if redeemScript == Script.slp_vault_script(bytes.fromhex(pubkey), validate=False): # this is the length of the SLP Vault redeem script <hash160><Vault Script>
+            outputs_preimage = bh2u(decoded[4][1])
+            tx_preimage = bh2u(decoded[5][1])
+            d['type'] = 'slp_vault_revoke'
+            d['signatures'] = signatures
+            d['slp_vault_pkh'] = pkh.hex() #hash160(bytes.fromhex(pubkey)).hex()
+            #d['x_pubkeys'] = [ x_pubkey ]
+            d['num_sig'] = 1
+            #d['pubkeys'] = [pubkey]
             d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
             d['hashoutputs_preimage'] = outputs_preimage
             d['tx_preimage'] = tx_preimage
