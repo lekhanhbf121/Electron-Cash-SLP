@@ -3216,6 +3216,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 pin_op_return_msg = cashscript.buildCashscriptPinMsg(artifact_sha256, [addr.hash160], [])
                 outputs.append(pin_op_return_msg)
                 outputs.append((TYPE_ADDRESS, addr, 546))
+                if not self.wallet.is_mine(addr):
+                    outputs.append((TYPE_ADDRESS, self.wallet.get_unused_address(), 546))
                 tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[])
                 self.show_transaction(tx, "New slp vault pin")
 

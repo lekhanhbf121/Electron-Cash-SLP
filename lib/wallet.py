@@ -1484,7 +1484,8 @@ class Abstract_Wallet(PrintError):
                     try:
                         if b'PIN' in addr.script:
                             pin = ScriptPin.parsePinScriptOutput(addr)
-                            self.contacts.add_script_pin(pin)
+                            if self.contacts.add_script_pin(pin):
+                                self.set_label(tx_hash, 'New slp vault pin')
                     except:
                         pass
 

@@ -151,6 +151,8 @@ class ScriptPin:
         if len(chunks[2]) != 32:
             raise Exception('invalid sha256')
 
+        # TODO: check for acceptable artifacts here?
+
         if len(chunks) == 3:
             raise Exception('missing script constructor inputs')
         try:
