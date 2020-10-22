@@ -28,6 +28,7 @@ import electroncash.web as web
 from electroncash.address import Address
 from electroncash.contacts import Contact, contact_types
 from electroncash.plugins import run_hook
+from electroncash.transaction import Transaction
 from electroncash.util import FileImportFailed, PrintError, finalization_print_error
 # TODO: whittle down these * imports to what we actually use when done with
 # our changes to this class -Calin
@@ -41,6 +42,7 @@ from .util import (MyTreeWidget, webopen, WindowModalDialog, Buttons,
 from enum import IntEnum
 from collections import defaultdict
 from typing import List, Set, Dict, Tuple
+import itertools
 #from . import cashacctqt
 
 class ContactList(PrintError, MyTreeWidget):
@@ -48,14 +50,14 @@ class ContactList(PrintError, MyTreeWidget):
     default_sort = MyTreeWidget.SortSpec(1, Qt.AscendingOrder)
 
     do_update_signal = pyqtSignal()
-    _ca_minimal_chash_updated_signal = pyqtSignal(object, str)
+    unspent_coins_dl_signal = pyqtSignal(dict)
 
     class DataRoles(IntEnum):
         Contact     = Qt.UserRole + 0
 
     def __init__(self, parent):
         MyTreeWidget.__init__(self, parent, self.create_menu,
-                              ["", _('Name'), _('Label'), _('Address'), _('Type') ], 2, [1,2],  # headers, stretch_column, editable_columns
+                              ["", _('Name'), _('Label'), _('Address'), _('Type'), _('Script Coins') ], 2, [1,2],  # headers, stretch_column, editable_columns
                               deferred_updates=True, save_sort_settings=True)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSortingEnabled(True)
@@ -65,13 +67,15 @@ class ContactList(PrintError, MyTreeWidget):
         self.monospace_font = QFont(MONOSPACE_FONT)
         self.cleaned_up = False
         self.do_update_signal.connect(self.update)
-        # self.icon_cashacct = QIcon(":icons/cashacct-logo.png" if not ColorScheme.dark_scheme else ":icons/cashacct-button-darkmode.png")
-        # self.icon_openalias = QIcon(":icons/openalias-logo.svg")
         self.icon_contacts = QIcon(":icons/tab_contacts.png")
-        self.icon_unverif = QIcon(":/icons/unconfirmed.svg")
-        # the below dict is ephemeral and goes away on wallet close --
-        # it's populated ultimately by the notify() subsystem in main_window
-        #self._ca_pending_conf : Dict[str, Tuple[str, Address]] = dict()  #  "txid" -> ("name", Address)
+        self.icon_unverif = QIcon(":icons/unconfirmed.svg")
+
+        self.unspent_coins_dl_signal.connect(self.got_unspent_coins_response_slot, Qt.QueuedConnection)
+        self.addr_txos = {}
+
+        # fetch unspent script coins
+        script_addrs = [c.address for c in self.parent.contacts.data if c.type == 'script' ]
+        self.fetch_script_coins(script_addrs)
 
     def clean_up(self):
         self.cleaned_up = True
@@ -85,7 +89,7 @@ class ContactList(PrintError, MyTreeWidget):
         # openalias items shouldn't be editable
         if column == 2: # Label, always editable
             return True
-        return item.data(0, self.DataRoles.Contact).type in ('address', 'cashacct')
+        return item.data(0, self.DataRoles.Contact).type in ('address')
 
     def on_edited(self, item, column, prior_value):
         contact = item.data(0, self.DataRoles.Contact)
@@ -171,9 +175,27 @@ class ContactList(PrintError, MyTreeWidget):
             column_data = '\n'.join([item.text(column) for item in selected])
             item = self.currentItem()
             typ = i2c(item).type if item else 'unknown'
-            ca_info = None
             if len(selected) > 1:
                 column_title += f" ({len(selected)})"
+            if len(selected) == 1:
+                sel = i2c(selected[0])
+                if sel.type == 'script':
+                    # There's only one type of script right now so this is simple, but
+                    # we will want to utilize run_hook() here in the future to clean this up.
+                    menu.addAction("Check For Script Coins", lambda: self.fetch_script_coins([sel.address]))
+                    cashaddr = Address.from_string(sel.address).to_full_string(Address.FMT_CASHADDR)
+                    if len(self.addr_txos.get(cashaddr, [])) > 0:
+                        if self.wallet.is_mine(Address.from_string(sel.address), check_slp_vault=True):
+                            menu.addAction(_("Sweep"), lambda: self.slp_vault_sweep(sel))
+                        inputs = [ self.wallet.transactions.get(coin['tx_hash']).inputs() for coin in self.addr_txos.get(cashaddr, []) if self.wallet.transactions.get(coin['tx_hash']) ]
+                        can_revoke = False
+                        for _in in itertools.chain(*inputs):
+                            if self.wallet.is_mine(_in['address']):
+                                can_revoke = True
+                                break
+                        if can_revoke:
+                            menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel, self.addr_txos.get(cashaddr, [])))
+                    menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: self.parent.app.clipboard().setText(column_data))
             if item and column in self.editable_columns and self.on_permit_edit(item, column):
                 key = item.data(0, self.DataRoles.Contact)
@@ -201,9 +223,33 @@ class ContactList(PrintError, MyTreeWidget):
             menu.addSeparator()
 
         menu.addAction(self.icon_contacts, _("Add Contact") + " - " + _("Address"), self.parent.new_contact_dialog)
-
         run_hook('create_contact_menu', menu, selected)
         menu.exec_(self.viewport().mapToGlobal(position))
+
+    def slp_vault_sweep(self, item): # TODO: will probably want to have coins param here
+        self.parent.sweep_slp_vault(bytes.fromhex(item.params[0]))
+
+    def slp_vault_revoke(self, item, coins):
+        for coin in coins:
+            coin['slp_vault_pkh'] = item.params[0]
+            coin['address'] = Address.from_string(item.address)
+        self.parent.revoke_slp_vault(coins)
+
+    def fetch_script_coins(self, addresses):
+        for addr in addresses:
+            cashaddr = Address.from_string(addr).to_full_string(Address.FMT_CASHADDR)
+            def callback(response):
+                self.unspent_coins_dl_signal.emit(response)
+            requests = [ ('blockchain.address.listunspent', [cashaddr]) ]
+            self.parent.network.send(requests, callback)
+
+    @pyqtSlot(dict)
+    def got_unspent_coins_response_slot(self, response):
+        if response.get('error'):
+            return print("Download error!\n%r"%(response['error'].get('message')))
+        raw = response.get('result')
+        self.addr_txos[response.get('params')[0]] = raw
+        self.update()
 
     def get_full_contacts(self, include_pseudo: bool = True) -> List[Contact]:
         ''' Returns all the contacts, with the "My CashAcct" pseudo-contacts
@@ -266,6 +312,13 @@ class ContactList(PrintError, MyTreeWidget):
                 current_item = item  # this key was the current item before and it hasn't gone away
             if contact in selected_contacts or (contact == edited[0] and edited[2]):
                 selected_items.append(item)  # this key was selected before and it hasn't gone away
+
+            # show script Utxos count
+            if _type == 'script':
+                cashaddr = Address.from_string(address).to_full_string(Address.FMT_CASHADDR)
+                txos = self.addr_txos.get(cashaddr, [])
+                if len(txos) > 0:
+                    item.setText(5, str(len(txos)))
 
         if selected_items:  # sometimes currentItem is set even if nothing actually selected. grr..
             # restore current item & selections

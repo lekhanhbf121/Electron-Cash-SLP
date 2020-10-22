@@ -702,13 +702,17 @@ class Transaction:
             preimage = txin['tx_preimage']
             script += push_script(pubkeys[0]) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_0) + push_script(redeem_script)
         elif _type == 'slp_vault_revoke':
-            redeem_script = slp_vault_script(txin['slp_vault_owner'])
+            redeem_script = Script.slp_vault_script_from_hash160(bytes.fromhex(txin['slp_vault_pkh'])).hex()
             outputs = txin['hashoutputs_preimage']
             preimage = txin['tx_preimage']
-            txn_first_last = self._fetched_tx_cache.get(txin['prevout_hash']).raw.split(pubkeys[0])
-            txn_1 = txn_first_last[0]
-            txn_2_pubkey = pubkeys[0]
-            txn_3 = txn_first_last[1]
+            txn = self._fetched_tx_cache.get(txin['prevout_hash']).raw
+            txn_1 = txn
+            txn_2_pubkey = "00"
+            txn_3 = "00"
+            if not estimate_size and len(pubkeys[0]) == 66 and pubkeys[0][:2] != "00":
+                txn_1 = txn.split(pubkeys[0])[0]
+                txn_2_pubkey = pubkeys[0]
+                txn_3 = txn.split(pubkeys[0])[1]
             script += push_script(txn_3) + push_script(txn_2_pubkey) + push_script(txn_1) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_1) + push_script(redeem_script)
         elif _type == 'p2pkh':
             script += push_script(pubkeys[0])
@@ -736,8 +740,7 @@ class Transaction:
             pubkeys, x_pubkeys = self.get_sorted_pubkeys(txin)
             return multisig_script(pubkeys, txin['num_sig'])
         elif 'slp_vault_' in _type:
-            pubkeys, x_pubkeys = self.get_sorted_pubkeys(txin)
-            return slp_vault_script(pubkeys[0])
+            return Script.slp_vault_script_from_hash160(bytes.fromhex(txin['slp_vault_pkh'])).hex()
         elif _type == 'p2pk':
             pubkey = txin['pubkeys'][0]
             return public_key_to_p2pk_script(pubkey)
@@ -876,7 +879,7 @@ class Transaction:
                     inputs[i]['tx_preimage'] = self.serialize_preimage(i)
                 except (IndexError, InputValueMissing):
                     pass
-        
+
         txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size, self._sign_schnorr), estimate_size) for txin in inputs)
         txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
         return nVersion + txins + txouts + nLocktime

@@ -100,19 +100,19 @@ class Contacts(util.PrintError):
                 if not Address.is_valid(address): # or (typ == 'cashacct' and not cashacct.CashAcct.parse_string(name)):
                     continue # skip if if does not appear to be valid for these types
             if typ == 'script':
-                artifact_sha256 = d.get('artifact_sha256')
-                txid_pin = d.get('txid_pin')
-                constructorInputs = tuple(d.get('constructorInputs'))
+                artifact_sha256 = d.get('sha256')
                 if artifact_sha256 not in scripts_contracts:
                     continue
+                script_params = tuple(d.get('params'))
                 artifact_location = scripts_contracts[artifact_sha256]['location']
                 try:
                     artifact = pkgutil.get_data(__name__, artifact_location)
+                    #artifact_json = json.loads(data.decode('utf-8'))
                     # TODO: check data sha256 against artifact_sha256
-                    #artifact = json.loads(data.decode('utf-8'))
+                    # TODO: check script params validate with artifact constructor and abi method params
                 except:
                     continue
-                out.append( ScriptContract(name, address, typ, artifact, constructorInputs))
+                out.append( ScriptContract(name, address, typ, artifact_sha256, script_params))
             else:
                 out.append( Contact(name, address, typ) )
         return out
@@ -159,6 +159,8 @@ class Contacts(util.PrintError):
 
     @staticmethod
     def _cleanup_address(address : str, _type : str) -> str:
+        if _type == 'script':
+            return address
         rm_prefix = (networks.net.CASHADDR_PREFIX + ":").lower()
         if _type in ('address') and address.lower().startswith(rm_prefix): #, 'cashacct'
             address = address[len(rm_prefix):]  # chop off bitcoincash: prefix
@@ -170,11 +172,20 @@ class Contacts(util.PrintError):
         be saved to wallet storage or saved to json. '''
         out_v2, out_v1, ret = [], {}, {}
         for contact in data:
-            out_v2.append({
-                'name': contact.name,
-                'address': contact.address,
-                'type': contact.type
-            })
+            if contact.type == 'script':
+                out_v2.append({
+                    'name': contact.name,
+                    'address': contact.address,
+                    'type': contact.type,
+                    'sha256': contact.sha256,
+                    'params': contact.params
+                })
+            else:
+                out_v2.append({
+                    'name': contact.name,
+                    'address': contact.address,
+                    'type': contact.type
+                })
             if v1_too:
                 # NOTE: v1 doesn't preserve dupe addresses
                 out_v1[contact.address] = (contact.type, contact.name)

@@ -1412,8 +1412,13 @@ class Abstract_Wallet(PrintError):
                     continue
                 addr = txi.get('address')
 
+                # count script inputs to be added to txi
+                mine = False
+                if 'slp_vault_' in txi['type']:
+                    mine = self.is_mine(addr, check_slp_vault=True)
+
                 # find value from prev output
-                if self.is_mine(addr):
+                if mine or self.is_mine(addr):
                     prevout_hash, prevout_n, ser = txin_get_info(txi)
                     dd = self.txo.get(prevout_hash, {})
                     for n, v, is_cb in dd.get(addr, []):

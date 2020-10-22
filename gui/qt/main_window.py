@@ -1655,6 +1655,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def revoke_slp_vault(self, coins):
         for coin in coins:
             txn = self.wallet.transactions[coin['tx_hash']]
+            Transaction.tx_cache_put(txn, coin['tx_hash'])
             pubkey = None
             rec_addr = None
             #addr = coin['address']
@@ -1682,7 +1683,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             else:
                 outputs.append((TYPE_ADDRESS, rec_addr, coin['value']))
             coin['type'] = 'slp_vault_revoke'
-            coin['slp_vault_owner'] = self.contact_list.get_redeem_script(coin['address'])
             coin['num_sig'] = 1
             coin['pubkeys'] = [pubkey]
             coin['prevout_hash'] = coin['tx_hash']
@@ -1691,7 +1691,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[coin])
             self.show_transaction(tx, "SLP vault revoke", require_tx_in_wallet=False)
 
-    def sweep_slp_vault(self, addr):
+    def sweep_slp_vault(self, pkh):
+        addr = Address.from_P2PKH_hash(pkh)
         vault_addr = addr.get_slp_vault()
         hist = self.wallet.get_address_history(vault_addr)
         coins = self.wallet.get_spendable_coins([vault_addr], self.config)
@@ -1714,6 +1715,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 outputs.append((TYPE_ADDRESS, addr, 546))
             else:
                 outputs.append((TYPE_ADDRESS, addr, coin['value']))
+            coin['slp_vault_pkh'] = pkh.hex()
             coin['type'] = 'slp_vault_sweep'
             coin['num_sig'] = 1
             coin['pubkeys'] = self.wallet.get_public_keys(addr)
@@ -2464,7 +2466,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_message(_("No SLP token amount provided."))
                 return
             try:
-                """ Guard against multiline 'Pay To' field """
                 amt = []
                 is_paytomany_slp = False
                 try: # first, try to read amount from payto for multi-output

@@ -241,7 +241,7 @@ class AddressList(MyTreeWidget):
             else:
                 copy_text = item.text(col)
             if len(self.wallet.get_address_history(addr.get_slp_vault())):
-                menu.addAction("Sweep SLP Vault", lambda: self.parent.sweep_slp_vault(addr))
+                menu.addAction("Sweep SLP Vault", lambda: self.parent.sweep_slp_vault(addr.hash160))
                 menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: doCopy(copy_text))
             if alt_copy_text and alt_column_title:

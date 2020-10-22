@@ -154,10 +154,11 @@ class PayToEdit(PrintError, ScanQRTextEdit):
         lines = [i for i in self.lines() if i]
 
         # don't allow "script:" address prefix
-        for i, line in enumerate(lines):
-            if networks.net.SCRIPTADDR_PREFIX in line:
-                self.errors.append((0, str('cannot enter an address with "' + networks.net.SCRIPTADDR_PREFIX + ':" prefix')))
-                return
+        if not networks.net.TESTNET:
+            for i, line in enumerate(lines):
+                if networks.net.SCRIPTADDR_PREFIX in line:
+                    self.errors.append((0, str('cannot enter an address with "' + networks.net.SCRIPTADDR_PREFIX + ':" prefix')))
+                    return
 
         outputs = []
         total = 0
