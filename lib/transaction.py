@@ -726,14 +726,15 @@ class Transaction:
             redeem_script = Script.slp_vault_script_from_hash160(bytes.fromhex(txin['slp_vault_pkh'])).hex()
             outputs = txin['hashoutputs_preimage']
             preimage = txin['tx_preimage']
+            #print(Address.from_P2SH_script(bytes.fromhex(redeem_script)).to_script().hex())
             txn = self._fetched_tx_cache.get(txin['prevout_hash']).raw
             txn_1 = txn
             txn_2_pubkey = "00"
             txn_3 = "00"
             if not estimate_size and len(pubkeys[0]) == 66 and pubkeys[0][:2] != "00":
-                txn_1 = txn.split(pubkeys[0])[0]
+                txn_1 = txn.split(pubkeys[0], 1)[0]
                 txn_2_pubkey = pubkeys[0]
-                txn_3 = txn.split(pubkeys[0])[1]
+                txn_3 = txn.split(pubkeys[0], 1)[1]
             script += push_script(txn_3) + push_script(txn_2_pubkey) + push_script(txn_1) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_1) + push_script(redeem_script)
         elif _type == 'p2pkh':
             script += push_script(pubkeys[0])
