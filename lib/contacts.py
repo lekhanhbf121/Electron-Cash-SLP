@@ -34,9 +34,9 @@ from . import dnssec
 from . import util
 from . import networks
 from .storage import WalletStorage
-from .address import Address, Script, hash160
+from .address import Address, Script, hash160, sha256
 
-from .cashscript import ScriptPin
+from .cashscript import ScriptPin, from_asm, check_cashscript_parms
 
 class Contact(namedtuple("Contact", "name address type")):
     ''' Your basic contacts entry. '''
@@ -103,16 +103,18 @@ class Contacts(util.PrintError):
                 artifact_sha256 = d.get('sha256')
                 if artifact_sha256 not in scripts_contracts:
                     continue
+
+                # double check the script's hash matches the key listed in the list of available artifacts 
+                artifact = scripts_contracts[artifact_sha256]['artifact']
+                _sha256 = sha256(bytes.fromhex(from_asm(artifact['bytecode'])))
+                if _sha256.hex() != artifact_sha256:
+                    raise Exception('bytecode sha256 does not match list of supported artifacts')
                 script_params = tuple(d.get('params'))
-                artifact_location = scripts_contracts[artifact_sha256]['location']
-                try:
-                    artifact = pkgutil.get_data(__name__, artifact_location)
-                    #artifact_json = json.loads(data.decode('utf-8'))
-                    # TODO: check data sha256 against artifact_sha256
-                    # TODO: check script params validate with artifact constructor and abi method params
-                except:
-                    continue
-                out.append( ScriptContract(name, address, typ, artifact_sha256, script_params))
+
+                # check params length matches artifact lengths
+                check_cashscript_parms(artifact, script_params)
+
+                out.append( ScriptContract(name, address, typ, artifact_sha256, script_params) )
             else:
                 out.append( Contact(name, address, typ) )
         return out
@@ -347,7 +349,7 @@ class Contacts(util.PrintError):
             pass
         return False
 
-    def add_script_pin(self, pin : ScriptPin):
+    def handle_script_pin(self, pin : ScriptPin):
         assert isinstance(pin, ScriptPin)
 
         artifacts = networks.net.SCRIPT_ARTIFACTS
@@ -366,7 +368,7 @@ class Contacts(util.PrintError):
             address=p2sh_str,
             type='script',
             sha256=pin.artifact_sha256.hex(),
-            params=tuple([ inp.hex() for inp in pin.constructor_inputs ] + [ inp.hex() for inp in pin.abi_inputs ])
+            params=tuple([ inp.hex() for inp in pin.constructor_inputs ])
         )
 
         if contract in self.data:

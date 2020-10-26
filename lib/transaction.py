@@ -44,6 +44,8 @@ import warnings
 #
 from .keystore import xpubkey_to_address, xpubkey_to_pubkey
 
+from . import cashscript
+
 NO_SIGNATURE = 'ff'
 
 
@@ -718,12 +720,12 @@ class Transaction:
             redeem_script = multisig_script(pubkeys, txin['num_sig'])
             script += push_script(redeem_script)
         elif _type == 'slp_vault_sweep':
-            redeem_script = slp_vault_script(pubkeys[0])
+            redeem_script = cashscript.get_script(cashscript.slp_vault_id, [bytes.fromhex(txin['slp_vault_pkh'])]).hex()
             outputs = txin['hashoutputs_preimage']
             preimage = txin['tx_preimage']
             script += push_script(pubkeys[0]) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_0) + push_script(redeem_script)
         elif _type == 'slp_vault_revoke':
-            redeem_script = Script.slp_vault_script_from_hash160(bytes.fromhex(txin['slp_vault_pkh'])).hex()
+            redeem_script = cashscript.get_script(cashscript.slp_vault_id, [bytes.fromhex(txin['slp_vault_pkh'])]).hex()
             outputs = txin['hashoutputs_preimage']
             preimage = txin['tx_preimage']
             #print(Address.from_P2SH_script(bytes.fromhex(redeem_script)).to_script().hex())

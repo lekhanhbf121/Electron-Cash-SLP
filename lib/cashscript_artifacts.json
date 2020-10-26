@@ -1,6 +1,8 @@
 {
-    "c1cafa422e96d6f00671de71a3e31311be8e9daf97f9af2cd8fead82f31bef5e": {
-        "name": "SLP Vault 1.0",
-        "location": "cashscript/slp_vault.artifact"
+    "bc0457caa16e2f7e21ec855018cfde002009f8df76e006280c5b3600ee317a00": {
+        "name": "SLP Vault",
+        "location": "cashscript/slp_vault.artifact",
+        "mainnet": false,
+        "maxTxSize": 520
     }
 }

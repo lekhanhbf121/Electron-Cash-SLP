@@ -38,7 +38,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 
 from electroncash import keystore, get_config
-from electroncash.address import Address, ScriptOutput
+from electroncash.address import Address, Script, ScriptOutput, hash160
 from electroncash.bitcoin import COIN, TYPE_ADDRESS, TYPE_SCRIPT
 from electroncash import networks
 from electroncash.plugins import run_hook
@@ -1676,7 +1676,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if not self.wallet.token_types.get(token_id, None):
                     self.show_message("First need to add Token ID:\n" + token_id)
                 amts = list(slpmsg.op_return_fields['token_output'])
-                coin['slp_value'] = amts[coin['prevout_n']]
+                coin['slp_value'] = amts[coin['tx_pos']]
                 slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [coin['slp_value']], self.wallet.token_types.get(token_id)['class'])
                 outputs.append(slp_op_return_msg)
                 outputs.append((TYPE_ADDRESS, rec_addr, 546))
@@ -2496,6 +2496,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     """ Require SLPADDR prefix in 'Pay To' field. """
                     if networks.net.SLPADDR_PREFIX not in self.payto_e.address_string_for_slp_check and not is_paytomany_slp:
                         self.show_error(_("Address provided is not in SLP Address format.\n\nThe address should be encoded using 'simpleledger:' or 'slptest:' URI prefix."))
+                        if not networks.net.TESTNET and networks.net.SCRIPTADDR_PREFIX not in self.payto_e.address_string_for_slp_check:
                         return
                     if slp_op_return_msg:
                         bch_outputs = [ slp_op_return_msg ]
@@ -3211,15 +3212,21 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_message("You must provide a P2PKH address to get the SLP Vault address.")
             else:
                 outputs = []
-                artifact_sha256 = "c1cafa422e96d6f00671de71a3e31311be8e9daf97f9af2cd8fead82f31bef5e"
+                artifact_sha256 = cashscript.slp_vault_id
                 addr = Address.from_string(source_address.text().strip())
-                pin_op_return_msg = cashscript.buildCashscriptPinMsg(artifact_sha256, [addr.hash160], [])
+                script_params = [addr.hash160]
+                pin_op_return_msg = cashscript.buildCashscriptPinMsg(artifact_sha256, script_params)
                 outputs.append(pin_op_return_msg)
                 outputs.append((TYPE_ADDRESS, addr, 546))
                 if not self.wallet.is_mine(addr):
                     outputs.append((TYPE_ADDRESS, self.wallet.get_unused_address(), 546))
                 tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[])
                 self.show_transaction(tx, "New slp vault pin")
+
+                # set label for this contact
+                label_string = "SLP Vault for " + source_address.text()
+                script_addr = cashscript.get_script_address_string(artifact_sha256, script_params)
+                self.wallet.set_label(script_addr, label_string)
 
         view_vault_btn.clicked.connect(slp_vault_toggle)
 

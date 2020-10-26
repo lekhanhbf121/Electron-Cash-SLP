@@ -106,17 +106,17 @@ class OpCodes(IntEnum):
     OP_TUCK = 0x7d
 
     # splice ops
-    OP_CAT = 0x7e
-    OP_SPLIT = 0x7f   # after monolith upgrade (May 2018)
-    OP_NUM2BIN = 0x80 # after monolith upgrade (May 2018)
-    OP_BIN2NUM = 0x81 # after monolith upgrade (May 2018)
+    OP_CAT = 0x7e                       # added May 2018
+    OP_SPLIT = 0x7f                     # added May 2018 (was previously planned to be OP_SUBSTR)
+    OP_NUM2BIN = 0x80                   # added May 2018 (was previously planned to be OP_LEFT)
+    OP_BIN2NUM = 0x81                   # added May 2018 (was previously planned to be OP_RIGHT)
     OP_SIZE = 0x82
 
     # bit logic
-    OP_INVERT = 0x83
-    OP_AND = 0x84
-    OP_OR = 0x85
-    OP_XOR = 0x86
+    OP_INVERT = 0x83                    # disabled
+    OP_AND = 0x84                       # added May 2018
+    OP_OR = 0x85                        # added May 2018
+    OP_XOR = 0x86                       # added May 2018
     OP_EQUAL = 0x87
     OP_EQUALVERIFY = 0x88
     OP_RESERVED1 = 0x89
@@ -125,8 +125,8 @@ class OpCodes(IntEnum):
     # numeric
     OP_1ADD = 0x8b
     OP_1SUB = 0x8c
-    OP_2MUL = 0x8d
-    OP_2DIV = 0x8e
+    OP_2MUL = 0x8d                      # disabled
+    OP_2DIV = 0x8e                      # disabled
     OP_NEGATE = 0x8f
     OP_ABS = 0x90
     OP_NOT = 0x91
@@ -134,11 +134,11 @@ class OpCodes(IntEnum):
 
     OP_ADD = 0x93
     OP_SUB = 0x94
-    OP_MUL = 0x95
-    OP_DIV = 0x96
-    OP_MOD = 0x97
-    OP_LSHIFT = 0x98
-    OP_RSHIFT = 0x99
+    OP_MUL = 0x95                       # disabled
+    OP_DIV = 0x96                       # added May 2018
+    OP_MOD = 0x97                       # added May 2018
+    OP_LSHIFT = 0x98                    # disabled
+    OP_RSHIFT = 0x99                    # disabled
 
     OP_BOOLAND = 0x9a
     OP_BOOLOR = 0x9b
@@ -181,12 +181,11 @@ class OpCodes(IntEnum):
     OP_NOP10 = 0xb9
 
     # More crypto
-    OP_CHECKDATASIG = 0xba
-    OP_CHECKDATASIGVERIFY = 0xbb
+    OP_CHECKDATASIG = 0xba              # added Nov 15 2018
+    OP_CHECKDATASIGVERIFY = 0xbb        # added Nov 15 2018
 
     # additional byte string operations
-    OP_REVERSEBYTES = 0xbc
-
+    OP_REVERSEBYTES = 0xbc              # added May 2020
 
 P2PKH_prefix = bytes([OpCodes.OP_DUP, OpCodes.OP_HASH160, 20])
 P2PKH_suffix = bytes([OpCodes.OP_EQUALVERIFY, OpCodes.OP_CHECKSIG])
