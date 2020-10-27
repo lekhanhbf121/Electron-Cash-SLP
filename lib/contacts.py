@@ -41,7 +41,7 @@ from .cashscript import ScriptPin, from_asm, check_cashscript_parms
 class Contact(namedtuple("Contact", "name address type")):
     ''' Your basic contacts entry. '''
 
-class ScriptContract(namedtuple("Contact", "name address type sha256 params")):
+class ScriptContact(namedtuple("Contact", "name address type sha256 params")):
     ''' Your basic contacts entry. '''
 
 contact_types = { 'address', 'script' }  # {'address', 'cashacct', 'openalias'}
@@ -114,7 +114,7 @@ class Contacts(util.PrintError):
                 # check params length matches artifact lengths
                 check_cashscript_parms(artifact, script_params)
 
-                out.append( ScriptContract(name, address, typ, artifact_sha256, script_params) )
+                out.append( ScriptContact(name, address, typ, artifact_sha256, script_params) )
             else:
                 out.append( Contact(name, address, typ) )
         return out
@@ -358,14 +358,10 @@ class Contacts(util.PrintError):
         if pin.artifact_sha256.hex() not in artifacts:
             return False
 
-        # only have this 1 script type to worry about right now..
-        # TODO: use cashscript.py to compute hash160 / Address from artifact + pin
-        h160 = hash160(Script.slp_vault_script_from_hash160(pin.constructor_inputs[0]))
-        p2sh_str = Address.from_P2SH_hash(h160).to_full_string(Address.FMT_SCRIPTADDR)
 
-        contract = ScriptContract(
+        contract = ScriptContact(
             name="SLP Vault",
-            address=p2sh_str,
+            address=pin.address.to_full_string(Address.FMT_SCRIPTADDR),
             type='script',
             sha256=pin.artifact_sha256.hex(),
             params=tuple([ inp.hex() for inp in pin.constructor_inputs ])

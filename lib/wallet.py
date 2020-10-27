@@ -69,7 +69,7 @@ from .contacts import Contacts
 from .slp import SlpMessage, SlpParsingError, SlpUnsupportedSlpTokenType, SlpNoMintingBatonFound, OpreturnError
 from . import slp_validator_0x01, slp_validator_0x01_nft1
 
-from .cashscript import ScriptPin
+from . import cashscript
 
 def _(message): return message
 
@@ -258,6 +258,7 @@ class Abstract_Wallet(PrintError):
         # invoices and contacts
         self.invoices = InvoiceStore(self.storage)
         self.contacts = Contacts(self.storage)
+        self.contacts_subscribed = []
 
         # Now, finally, after object is constructed -- we can do this
         self.load_keystore()
@@ -1482,14 +1483,20 @@ class Abstract_Wallet(PrintError):
                             self.set_label(tx_hash, 'SLP vault received new coins')
 
                 # check for pin messages
-                if _type == TYPE_SCRIPT:
+                if _type == TYPE_SCRIPT and cashscript.pin_protocol_id in addr.script:
                     try:
-                        if b'PIN' in addr.script:
-                            pin = ScriptPin.parsePinScriptOutput(addr)
-                            if self.contacts.add_script_pin(pin):
-                                self.set_label(tx_hash, 'New slp vault pin')
+                        pin = cashscript.ScriptPin.parsePinScriptOutput(addr)
                     except:
                         pass
+                    else:
+                        if self.contacts.handle_script_pin(pin):
+                            self.set_label(tx_hash, 'New slp vault pin')
+                        if pin.artifact_sha256.hex() in networks.net.SCRIPT_ARTIFACTS:
+                            artifact_entry = networks.net.SCRIPT_ARTIFACTS.get(pin.artifact_sha256.hex())
+                            label_string = cashscript.get_label_string(self, pin.artifact_sha256.hex(), [p.hex() for p in pin.constructor_inputs])
+                            key = pin.address.to_full_string(Address.FMT_SCRIPTADDR)
+                            if not self.labels.get(key):
+                                self.set_label(key, label_string)
 
                 if mine or self.is_mine(addr):
                     # add coin to self.txo since it's mine.

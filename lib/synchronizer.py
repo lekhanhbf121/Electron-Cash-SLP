@@ -32,7 +32,7 @@ from .util import ThreadJob, bh2u
 from . import networks
 from .bitcoin import InvalidXKeyFormat
 from .address import Address, Script, hash160
-
+from . import cashscript
 
 class Synchronizer(ThreadJob):
     '''The synchronizer keeps the wallet up-to-date with its set of
@@ -230,9 +230,12 @@ class Synchronizer(ThreadJob):
         if self.requested_tx:
             self.print_error("missing tx", self.requested_tx)
         self.subscribe_to_addresses(self.wallet.get_addresses())
-        if self.wallet.wallet_type == 'slp_standard':
-            vaults = [ addr.get_slp_vault() for addr in self.wallet.get_addresses()]
-            self.subscribe_to_addresses(vaults)
+        for contact in self.wallet.contacts.data:
+            if contact.type == 'script':
+                cashaddr = Address.from_string(contact.address)
+                if cashscript.is_mine(self.wallet, contact.sha256, contact.params) and cashaddr not in self.wallet.contacts_subscribed:
+                    self.wallet.contacts_subscribed.append(cashaddr)
+                    self.subscribe_to_addresses([cashaddr])
 
     def run(self):
         '''Called from the network proxy thread main loop.'''
@@ -250,9 +253,12 @@ class Synchronizer(ThreadJob):
                 self.new_addresses = set()
             if addresses:
                 self.subscribe_to_addresses(addresses)
-                if self.wallet.wallet_type == 'slp_standard':
-                    vaults = [ addr.get_slp_vault() for addr in self.wallet.get_addresses() ]
-                    self.subscribe_to_addresses(vaults)
+            for contact in self.wallet.contacts.data:
+                if contact.type == 'script':
+                    cashaddr = Address.from_string(contact.address)
+                    if cashscript.is_mine(self.wallet, contact.sha256, contact.params) and cashaddr not in self.wallet.contacts_subscribed:
+                        self.wallet.contacts_subscribed.append(cashaddr)
+                        self.subscribe_to_addresses([cashaddr])
 
             # 3. Detect if situation has changed
             up_to_date = self.is_up_to_date()

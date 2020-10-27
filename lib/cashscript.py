@@ -1,25 +1,33 @@
-import json, pkgutil
-from .bitcoin import TYPE_SCRIPT, TYPE_ADDRESS, var_int, int_to_hex, push_script
-from .util import bfh
+from .bitcoin import TYPE_SCRIPT, var_int, int_to_hex, push_script
 from .networks import net
 from .address import OpCodes, Address, hash160
 
-slp_vault_id = "bc0457caa16e2f7e21ec855018cfde002009f8df76e006280c5b3600ee317a00"
+slp_vault_id = "32b14aa93b0d0cd360a3e0204ac6ac2087564d2aa7cd7462db073358b6a55c62"
+slp_dollar_id = "TODO_2"
+slp_mint_id = "TODO_1"
 
-def get_script(artifact_sha256, params):
+valid_scripts = [ slp_vault_id, slp_dollar_id, slp_mint_id]
+
+def is_mine(wallet, artifact_sha256: str, params: [str]) -> bool:
+    if artifact_sha256 == slp_vault_id:
+        cashaddr = Address.from_P2PKH_hash(bytes.fromhex(params[0]))
+        return wallet.is_mine(cashaddr)
+    return False
+
+def get_script(artifact_sha256: str, params: [str]) -> bytes:
     artifact = net.SCRIPT_ARTIFACTS[artifact_sha256]['artifact']
     script = from_asm(artifact['bytecode'])
     for param in params:
-        script = push_script(param.hex()) + script
+        script = push_script(param) + script
     return bytes.fromhex(script)
 
-def get_script_address(artifact_sha256, params):
+def get_script_address(artifact_sha256: str, params: [str]) -> Address:
     return Address.from_P2SH_hash(hash160(get_script(artifact_sha256, params)))
 
-def get_script_address_string(artifact_sha256, params):
+def get_script_address_string(artifact_sha256: str, params: [str]) -> str:
     return get_script_address(artifact_sha256, params).to_full_string(Address.FMT_SCRIPTADDR)
 
-def from_asm(asm : str):
+def from_asm(asm: str) -> str:
     asm_chunks = asm.split(' ')
     bin_chunks = []
     for val in asm_chunks:
@@ -34,6 +42,15 @@ def from_asm(asm : str):
         elif isinstance(chunk, str):
             _hex += push_script(chunk)
     return _hex
+
+def get_label_string(wallet, artifact_sha256, params):
+    if artifact_sha256 == slp_vault_id:
+        if is_mine(wallet, artifact_sha256, params):
+            return "for me"
+        else:
+            return "for " + get_script_address_string(artifact_sha256, params)
+    else:
+        return "get_label_string unimplemented for this contract"
 
 def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [bytearray]) -> tuple:
     chunks = []
@@ -55,15 +72,10 @@ def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [bytearra
     for constInp in constructorInputs:
         ci += bytes.fromhex(var_int(len(constInp))) + constInp
     chunks.append(ci)
-    # abi
-    # for abiReq in abiRequirements:
-    #     abi = b''
-    #     for r in abiReq:
-    #         abi += bytes.fromhex(var_int(len(r))) + r
-    #     chunks.append(abiReq)
+
     return chunksToOpreturnOutput(chunks)
 
-def check_cashscript_parms(artifact, params):
+def check_cashscript_parms(artifact: dict, params: [str]) -> bool:
     if len(artifact['constructorInputs']) != len(params):
         raise Exception('params length does not match required length of constructorInputs')
     for i, val in enumerate(artifact['constructorInputs']):
@@ -86,7 +98,7 @@ class ScriptPin:
         self.artifact_sha256 = None
         self.artifact = None
         self.constructor_inputs = []
-        #self.abi_inputs = []
+        self.address = None
 
     @staticmethod
     def parsePinScriptOutput(outputScript):
@@ -116,17 +128,19 @@ class ScriptPin:
         if pinMsg.artifact_sha256.hex() not in net.SCRIPT_ARTIFACTS:
             raise Exception('not an available script')
 
-        artifact = net.SCRIPT_ARTIFACTS[pinMsg.artifact_sha256.hex()]['artifact']
+        pinMsg.artifact = net.SCRIPT_ARTIFACTS[pinMsg.artifact_sha256.hex()]['artifact']
 
         if len(chunks) == 3:
             raise Exception('missing script constructor inputs')
         try:
             if chunks[3] is not None:
                 pinMsg.constructor_inputs = deserialize(chunks[3])
-            if len(pinMsg.constructor_inputs) != len(artifact['constructorInputs']):
+            if len(pinMsg.constructor_inputs) != len(pinMsg.artifact['constructorInputs']):
                 raise Exception('cannot have empty script constructor inputs')
         except:
             raise Exception('could not parse constructor inputs')
+
+        pinMsg.address = get_script_address(pinMsg.artifact_sha256.hex(), [p.hex() for p in pinMsg.constructor_inputs])
 
         return pinMsg
 

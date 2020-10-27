@@ -53,7 +53,7 @@ from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
 from electroncash.wallet import Multisig_Wallet, Slp_Vault_Wallet, sweep_preparations
-from electroncash.contacts import Contact, ScriptContract
+from electroncash.contacts import Contact, ScriptContact
 try:
     from electroncash.plot import plot_history
 except:
@@ -1654,8 +1654,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def revoke_slp_vault(self, coins):
         for coin in coins:
-            txn = self.wallet.transactions[coin['tx_hash']]
-            Transaction.tx_cache_put(txn, coin['tx_hash'])
+            txn = self.wallet.transactions[coin['prevout_hash']]
+            Transaction.tx_cache_put(txn, coin['prevout_hash'])
             pubkey = None
             rec_addr = None
             #addr = coin['address']
@@ -1685,18 +1685,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             coin['type'] = 'slp_vault_revoke'
             coin['num_sig'] = 1
             coin['pubkeys'] = [pubkey]
-            coin['prevout_hash'] = coin['tx_hash']
-            coin['prevout_n'] = coin['tx_pos']
             self.wallet.add_input_sig_info(coin, rec_addr)
             tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[coin])
             self.show_transaction(tx, "SLP vault revoke", require_tx_in_wallet=False)
 
-    def sweep_slp_vault(self, pkh):
-        addr = Address.from_P2PKH_hash(pkh)
-        vault_addr = addr.get_slp_vault()
-        hist = self.wallet.get_address_history(vault_addr)
-        coins = self.wallet.get_spendable_coins([vault_addr], self.config)
+    def sweep_slp_vault(self, coins):
         for coin in coins:
+            cash_addr = Address.from_P2PKH_hash(bytes.fromhex(coin['slp_vault_pkh']))
             txn = self.wallet.transactions[coin['prevout_hash']]
             slpmsg = None
             try:
@@ -1712,14 +1707,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 coin['slp_value'] = amts[coin['prevout_n']]
                 slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [coin['slp_value']], self.wallet.token_types.get(token_id)['class'])
                 outputs.append(slp_op_return_msg)
-                outputs.append((TYPE_ADDRESS, addr, 546))
+                outputs.append((TYPE_ADDRESS, cash_addr, 546))
             else:
-                outputs.append((TYPE_ADDRESS, addr, coin['value']))
-            coin['slp_vault_pkh'] = pkh.hex()
+                outputs.append((TYPE_ADDRESS, cash_addr, coin['value']))
             coin['type'] = 'slp_vault_sweep'
             coin['num_sig'] = 1
-            coin['pubkeys'] = self.wallet.get_public_keys(addr)
-            self.wallet.add_input_sig_info(coin, addr)
+            coin['pubkeys'] = self.wallet.get_public_keys(cash_addr)
+            self.wallet.add_input_sig_info(coin, cash_addr)
             tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[coin])
             self.show_transaction(tx, "SLP vault sweep", require_tx_in_wallet=False)
 
@@ -2412,7 +2406,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.from_list.addTopLevelItem(QTreeWidgetItem( [format(item), self.format_amount(item['value']) ]))
 
     def get_contact_payto(self, contact : Contact) -> str:
-        assert isinstance(contact, Contact) or isinstance(contact, ScriptContract)
+        assert isinstance(contact, Contact) or isinstance(contact, ScriptContact)
         _type, label = contact.type, contact.name
         emoji_str = ''
         mod_type = _type
