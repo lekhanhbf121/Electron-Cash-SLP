@@ -38,7 +38,7 @@ from electroncash import networks
 
 
 class AddressList(MyTreeWidget):
-    filter_columns = [0, 1, 2]  # Address, Label, Balance, ?SLP Vault?
+    filter_columns = [0, 1, 2]  # Address, Label, Balance
     def __init__(self, parent=None):
         super().__init__(parent, self.create_menu, [], 2, deferred_updates=True)
         self.wallet = self.parent.wallet
@@ -61,10 +61,7 @@ class AddressList(MyTreeWidget):
         super().filter(p)  # call super on chopped-off-piece
 
     def refresh_headers(self):
-        if self.wallet.wallet_type == 'slp_standard':
-            headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx'), _('Vault Tx'), _('Vault Status')]
-        else:
-            headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx')]
+        headers = [ _('Address'), _('Index'),_('Label'), _('Balance'), _('Tx')]
         fx = self.parent.fx
         if fx and fx.get_fiat_address_config():
             headers.insert(4, '{} {}'.format(fx.get_currency(), _('Balance')))
@@ -154,16 +151,7 @@ class AddressList(MyTreeWidget):
                 address_text = address.to_ui_string()
                 label = self.wallet.labels.get(address.to_storage_string(), '')
                 balance_text = self.parent.format_amount(balance, whitespaces=True)
-                if self.wallet.wallet_type == 'slp_standard':
-                    slp_vault_addr = address.get_slp_vault()
-                    slp_vault_tx_count = len(self.wallet.get_address_history(slp_vault_addr))
-                    slp_vault_coin_count = len(self.wallet.get_spendable_coins([slp_vault_addr], self.parent.config))
-                    if slp_vault_tx_count > 0:
-                        columns = [ address_text, str(n), label, balance_text, str(num), str(slp_vault_tx_count) if slp_vault_tx_count else '', 'Sweep me!' if slp_vault_coin_count > 0 else 'All clean.' ]
-                    else:
-                        columns = [ address_text, str(n), label, balance_text, str(num), '', '' ]
-                else:
-                    columns = [ address_text, str(n), label, balance_text, str(num) ]
+                columns = [ address_text, str(n), label, balance_text, str(num) ]
                 if fx:
                     rate = fx.exchange_rate()
                     fiat_balance = fx.value_str(balance, rate)
@@ -202,9 +190,8 @@ class AddressList(MyTreeWidget):
         restore_expanded_items(self.invisibleRootItem(), expanded_item_names)
 
     def create_menu(self, position):
-        from electroncash.wallet import Multisig_Wallet, Slp_Vault_Wallet
+        from electroncash.wallet import Multisig_Wallet
         is_multisig = isinstance(self.wallet, Multisig_Wallet)
-        is_slp_vault = isinstance(self.wallet, Slp_Vault_Wallet)
         can_delete = self.wallet.can_delete_address()
         selected = self.selectedItems()
         multi_select = len(selected) > 1
@@ -240,9 +227,6 @@ class AddressList(MyTreeWidget):
                     alt_copy_text, alt_column_title = addr.to_full_string(Address.FMT_LEGACY), _('Legacy Address')
             else:
                 copy_text = item.text(col)
-            if len(self.wallet.get_address_history(addr.get_slp_vault())):
-                menu.addAction("Sweep SLP Vault", lambda: self.parent.sweep_slp_vault(addr.hash160))
-                menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: doCopy(copy_text))
             if alt_copy_text and alt_column_title:
                 # Add 'Copy Legacy Address' and 'Copy Cash Address' alternates if right-click is on column 0
@@ -261,7 +245,7 @@ class AddressList(MyTreeWidget):
                 a.setDisabled(True)
             if self.wallet.can_export():
                 menu.addAction(_("Private key"), lambda: self.parent.show_private_key(addr))
-            if not (is_multisig or is_slp_vault) and not self.wallet.is_watching_only():
+            if not is_multisig and not self.wallet.is_watching_only():
                 menu.addAction(_("Sign/verify message"), lambda: self.parent.sign_verify_message(addr))
                 menu.addAction(_("Encrypt/decrypt message"), lambda: self.parent.encrypt_message(addr))
             if can_delete:
