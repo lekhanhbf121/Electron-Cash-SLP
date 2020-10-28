@@ -48,6 +48,8 @@ from .util import *
 
 from electroncash.util import format_satoshis_nofloat
 
+import electroncash.cashscript as cashscript
+
 dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
 if False:
@@ -579,7 +581,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         box_char = "█"
         self.recv_legend = QLabel("<font color=" + ColorScheme.BLUE.as_color(background=True).name() + ">" + box_char + "</font> = " + _("Receiving Address"))
         self.change_legend = QLabel("<font color=" + ColorScheme.YELLOW.as_color(background=True).name() + ">" + box_char + "</font> = " + _("Change Address"))
-        self.vault_legend = QLabel("<font color=" + ColorScheme.PINK.as_color(background=True).name() + ">" + box_char + "</font> = " + _("SLP Vault Address"))
+        self.vault_legend = QLabel("<font color=" + ColorScheme.PINK.as_color(background=True).name() + ">" + box_char + "</font> = " + _("CashScript Address"))
         self.slp_legend = QLabel("<font color=" + ColorScheme.GREEN.as_color(background=True).name() + ">" + box_char + "</font> = " + _("SLP Output"))
         f = self.recv_legend.font(); f.setPointSize(f.pointSize()-1)
         self.recv_legend.setFont(f)
@@ -662,13 +664,14 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
 
         def text_format(addr):
             nonlocal rec_ct, chg_ct, vlt_ct
-            if isinstance(addr, Address) and self.wallet.is_mine(addr, check_slp_vault=True):
+            is_my_cashscript = cashscript.is_mine(self.wallet, addr)
+            if isinstance(addr, Address) and (self.wallet.is_mine(addr) or is_my_cashscript):
                 if self.wallet.is_change(addr):
                     chg_ct += 1
                     chg2 = QTextCharFormat(chg)
                     chg2.setAnchorHref(addr.to_ui_string())
                     return chg2
-                elif self.wallet.is_slp_vault(addr):
+                elif is_my_cashscript:
                     vlt_ct += 1
                     vlt2 = QTextCharFormat(vlt)
                     vlt2.setAnchorHref(addr.to_ui_string())

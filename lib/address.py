@@ -663,13 +663,6 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             raise AddressError('cannot convert to script address from a non-p2sh format')
         return cashaddr.encode(net.SCRIPTADDR_PREFIX, kind, self.hash160)
 
-    def to_slp_vault_addr_str(self, *, net=None):
-        if net is None: net = networks.net
-        if self.kind == self.ADDR_P2SH:
-            return None
-        else:
-            return self.get_slp_vault().to_full_string(self.FMT_SCRIPTADDR)
-
     def to_string(self, fmt, *, net=None):
         '''Converts to a string of the given format.'''
         if net is None: net = networks.net
@@ -772,11 +765,6 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
         '''Like other bitcoin hashes this is reversed when written in hex.'''
         return hash_to_hex_str(self.to_scripthash())
 
-    def get_slp_vault(self):
-        if self.kind != self.ADDR_P2PKH:
-            raise AddressError('cannot get vault address from a non-p2pkh address')
-        return Address(hash160(Script.slp_vault_script_from_hash160(self.hash160)), self.ADDR_P2SH)
-
     def __str__(self):
         return self.to_ui_string()
 
@@ -827,21 +815,6 @@ class Script:
         return (bytes([OpCodes.OP_1 + m - 1])
                 + b''.join(cls.push_data(pubkey) for pubkey in pubkeys)
                 + bytes([OpCodes.OP_1 + n - 1, OpCodes.OP_CHECKMULTISIG]))
-
-    @classmethod
-    def slp_vault_script(cls, pubkey, *, validate=True):
-        '''Returns the script for the SLP Vault '''
-        if validate:
-            PublicKey.validate(pubkey)
-        return cls.slp_vault_script_from_hash160(hash160(pubkey))
-    
-    @classmethod
-    def slp_vault_script_from_hash160(cls, h106):
-        '''Returns the script for the SLP Vault
-            For more information see: 
-            https://github.com/simpleledgerinc/cashscript/blob/master/examples/slp_vault.cash
-        '''
-        return (cls.push_data(h106) + hex_to_bytes("78009c635279820134947f77587f547f7701207f755579aa88547f7581022202a1635379587f7508000000000000000088685379547a827752947f770288ac885379a988726e7c828c7f75557aa87bbbac77677c519d7801447f7701247f820134947f77587f547f7701207f757c547f7581022202a163765579aa885479587f750800000000000000008868557a56797e577a7eaa7b01207f7588716e7c828c7f75567aa87bbbac77777768"))
 
     @classmethod
     def push_data(cls, data):

@@ -3218,8 +3218,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_transaction(tx, "New slp vault pin")
 
                 # set label for this contact
-                label_string = "SLP Vault for " + source_address.text()
-                script_addr = cashscript.get_script_address_string(artifact_sha256, script_params)
+                label_string = cashscript.get_contact_label(self.wallet, artifact_sha256, [p.hex() for p in script_params])
+                script_addr = cashscript.get_script_address_string(artifact_sha256, [p.hex() for p in script_params])
+                if not self.wallet.labels.get(key):
                 self.wallet.set_label(script_addr, label_string)
 
         view_vault_btn.clicked.connect(slp_vault_toggle)
@@ -3245,7 +3246,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             slp_vault_address.setText('')
             try:
                 if addr.kind == addr.ADDR_P2PKH:
-                    slp_vault_address.setText(addr.to_slp_vault_addr_str())
+                    slp_vault_address.setText(cashscript.get_script_address_string(cashscript.slp_vault_id, [addr.hash160.hex()]))
                 else:
                     slp_vault_address.setText('')
             except AttributeError:
@@ -3428,7 +3429,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         Note that duplicate contacts will not be added multiple times, but in
         that case the returned value would still be a valid Contact.
         Returns None on failure.'''
-        assert typ in ('address', 'cashacct')
+        assert typ in ('address', 'cashacct', 'script')
         contact = None
         if typ == 'cashacct':
             tup = self.resolve_cashacct(label)  # this displays an error message for us
@@ -3438,6 +3439,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             info, label = tup
             address = info.address.to_ui_string()
             contact = Contact(name=label, address=address, type=typ)
+        elif typ == 'script':
+            contact = ScriptContact(name=label, address=replace.address, type=replace.type, sha256=replace.sha256, params=replace.params)
         elif not Address.is_valid(address):
             # Bad 'address' code path
             self.show_error(_('Invalid Address'))

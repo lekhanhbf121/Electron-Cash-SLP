@@ -8,10 +8,17 @@ slp_mint_id = "TODO_1"
 
 valid_scripts = [ slp_vault_id, slp_dollar_id, slp_mint_id]
 
-def is_mine(wallet, artifact_sha256: str, params: [str]) -> bool:
-    if artifact_sha256 == slp_vault_id:
-        cashaddr = Address.from_P2PKH_hash(bytes.fromhex(params[0]))
-        return wallet.is_mine(cashaddr)
+def is_mine(wallet, address):
+    if isinstance(address, Address):
+        if address.kind != Address.ADDR_P2SH:
+            return False
+        else:
+            address = address.to_full_string(Address.FMT_SCRIPTADDR)
+    scripts = [ c for c in wallet.contacts.data if c.type == 'script' and c.address == address ]
+    for contact in scripts:
+        if contact.sha256 == slp_vault_id:
+            return wallet.is_mine(Address.from_P2PKH_hash(bytes.fromhex(contact.params[0])))
+        # NOTE: other script types need to be mapped here
     return False
 
 def get_script(artifact_sha256: str, params: [str]) -> bytes:
@@ -19,10 +26,10 @@ def get_script(artifact_sha256: str, params: [str]) -> bytes:
     script = from_asm(artifact['bytecode'])
     for param in params:
         script = push_script(param) + script
-    return bytes.fromhex(script)
+    return script
 
 def get_script_address(artifact_sha256: str, params: [str]) -> Address:
-    return Address.from_P2SH_hash(hash160(get_script(artifact_sha256, params)))
+    return Address.from_P2SH_hash(hash160(bytes.fromhex(get_script(artifact_sha256, params))))
 
 def get_script_address_string(artifact_sha256: str, params: [str]) -> str:
     return get_script_address(artifact_sha256, params).to_full_string(Address.FMT_SCRIPTADDR)
@@ -43,14 +50,22 @@ def from_asm(asm: str) -> str:
             _hex += push_script(chunk)
     return _hex
 
-def get_label_string(wallet, artifact_sha256, params):
+def get_contact_label(wallet, artifact_sha256, params):
+    name = get_contract_name_string(artifact_sha256)
     if artifact_sha256 == slp_vault_id:
-        if is_mine(wallet, artifact_sha256, params):
-            return "for me"
+        address = get_script_address_string(artifact_sha256, params)
+        if is_mine(wallet, address):
+            return name + " for me"
         else:
-            return "for " + get_script_address_string(artifact_sha256, params)
+            return name + " for " + get_script_address_string(artifact_sha256, params)
     else:
-        return "get_label_string unimplemented for this contract"
+        return "get_contact_label unimplemented for this contract"
+
+def get_contract_name_string(artifact_sha256):
+    if artifact_sha256 in net.SCRIPT_ARTIFACTS:
+        return net.SCRIPT_ARTIFACTS[artifact_sha256]['name']
+    else:
+        return "unknown cashscript artifact"
 
 def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [bytearray]) -> tuple:
     chunks = []
@@ -75,7 +90,7 @@ def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [bytearra
 
     return chunksToOpreturnOutput(chunks)
 
-def check_cashscript_parms(artifact: dict, params: [str]) -> bool:
+def check_cashscript_params(artifact: dict, params: [str]) -> bool:
     if len(artifact['constructorInputs']) != len(params):
         raise Exception('params length does not match required length of constructorInputs')
     for i, val in enumerate(artifact['constructorInputs']):

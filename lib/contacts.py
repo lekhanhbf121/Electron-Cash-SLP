@@ -36,7 +36,7 @@ from . import networks
 from .storage import WalletStorage
 from .address import Address, Script, hash160, sha256
 
-from .cashscript import ScriptPin, from_asm, check_cashscript_parms
+from .cashscript import ScriptPin, from_asm, check_cashscript_params, get_contract_name_string
 
 class Contact(namedtuple("Contact", "name address type")):
     ''' Your basic contacts entry. '''
@@ -112,7 +112,7 @@ class Contacts(util.PrintError):
                 script_params = tuple(d.get('params'))
 
                 # check params length matches artifact lengths
-                check_cashscript_parms(artifact, script_params)
+                check_cashscript_params(artifact, script_params)
 
                 out.append( ScriptContact(name, address, typ, artifact_sha256, script_params) )
             else:
@@ -339,7 +339,7 @@ class Contacts(util.PrintError):
     def replace(self, old : Contact, new : Contact):
         ''' Replaces existing contact old with a new one. Will not add if old
         is not found. Returns True on success or False on error. '''
-        assert isinstance(new, Contact)
+        assert isinstance(new, Contact) or isinstance(new, ScriptContact)
         try:
             index = self.data.index(old)
             self.data[index] = new
@@ -358,9 +358,8 @@ class Contacts(util.PrintError):
         if pin.artifact_sha256.hex() not in artifacts:
             return False
 
-
         contract = ScriptContact(
-            name="SLP Vault",
+            name=get_contract_name_string(pin.artifact_sha256.hex()),
             address=pin.address.to_full_string(Address.FMT_SCRIPTADDR),
             type='script',
             sha256=pin.artifact_sha256.hex(),
@@ -383,7 +382,8 @@ class Contacts(util.PrintError):
         for importing where you don't want multiple imports of the same contact
         file to keep growing the contact list).
         '''
-        assert isinstance(contact, Contact) and isinstance(replace_old, (Contact, type(None)))
+        assert ((isinstance(contact, Contact) and isinstance(replace_old, (Contact, type(None)))) or 
+                (isinstance(contact, ScriptContact) and isinstance(replace_old, (ScriptContact, type(None)))))
         if replace_old:
             success = self.replace(replace_old, contact)
             if success:

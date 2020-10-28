@@ -233,7 +233,7 @@ class Synchronizer(ThreadJob):
         for contact in self.wallet.contacts.data:
             if contact.type == 'script':
                 cashaddr = Address.from_string(contact.address)
-                if cashscript.is_mine(self.wallet, contact.sha256, contact.params) and cashaddr not in self.wallet.contacts_subscribed:
+                if cashscript.is_mine(self.wallet, contact.address) and cashaddr not in self.wallet.contacts_subscribed:
                     self.wallet.contacts_subscribed.append(cashaddr)
                     self.subscribe_to_addresses([cashaddr])
 
@@ -256,7 +256,7 @@ class Synchronizer(ThreadJob):
             for contact in self.wallet.contacts.data:
                 if contact.type == 'script':
                     cashaddr = Address.from_string(contact.address)
-                    if cashscript.is_mine(self.wallet, contact.sha256, contact.params) and cashaddr not in self.wallet.contacts_subscribed:
+                    if cashscript.is_mine(self.wallet, contact.address) and cashaddr not in self.wallet.contacts_subscribed:
                         self.wallet.contacts_subscribed.append(cashaddr)
                         self.subscribe_to_addresses([cashaddr])
 

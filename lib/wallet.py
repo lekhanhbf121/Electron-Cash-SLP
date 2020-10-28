@@ -659,14 +659,8 @@ class Abstract_Wallet(PrintError):
         # addresses, it starts to add up since is_mine() is called frequently
         # especially while downloading address history.
 
-        is_vault = False
-        if self.wallet_type == 'slp_standard' and check_slp_vault and address.kind == address.ADDR_P2SH:
-            is_vault = (address in [ addr.get_slp_vault() for addr in ra ]
-                        or address in [ addr.get_slp_vault() for addr in ca ])
-
         return (address in self._recv_address_set_cached
-                    or address in self._change_address_set_cached
-                    or is_vault)
+                    or address in self._change_address_set_cached)
 
     def is_change(self, address):
         assert not isinstance(address, str)
@@ -675,11 +669,6 @@ class Abstract_Wallet(PrintError):
             # re-create cache if lengths don't match
             self._change_address_set_cached = frozenset(ca)
         return address in self._change_address_set_cached
-
-    def is_slp_vault(self, address):
-        assert not isinstance(address, str)
-        return (address in [ addr.get_slp_vault() for addr in self._recv_address_set_cached ] 
-                or address in [ addr.get_slp_vault() for addr in self._change_address_set_cached ])
 
     def get_address_index(self, address):
         try:
@@ -1416,7 +1405,7 @@ class Abstract_Wallet(PrintError):
                 # count script inputs to be added to txi
                 mine = False
                 if 'slp_vault_' in txi['type']:
-                    mine = self.is_mine(addr, check_slp_vault=True)
+                    mine = cashscript.is_mine(self, addr)
                     if mine and txi['type'] == 'slp_vault_revoke':
                         self.set_label(tx_hash, 'SLP vault revoked!')
 
@@ -1478,7 +1467,7 @@ class Abstract_Wallet(PrintError):
                 # check for slp vault
                 if _type == TYPE_ADDRESS:
                     if self.wallet_type == 'slp_standard' and addr.kind == Address.ADDR_P2SH:
-                        mine = self.is_mine(addr, check_slp_vault=True)
+                        mine = cashscript.is_mine(self, addr)
                         if mine:
                             self.set_label(tx_hash, 'SLP vault received new coins')
 
@@ -1493,7 +1482,7 @@ class Abstract_Wallet(PrintError):
                             self.set_label(tx_hash, 'New slp vault pin')
                         if pin.artifact_sha256.hex() in networks.net.SCRIPT_ARTIFACTS:
                             artifact_entry = networks.net.SCRIPT_ARTIFACTS.get(pin.artifact_sha256.hex())
-                            label_string = cashscript.get_label_string(self, pin.artifact_sha256.hex(), [p.hex() for p in pin.constructor_inputs])
+                            label_string = cashscript.get_contact_label(self, pin.artifact_sha256.hex(), [p.hex() for p in pin.constructor_inputs])
                             key = pin.address.to_full_string(Address.FMT_SCRIPTADDR)
                             if not self.labels.get(key):
                                 self.set_label(key, label_string)
@@ -3468,7 +3457,7 @@ class Slp_Vault_Wallet(Deterministic_Wallet):
 
     def pubkeys_to_redeem_script(self, pubkeys):
         assert len(pubkeys)==1
-        return Script.slp_vault_script(pubkeys[0])
+        return bytes.fromhex(cashscript.get_script(cashscript.slp_vault_id, [hash160(pubkeys[0]).hex()]))
 
     def derive_pubkeys(self, c, i):
         return [k.derive_pubkey(c, i) for k in self.get_keystores()]

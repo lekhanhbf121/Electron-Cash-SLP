@@ -25,6 +25,7 @@
 
 from electroncash.i18n import _, ngettext
 import electroncash.web as web
+import electroncash.cashscript as cashscript
 from electroncash.address import Address
 from electroncash.contacts import Contact, contact_types
 from electroncash.plugins import run_hook
@@ -89,7 +90,7 @@ class ContactList(PrintError, MyTreeWidget):
         # openalias items shouldn't be editable
         if column == 2: # Label, always editable
             return True
-        return item.data(0, self.DataRoles.Contact).type in ('address')
+        return item.data(0, self.DataRoles.Contact).type in ('address', 'script')
 
     def on_edited(self, item, column, prior_value):
         contact = item.data(0, self.DataRoles.Contact)
@@ -183,9 +184,9 @@ class ContactList(PrintError, MyTreeWidget):
                     # There's only one type of script right now so this is simple, but
                     # we will want to utilize run_hook() here in the future to clean this up.
                     menu.addAction("Check For Script Coins", lambda: self.fetch_script_coins([sel.address]))
-                    cashaddr = Address.from_string(sel.address).to_full_string(Address.FMT_CASHADDR)
+                    cashaddr = Address.from_string(sel.address)
                     if len(self.addr_txos.get(cashaddr, [])) > 0:
-                        if self.wallet.is_mine(Address.from_string(sel.address), check_slp_vault=True):
+                        if cashscript.is_mine(self.wallet, sel.address):
                             menu.addAction(_("Sweep"), lambda: self.slp_vault_sweep(sel))
                         inputs = [ self.wallet.transactions.get(coin['tx_hash']).inputs() for coin in self.addr_txos.get(cashaddr, []) if self.wallet.transactions.get(coin['tx_hash']) ]
                         can_revoke = False
@@ -194,7 +195,7 @@ class ContactList(PrintError, MyTreeWidget):
                                 can_revoke = True
                                 break
                         if can_revoke:
-                            menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel, self.addr_txos.get(cashaddr, [])))
+                            menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel))
                     menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: self.parent.app.clipboard().setText(column_data))
             if item and column in self.editable_columns and self.on_permit_edit(item, column):
@@ -226,11 +227,20 @@ class ContactList(PrintError, MyTreeWidget):
         run_hook('create_contact_menu', menu, selected)
         menu.exec_(self.viewport().mapToGlobal(position))
 
-    def slp_vault_sweep(self, item): # TODO: will probably want to have coins param here
-        self.parent.sweep_slp_vault(bytes.fromhex(item.params[0]))
-
-    def slp_vault_revoke(self, item, coins):
+    def slp_vault_sweep(self, item):
+        coins = self.addr_txos.get(Address.from_string(item.address), [])
         for coin in coins:
+            coin['prevout_hash'] = coin['tx_hash']
+            coin['prevout_n'] = coin['tx_pos']
+            coin['slp_vault_pkh'] = item.params[0]
+            coin['address'] = Address.from_string(item.address)
+        self.parent.sweep_slp_vault(coins)
+
+    def slp_vault_revoke(self, item):
+        coins = self.addr_txos.get(Address.from_string(item.address), [])
+        for coin in coins:
+            coin['prevout_hash'] = coin['tx_hash']
+            coin['prevout_n'] = coin['tx_pos']
             coin['slp_vault_pkh'] = item.params[0]
             coin['address'] = Address.from_string(item.address)
         self.parent.revoke_slp_vault(coins)
@@ -248,7 +258,7 @@ class ContactList(PrintError, MyTreeWidget):
         if response.get('error'):
             return print("Download error!\n%r"%(response['error'].get('message')))
         raw = response.get('result')
-        self.addr_txos[response.get('params')[0]] = raw
+        self.addr_txos[Address.from_string(response.get('params')[0])] = raw
         self.update()
 
     def get_full_contacts(self, include_pseudo: bool = True) -> List[Contact]:
@@ -315,7 +325,10 @@ class ContactList(PrintError, MyTreeWidget):
 
             # show script Utxos count
             if _type == 'script':
-                cashaddr = Address.from_string(address).to_full_string(Address.FMT_CASHADDR)
+                cashaddr = Address.from_string(address)
+                if cashscript.is_mine(self.wallet, address) and cashaddr not in self.wallet.contacts_subscribed:
+                    self.wallet.contacts_subscribed.append(cashaddr)
+                    self.wallet.synchronizer.subscribe_to_addresses([cashaddr])
                 txos = self.addr_txos.get(cashaddr, [])
                 if len(txos) > 0:
                     item.setText(5, str(len(txos)))
