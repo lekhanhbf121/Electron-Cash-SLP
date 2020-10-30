@@ -33,12 +33,15 @@ SLP_VAULT_NAME = net.SCRIPT_ARTIFACTS[SLP_VAULT_ID]['artifact']['contractName']
 SLP_VAULT_SWEEP = SLP_VAULT_NAME + '_sweep'
 SLP_VAULT_REVOKE = SLP_VAULT_NAME + '_revoke'
 
-# Slp Mint Vault contract constants
-SLP_MINT_GUARD_ID = "86731bedd81f382d411330292d321a05eb8e776260ca45208d463907e011e68c"
+# Slp Mint Guard contract constants
+SLP_MINT_GUARD_ID = "537992850ab02cd0abbc8ad8fc4d11f0bd98a56c17fc91108edffb8395b1b297"
 SLP_MINT_GUARD_NAME = net.SCRIPT_ARTIFACTS[SLP_MINT_GUARD_ID]['artifact']['contractName']
 SLP_MINT_GUARD_MINT = SLP_MINT_GUARD_NAME + '_mint'
 # SLP_MINT_GUARD_LOCK = ...
 # SLP_MINT_GUARD_TRANS = ...
+
+# The front part of an SLP Mint Message (i.e., mint = SLP_MINT_FRONT + tokenID + 0x08 + mint_amount)
+SLP_MINT_FRONT = "0000000000000000396a04534c50000101044d494e5420"
 
 _valid_scripts = [
     SLP_VAULT_ID,
@@ -62,13 +65,15 @@ def get_p2pkh_owner_address(artifact_sha256, params):
     if artifact_sha256 == SLP_VAULT_ID:
         return Address.from_P2PKH_hash(bytes.fromhex(params[0]))
     elif artifact_sha256 == SLP_MINT_GUARD_ID:
-        return Address.from_P2PKH_hash(bytes.fromhex(params[1]))
+        return Address.from_P2PKH_hash(bytes.fromhex(params[3]))
     else:
         return None
 
 def get_base_script(artifact_sha256: str, *, for_preimage=False, code_separator_pos=0) -> str:
     artifact = net.SCRIPT_ARTIFACTS[artifact_sha256]['artifact']
     script = from_asm(artifact['bytecode'], for_preimage=for_preimage, code_separator_pos=code_separator_pos)
+    if for_preimage:
+        return script
     _sha256 = sha256(bytes.fromhex(script))
     if _sha256.hex() != artifact_sha256:
         raise Exception('sha256 mismatch')
@@ -80,7 +85,15 @@ def get_redeem_script(artifact_sha256: str, params: [str], *, for_preimage=False
     if for_preimage and script != get_base_script(artifact_sha256):
         return script
     for param in params:
-        script = push_script(param) + script
+        if not isinstance(param, str):
+            raise Exception('params must be provide as string')
+        # TODO: improve this for minimal push requirements.
+        if param == '51':
+            script = int_to_hex(OpCodes.OP_1) + script
+        elif param == '00':
+            script = int_to_hex(OpCodes.OP_0) + script
+        else:
+            script = push_script(param) + script
     return script
 
 def get_redeem_script_dummy(artifact_sha256: str, *, for_preimage=False, code_separator_pos=0) -> str:
@@ -92,6 +105,8 @@ def get_redeem_script_dummy(artifact_sha256: str, *, for_preimage=False, code_se
         if param['type'].startswith('bytes'):
             size = int(param['type'].split('bytes')[1])
             script = push_script('00'*size) + script
+        elif param['type'] == 'bool':
+            script = int_to_hex(Opcodes.OP_1) + script
         elif param['type'] == "pubkey":
             script = push_script('00'*32) + script
     return script
@@ -181,7 +196,7 @@ def get_script_sig_type(decoded: list) -> (str, str):
             return (script_id, net.SCRIPT_ARTIFACTS[script_id]['artifact']['contractName'] + '_' + abi_name)
     return (None, None)
 
-def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [bytearray]) -> tuple:
+def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [str]) -> tuple:
     chunks = []
     # lokad id
     chunks.append(pin_protocol_id)
@@ -199,7 +214,8 @@ def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [bytearra
     # output quantities
     ci = b''
     for constInp in constructorInputs:
-        ci += bytes.fromhex(var_int(len(constInp))) + constInp
+        ci += bytes.fromhex(var_int(len(bytes.fromhex(constInp)))) + bytes.fromhex(constInp)
+
     chunks.append(ci)
 
     return chunksToOpreturnOutput(chunks)

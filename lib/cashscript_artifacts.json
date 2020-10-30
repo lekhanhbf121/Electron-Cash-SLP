@@ -4,7 +4,7 @@
         "mainnet": false,
         "maxTxSize": 520
     },
-    "86731bedd81f382d411330292d321a05eb8e776260ca45208d463907e011e68c": {
+    "537992850ab02cd0abbc8ad8fc4d11f0bd98a56c17fc91108edffb8395b1b297": {
         "location": "cashscript/slp_mint_guard.artifact",
         "mainnet": false
     }

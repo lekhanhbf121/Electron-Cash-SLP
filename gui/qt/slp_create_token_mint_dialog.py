@@ -12,7 +12,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
 from electroncash.address import Address, PublicKey
-from electroncash.bitcoin import base_encode, TYPE_ADDRESS
+from electroncash.bitcoin import base_encode, TYPE_ADDRESS, push_script
 from electroncash.i18n import _
 from electroncash.plugins import run_hook
 
@@ -115,7 +115,7 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         row += 1
 
         if networks.net.TESTNET:
-            self.use_mint_guard_cb = cb = QCheckBox(_("Protect baton with Mint Vault contract"))
+            self.use_mint_guard_cb = cb = QCheckBox(_("Protect baton with Mint Guard contract"))
             self.use_mint_guard_cb.setChecked(False)
             grid.addWidget(self.use_mint_guard_cb, row, 0)
             cb.clicked.connect(self.get_mint_guard_address)
@@ -148,11 +148,12 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.baton_input = None
         if networks.net.TESTNET:
             try:
-                self.baton_input = self.main_window.wallet.get_slp_token_baton(self.token_id_e.text())
+                baton_input = self.main_window.wallet.get_slp_token_baton(self.token_id_e.text())
             except SlpNoMintingBatonFound as e:
                 pass
             else:
-                if cashscript.is_mine(self.wallet, self.baton_input['address']):
+                if baton_input['address'].kind == Address.ADDR_P2SH and cashscript.is_mine(self.wallet, baton_input['address']):
+                    self.baton_input = baton_input
                     vault_addr = self.baton_input['address']
                     self.use_mint_guard_cb.setChecked(True)
                     self.use_mint_guard_cb.setDisabled(True)
@@ -177,16 +178,16 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.token_baton_to_e.setHidden(False)
         self.token_baton_label.setHidden(False)
         unused_addr = self.wallet.get_unused_address()
-        script_params = [self.token_id_e.text(), unused_addr.hash160.hex(), '01']
+        script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, self.token_id_e.text(), unused_addr.hash160.hex()]
         self.slp_mint_guard_addr = cashscript.get_redeem_script_address(cashscript.SLP_MINT_GUARD_ID, script_params)
         self.token_baton_to_e.setText(self.slp_mint_guard_addr.to_full_string(Address.FMT_SLPADDR))
         outputs = []
         addr = Address.from_string(self.token_baton_to_e.text().strip())
-        pin_op_return_msg = cashscript.buildCashscriptPinMsg(cashscript.SLP_MINT_GUARD_ID, [bytes.fromhex(p) for p in script_params])
+        pin_op_return_msg = cashscript.buildCashscriptPinMsg(cashscript.SLP_MINT_GUARD_ID, script_params)
         outputs.append(pin_op_return_msg)
         outputs.append((TYPE_ADDRESS, unused_addr, 546))
         tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, None, mandatory_coins=[])
-        self.main_window.show_transaction(tx, "New script pin for: Mint Vault")
+        self.main_window.show_transaction(tx, "New script pin for: Mint Guard")
 
     def parse_address(self, address):
         if networks.net.SLPADDR_PREFIX not in address:
@@ -198,10 +199,10 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         if self.slp_mint_guard_addr:
             l = [ c for c in self.wallet.contacts.data if c.address == self.slp_mint_guard_addr.to_full_string(Address.FMT_SCRIPTADDR) ]
             if len(l) == 0:
-                self.show_message("Mint vault address was not pinned to this wallet, un-check and check 'Protect with Mint Vault' again.")
+                self.show_message("Mint Guard address was not pinned to this wallet, un-check and check 'Protect with Mint Guard contract' again.")
                 return
             elif len(l) > 1:
-                self.show_message("More than one script contracts for the mint vault.")
+                self.show_message("More than one script contracts for the Mint Guard.")
                 return
 
         decimals = int(self.token_dec.value())
@@ -264,6 +265,8 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
             self.baton_input['slp_mint_guard_pkh'] = owner_p2pkh.hash160.hex()
             self.baton_input['slp_token_id'] = self.token_id_e.text()
             self.baton_input['slp_mint_amt'] = int(self.token_qty_e.text()).to_bytes(8, 'big').hex()
+            token_rec_script = Address.from_string(self.token_pay_to_e.text()).to_script_hex()
+            self.baton_input['token_receiver_out'] = int(546).to_bytes(8, 'little').hex() + push_script(token_rec_script)
             self.wallet.add_input_sig_info(self.baton_input, owner_p2pkh)
 
         desired_fee_rate = 1.0  # sats/B, just init this value for paranoia

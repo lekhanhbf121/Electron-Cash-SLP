@@ -197,7 +197,8 @@ class ContactList(PrintError, MyTreeWidget):
                                 menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel))
                         elif sel.sha256 == cashscript.SLP_MINT_GUARD_ID:
                             if cashscript.is_mine(self.wallet, sel.address):
-                                baton = self.wallet.get_slp_token_baton(sel.params[0])
+                                token_id = sel.params[2]
+                                baton = self.wallet.get_slp_token_baton(token_id)
                                 for txo in self.addr_txos.get(addr):
                                     if baton['prevout_hash'] == txo['tx_hash'] and baton['prevout_n'] == txo['tx_pos']:
                                         menu.addAction(_("Mint"), lambda: self.slp_mint_guard_mint(sel))
