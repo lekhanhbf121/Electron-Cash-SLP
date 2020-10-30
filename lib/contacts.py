@@ -35,8 +35,7 @@ from . import util
 from . import networks
 from .storage import WalletStorage
 from .address import Address, Script, hash160, sha256
-
-from .cashscript import ScriptPin, from_asm, check_cashscript_params, get_contract_name_string
+from .cashscript import ScriptPin, from_asm, check_constructor_params, get_contract_name_string
 
 class Contact(namedtuple("Contact", "name address type")):
     ''' Your basic contacts entry. '''
@@ -104,15 +103,14 @@ class Contacts(util.PrintError):
                 if artifact_sha256 not in scripts_contracts:
                     continue
 
-                # double check the script's hash matches the key listed in the list of available artifacts 
-                artifact = scripts_contracts[artifact_sha256]['artifact']
-                _sha256 = sha256(bytes.fromhex(from_asm(artifact['bytecode'])))
-                if _sha256.hex() != artifact_sha256:
-                    raise Exception('bytecode sha256 does not match list of supported artifacts')
                 script_params = tuple(d.get('params'))
 
                 # check params length matches artifact lengths
-                check_cashscript_params(artifact, script_params)
+                try:
+                    check_constructor_params(artifact_sha256, script_params)
+                except Exception as e:
+                    util.print_error(str(e))
+                    continue
 
                 out.append( ScriptContact(name, address, typ, artifact_sha256, script_params) )
             else:

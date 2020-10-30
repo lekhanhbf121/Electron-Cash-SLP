@@ -181,21 +181,28 @@ class ContactList(PrintError, MyTreeWidget):
             if len(selected) == 1:
                 sel = i2c(selected[0])
                 if sel.type == 'script':
-                    # There's only one type of script right now so this is simple, but
-                    # we will want to utilize run_hook() here in the future to clean this up.
-                    menu.addAction("Check For Script Coins", lambda: self.fetch_script_coins([sel.address]))
-                    cashaddr = Address.from_string(sel.address)
-                    if len(self.addr_txos.get(cashaddr, [])) > 0:
-                        if cashscript.is_mine(self.wallet, sel.address):
-                            menu.addAction(_("Sweep"), lambda: self.slp_vault_sweep(sel))
-                        inputs = [ self.wallet.transactions.get(coin['tx_hash']).inputs() for coin in self.addr_txos.get(cashaddr, []) if self.wallet.transactions.get(coin['tx_hash']) ]
-                        can_revoke = False
-                        for _in in itertools.chain(*inputs):
-                            if self.wallet.is_mine(_in['address']):
-                                can_revoke = True
-                                break
-                        if can_revoke:
-                            menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel))
+                    menu.addAction("Check For Coins", lambda: self.fetch_script_coins([sel.address]))
+                    addr = Address.from_string(sel.address)
+                    if len(self.addr_txos.get(addr, [])) > 0:
+                        if sel.sha256 == cashscript.SLP_VAULT_ID:
+                            if cashscript.is_mine(self.wallet, sel.address):
+                                menu.addAction(_("Sweep"), lambda: self.slp_vault_sweep(sel))
+                            inputs = [ self.wallet.transactions.get(coin['tx_hash']).inputs() for coin in self.addr_txos.get(addr, []) if self.wallet.transactions.get(coin['tx_hash']) ]
+                            can_revoke = False
+                            for _in in itertools.chain(*inputs):
+                                if self.wallet.is_mine(_in['address']):
+                                    can_revoke = True
+                                    break
+                            if can_revoke:
+                                menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel))
+                        elif sel.sha256 == cashscript.SLP_MINT_GUARD_ID:
+                            if cashscript.is_mine(self.wallet, sel.address):
+                                baton = self.wallet.get_slp_token_baton(sel.params[0])
+                                for txo in self.addr_txos.get(addr):
+                                    if baton['prevout_hash'] == txo['tx_hash'] and baton['prevout_n'] == txo['tx_pos']:
+                                        menu.addAction(_("Mint"), lambda: self.slp_mint_guard_mint(sel))
+                                        break
+
                     menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: self.parent.app.clipboard().setText(column_data))
             if item and column in self.editable_columns and self.on_permit_edit(item, column):
@@ -244,6 +251,9 @@ class ContactList(PrintError, MyTreeWidget):
             coin['slp_vault_pkh'] = item.params[0]
             coin['address'] = Address.from_string(item.address)
         self.parent.revoke_slp_vault(coins)
+
+    def slp_mint_guard_mint(self, baton):
+        pass
 
     def fetch_script_coins(self, addresses):
         for addr in addresses:

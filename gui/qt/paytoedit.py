@@ -153,12 +153,18 @@ class PayToEdit(PrintError, ScanQRTextEdit):
         # filter out empty lines
         lines = [i for i in self.lines() if i]
 
-        # don't allow "script:" address prefix
-        if not networks.net.TESTNET:
-            for i, line in enumerate(lines):
-                if networks.net.SCRIPTADDR_PREFIX in line:
-                    self.errors.append((0, str('cannot enter an address with "' + networks.net.SCRIPTADDR_PREFIX + ':" prefix')))
+        # don't allow unknown "script:" addresses
+        for i, line in enumerate(lines):
+            if networks.net.SCRIPTADDR_PREFIX in line:
+                try:
+                    addr = Address.from_string(line).to_full_string(Address.FMT_SCRIPTADDR)
+                except:
+                    self.errors.append((0, str('could not parse script formatted address, cannot use with pay-to-many.')))
                     return
+                else:
+                    if addr not in [c.address for c in self.win.wallet.contacts.data]:
+                        self.errors.append((0, str('cannot enter unknown address with "' + networks.net.SCRIPTADDR_PREFIX + ':" prefix')))
+                        return
 
         outputs = []
         total = 0

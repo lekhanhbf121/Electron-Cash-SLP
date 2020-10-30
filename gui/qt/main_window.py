@@ -1682,7 +1682,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 outputs.append((TYPE_ADDRESS, rec_addr, 546))
             else:
                 outputs.append((TYPE_ADDRESS, rec_addr, coin['value']))
-            coin['type'] = 'slp_vault_revoke'
+            coin['type'] = cashscript.SLP_VAULT_REVOKE
             coin['num_sig'] = 1
             coin['pubkeys'] = [pubkey]
             self.wallet.add_input_sig_info(coin, rec_addr)
@@ -1710,7 +1710,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 outputs.append((TYPE_ADDRESS, cash_addr, 546))
             else:
                 outputs.append((TYPE_ADDRESS, cash_addr, coin['value']))
-            coin['type'] = 'slp_vault_sweep'
+            coin['type'] = cashscript.SLP_VAULT_SWEEP
             coin['num_sig'] = 1
             coin['pubkeys'] = self.wallet.get_public_keys(cash_addr)
             self.wallet.add_input_sig_info(coin, cash_addr)
@@ -3206,7 +3206,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_message("You must provide a P2PKH address to get the SLP Vault address.")
             else:
                 outputs = []
-                artifact_sha256 = cashscript.slp_vault_id
+                artifact_sha256 = cashscript.SLP_VAULT_ID
                 addr = Address.from_string(source_address.text().strip())
                 script_params = [addr.hash160]
                 pin_op_return_msg = cashscript.buildCashscriptPinMsg(artifact_sha256, script_params)
@@ -3215,13 +3215,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if not self.wallet.is_mine(addr):
                     outputs.append((TYPE_ADDRESS, self.wallet.get_unused_address(), 546))
                 tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[])
-                self.show_transaction(tx, "New slp vault pin")
-
-                # set label for this contact
-                label_string = cashscript.get_contact_label(self.wallet, artifact_sha256, [p.hex() for p in script_params])
-                script_addr = cashscript.get_script_address_string(artifact_sha256, [p.hex() for p in script_params])
-                if not self.wallet.labels.get(key):
-                self.wallet.set_label(script_addr, label_string)
+                self.show_transaction(tx, "New script pin for: SLP Vault")
 
         view_vault_btn.clicked.connect(slp_vault_toggle)
 
@@ -3246,7 +3240,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             slp_vault_address.setText('')
             try:
                 if addr.kind == addr.ADDR_P2PKH:
-                    slp_vault_address.setText(cashscript.get_script_address_string(cashscript.slp_vault_id, [addr.hash160.hex()]))
+                    slp_vault_address.setText(cashscript.get_redeem_script_address_string(cashscript.SLP_VAULT_ID, [addr.hash160.hex()]))
                 else:
                     slp_vault_address.setText('')
             except AttributeError:

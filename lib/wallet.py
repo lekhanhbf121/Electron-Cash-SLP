@@ -913,6 +913,9 @@ class Abstract_Wallet(PrintError):
     def get_slp_token_baton(self, slpTokenId):
         # look for our minting baton
         with self.lock:
+            tok_info = self.token_types.get(slpTokenId)
+            if not tok_info or tok_info.get('decimals', "?") == "?":
+                raise SlpNoMintingBatonFound()
             for addr, addrdict in self._slp_txo.copy().items():
                 for txid, txdict in addrdict.copy().items():
                     for idx, txo in txdict.copy().items():
@@ -1142,7 +1145,7 @@ class Abstract_Wallet(PrintError):
         ''' Note that exclude_frozen = True checks for BOTH address-level and coin-level frozen status. '''
         coins = []
         if domain is None:
-            domain = self.get_addresses()
+            domain = [ Address.from_string(c.address) for c in self.contacts.data if c.type == 'script' ] + self.get_addresses()  #TODO: need to filter for cashscript.is_mine?
         if exclude_frozen:
             domain = set(domain) - self.frozen_addresses
         for addr in domain:
@@ -1404,9 +1407,9 @@ class Abstract_Wallet(PrintError):
 
                 # count script inputs to be added to txi
                 mine = False
-                if 'slp_vault_' in txi['type']:
+                if cashscript.SLP_VAULT_NAME in txi['type']:
                     mine = cashscript.is_mine(self, addr)
-                    if mine and txi['type'] == 'slp_vault_revoke':
+                    if mine and txi['type'] == cashscript.SLP_VAULT_REVOKE:
                         self.set_label(tx_hash, 'SLP vault revoked!')
 
                 # find value from prev output
@@ -1479,7 +1482,7 @@ class Abstract_Wallet(PrintError):
                         pass
                     else:
                         if self.contacts.handle_script_pin(pin):
-                            self.set_label(tx_hash, 'New slp vault pin')
+                            self.set_label(tx_hash, 'New script pin for: ' + cashscript.get_contract_name_string(pin.artifact_sha256.hex()))
                         if pin.artifact_sha256.hex() in networks.net.SCRIPT_ARTIFACTS:
                             artifact_entry = networks.net.SCRIPT_ARTIFACTS.get(pin.artifact_sha256.hex())
                             label_string = cashscript.get_contact_label(self, pin.artifact_sha256.hex(), [p.hex() for p in pin.constructor_inputs])
@@ -3121,8 +3124,7 @@ class ImportedAddressWallet(ImportedWalletBase):
 
     def get_addresses(self, include_change=False):
         if not self._sorted:
-            self._sorted = sorted(self.addresses,
-                                  key=lambda addr: addr.to_ui_string())
+            self._sorted = sorted(self.addresses, key=lambda addr: addr.to_ui_string())
         return self._sorted
 
     def import_address(self, address):
@@ -3457,7 +3459,7 @@ class Slp_Vault_Wallet(Deterministic_Wallet):
 
     def pubkeys_to_redeem_script(self, pubkeys):
         assert len(pubkeys)==1
-        return bytes.fromhex(cashscript.get_script(cashscript.slp_vault_id, [hash160(pubkeys[0]).hex()]))
+        return bytes.fromhex(cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [hash160(pubkeys[0]).hex()]))
 
     def derive_pubkeys(self, c, i):
         return [k.derive_pubkey(c, i) for k in self.get_keystores()]
@@ -3468,7 +3470,7 @@ class Slp_Vault_Wallet(Deterministic_Wallet):
         self.keystores[name] = load_keystore(self.storage, name)
         self.keystore = self.keystores['x1/']
         xtype = bitcoin.xpub_type(self.keystore.xpub)
-        self.txin_type = 'slp_vault' if xtype == 'standard' else xtype
+        self.txin_type = cashscript.SLP_VAULT_NAME if xtype == 'standard' else xtype
 
     def save_keystore(self):
         for name, k in self.keystores.items():
