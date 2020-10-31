@@ -936,7 +936,10 @@ class Transaction:
                 except (IndexError, InputValueMissing):
                     pass
             elif cashscript.SLP_MINT_GUARD_NAME in inputs[i]['type']:
+                if len(self.outputs()) == 4:
                 inputs[i]['change_output_preimage'] = self.serialize_output(self.outputs()[len(self.outputs())-1])
+                else:
+                    inputs[i]['change_output_preimage'] = '00000000'
                 try:
                     inputs[i]['tx_preimage'] = self.serialize_preimage(i)
                 except (IndexError, InputValueMissing):

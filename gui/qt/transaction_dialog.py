@@ -664,7 +664,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
 
         def text_format(addr):
             nonlocal rec_ct, chg_ct, vlt_ct
-            is_my_cashscript = cashscript.is_mine(self.wallet, addr)
+            is_my_cashscript = cashscript.is_mine(self.wallet, addr)[0]
             if isinstance(addr, Address) and (self.wallet.is_mine(addr) or is_my_cashscript):
                 if self.wallet.is_change(addr):
                     chg_ct += 1

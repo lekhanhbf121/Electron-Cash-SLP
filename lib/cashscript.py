@@ -34,9 +34,9 @@ SLP_VAULT_SWEEP = SLP_VAULT_NAME + '_sweep'
 SLP_VAULT_REVOKE = SLP_VAULT_NAME + '_revoke'
 
 # Slp Mint Guard contract constants
-SLP_MINT_GUARD_ID = "537992850ab02cd0abbc8ad8fc4d11f0bd98a56c17fc91108edffb8395b1b297"
+SLP_MINT_GUARD_ID = "cf7ced1c3e2ff3d6620a9cc5d3cb000a5109fd09ce6b0ba86051424a3ede980d"
 SLP_MINT_GUARD_NAME = net.SCRIPT_ARTIFACTS[SLP_MINT_GUARD_ID]['artifact']['contractName']
-SLP_MINT_GUARD_MINT = SLP_MINT_GUARD_NAME + '_mint'
+SLP_MINT_GUARD_MINT = SLP_MINT_GUARD_NAME + '_Mint'
 # SLP_MINT_GUARD_LOCK = ...
 # SLP_MINT_GUARD_TRANS = ...
 
@@ -48,20 +48,31 @@ _valid_scripts = [
     SLP_MINT_GUARD_ID
 ]
 
-def is_mine(wallet, address):
+valid_script_sig_types = [
+    SLP_VAULT_SWEEP,
+    SLP_VAULT_REVOKE,
+    SLP_MINT_GUARD_MINT
+]
+
+def get_transaction_label_for_actions_by_others(input_type: str) -> str:
+    if input_type == SLP_VAULT_REVOKE:
+        return 'SLP vault revoked!'
+    return None
+
+def is_mine(wallet, address) -> (bool, object):
     if isinstance(address, Address):
         if address.kind != Address.ADDR_P2SH:
-            return False
+            return (False, None)
         else:
             address = address.to_full_string(Address.FMT_SCRIPTADDR)
-    scripts = [c for c in wallet.contacts.data if c.type == 'script' and c.address == address]
-    for contact in scripts:
+    contacts = [c for c in wallet.contacts.data if c.type == 'script' and c.address == address]
+    for contact in contacts:
         p2pkh_addr = get_p2pkh_owner_address(contact.sha256, contact.params)
         if p2pkh_addr:
-            return wallet.is_mine(p2pkh_addr)
-    return False
+            return (wallet.is_mine(p2pkh_addr), contacts[0])
+    return (False, None)
 
-def get_p2pkh_owner_address(artifact_sha256, params):
+def get_p2pkh_owner_address(artifact_sha256: str, params: [str]) -> Address:
     if artifact_sha256 == SLP_VAULT_ID:
         return Address.from_P2PKH_hash(bytes.fromhex(params[0]))
     elif artifact_sha256 == SLP_MINT_GUARD_ID:

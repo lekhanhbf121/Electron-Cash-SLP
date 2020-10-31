@@ -47,7 +47,7 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.network = main_window.network
         self.app = main_window.app
 
-        self.slp_mint_guard_addr = None
+        self.is_mint_guard = False
 
         if self.main_window.gui_object.warn_if_no_network(self.main_window):
             return
@@ -152,15 +152,10 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
             except SlpNoMintingBatonFound as e:
                 pass
             else:
-                if baton_input['address'].kind == Address.ADDR_P2SH and cashscript.is_mine(self.wallet, baton_input['address']):
+                if baton_input['address'].kind == Address.ADDR_P2SH and cashscript.is_mine(self.wallet, baton_input['address'])[0]:
                     self.baton_input = baton_input
                     vault_addr = self.baton_input['address']
-                    self.use_mint_guard_cb.setChecked(True)
-                    self.use_mint_guard_cb.setDisabled(True)
-                    self.token_fixed_supply_cb.setChecked(False)
-                    self.token_fixed_supply_cb.setDisabled(True)
-                    self.token_baton_to_e.setText(vault_addr.to_full_string(Address.FMT_SLPADDR))
-                    self.token_baton_to_e.setDisabled(True)
+                    self.set_use_mint_guard(vault_addr)
 
         dialogs.append(self)
         self.show()
@@ -173,31 +168,44 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.token_baton_to_e.setHidden(self.token_fixed_supply_cb.isChecked())
         self.token_baton_label.setHidden(self.token_fixed_supply_cb.isChecked())
 
-    def get_mint_guard_address(self):
+    def set_use_mint_guard(self, address):
+        self.use_mint_guard_cb.setChecked(True)
+        self.use_mint_guard_cb.setDisabled(True)
         self.token_fixed_supply_cb.setChecked(False)
-        self.token_baton_to_e.setHidden(False)
-        self.token_baton_label.setHidden(False)
-        unused_addr = self.wallet.get_unused_address()
-        script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, self.token_id_e.text(), unused_addr.hash160.hex()]
-        self.slp_mint_guard_addr = cashscript.get_redeem_script_address(cashscript.SLP_MINT_GUARD_ID, script_params)
-        self.token_baton_to_e.setText(self.slp_mint_guard_addr.to_full_string(Address.FMT_SLPADDR))
-        outputs = []
-        addr = Address.from_string(self.token_baton_to_e.text().strip())
-        pin_op_return_msg = cashscript.buildCashscriptPinMsg(cashscript.SLP_MINT_GUARD_ID, script_params)
-        outputs.append(pin_op_return_msg)
-        outputs.append((TYPE_ADDRESS, unused_addr, 546))
-        tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, None, mandatory_coins=[])
-        self.main_window.show_transaction(tx, "New script pin for: Mint Guard")
+        self.token_fixed_supply_cb.setDisabled(True)
+        self.token_baton_to_e.setText(address.to_full_string(Address.FMT_SCRIPTADDR))
+        self.token_baton_to_e.setDisabled(True)
+        self.is_mint_guard = True
 
-    def parse_address(self, address):
-        if networks.net.SLPADDR_PREFIX not in address:
-            address = networks.net.SLPADDR_PREFIX + ":" + address
+    def get_mint_guard_address(self):
+        if not self.is_mint_guard:
+            self.token_fixed_supply_cb.setChecked(False)
+            self.token_baton_to_e.setHidden(False)
+            self.token_baton_label.setHidden(False)
+            unused_addr = self.wallet.get_unused_address()
+            script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, self.token_id_e.text(), unused_addr.hash160.hex()]
+            mint_guard_addr = cashscript.get_redeem_script_address(cashscript.SLP_MINT_GUARD_ID, script_params)
+            self.set_use_mint_guard(mint_guard_addr)
+            outputs = []
+            addr = Address.from_string(self.token_baton_to_e.text().strip())
+            pin_op_return_msg = cashscript.buildCashscriptPinMsg(cashscript.SLP_MINT_GUARD_ID, script_params)
+            outputs.append(pin_op_return_msg)
+            outputs.append((TYPE_ADDRESS, unused_addr, 546))
+            tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, None, mandatory_coins=[])
+            self.main_window.show_transaction(tx, "New script pin for: Mint Guard")  # TODO: can we have a callback after successful broadcast?
+        else:
+            self.is_mint_guard = False
+
+    def parse_address(self, address, prefix=networks.net.SLPADDR_PREFIX):
+        if prefix not in address:
+            address = prefix + ":" + address
         return Address.from_string(address)
 
     def mint_token(self, preview=False):
 
-        if self.slp_mint_guard_addr:
-            l = [ c for c in self.wallet.contacts.data if c.address == self.slp_mint_guard_addr.to_full_string(Address.FMT_SCRIPTADDR) ]
+        if self.is_mint_guard:
+            script_addr = Address.from_string(self.token_baton_to_e.text()).to_full_string(Address.FMT_SCRIPTADDR)
+            l = [ c for c in self.wallet.contacts.data if c.address == script_addr ]
             if len(l) == 0:
                 self.show_message("Mint Guard address was not pinned to this wallet, un-check and check 'Protect with Mint Guard contract' again.")
                 return
@@ -239,7 +247,10 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
 
         if not self.token_fixed_supply_cb.isChecked():
             try:
-                addr = self.parse_address(self.token_baton_to_e.text())
+                if self.is_mint_guard:
+                    addr = self.parse_address(self.token_baton_to_e.text(), networks.net.SCRIPTADDR_PREFIX)
+                else:
+                    addr = self.parse_address(self.token_baton_to_e.text())
                 outputs.append((TYPE_ADDRESS, addr, 546))
             except:
                 self.show_message(_("Enter a Baton Address in SLP address format."))

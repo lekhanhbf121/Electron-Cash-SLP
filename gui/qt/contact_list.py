@@ -31,6 +31,7 @@ from electroncash.contacts import Contact, contact_types
 from electroncash.plugins import run_hook
 from electroncash.transaction import Transaction
 from electroncash.util import FileImportFailed, PrintError, finalization_print_error
+from electroncash.slp import SlpNoMintingBatonFound
 # TODO: whittle down these * imports to what we actually use when done with
 # our changes to this class -Calin
 from PyQt5.QtGui import *
@@ -185,7 +186,7 @@ class ContactList(PrintError, MyTreeWidget):
                     addr = Address.from_string(sel.address)
                     if len(self.addr_txos.get(addr, [])) > 0:
                         if sel.sha256 == cashscript.SLP_VAULT_ID:
-                            if cashscript.is_mine(self.wallet, sel.address):
+                            if cashscript.is_mine(self.wallet, sel.address)[0]:
                                 menu.addAction(_("Sweep"), lambda: self.slp_vault_sweep(sel))
                             inputs = [ self.wallet.transactions.get(coin['tx_hash']).inputs() for coin in self.addr_txos.get(addr, []) if self.wallet.transactions.get(coin['tx_hash']) ]
                             can_revoke = False
@@ -196,13 +197,16 @@ class ContactList(PrintError, MyTreeWidget):
                             if can_revoke:
                                 menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel))
                         elif sel.sha256 == cashscript.SLP_MINT_GUARD_ID:
-                            if cashscript.is_mine(self.wallet, sel.address):
+                            if cashscript.is_mine(self.wallet, sel.address)[0]:
                                 token_id = sel.params[2]
-                                baton = self.wallet.get_slp_token_baton(token_id)
-                                for txo in self.addr_txos.get(addr):
-                                    if baton['prevout_hash'] == txo['tx_hash'] and baton['prevout_n'] == txo['tx_pos']:
-                                        menu.addAction(_("Mint"), lambda: self.slp_mint_guard_mint(sel))
-                                        break
+                                try:
+                                    baton = self.wallet.get_slp_token_baton(token_id)
+                                    for txo in self.addr_txos.get(addr):
+                                        if baton['prevout_hash'] == txo['tx_hash'] and baton['prevout_n'] == txo['tx_pos']:
+                                            menu.addAction(_("Mint"), lambda: self.slp_mint_guard_mint(sel))
+                                            break
+                                except SlpNoMintingBatonFound:
+                                    pass
 
                     menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: self.parent.app.clipboard().setText(column_data))
@@ -337,7 +341,7 @@ class ContactList(PrintError, MyTreeWidget):
             # show script Utxos count
             if _type == 'script':
                 cashaddr = Address.from_string(address)
-                if cashscript.is_mine(self.wallet, address) and cashaddr not in self.wallet.contacts_subscribed:
+                if cashscript.is_mine(self.wallet, address)[0] and cashaddr not in self.wallet.contacts_subscribed:
                     self.wallet.contacts_subscribed.append(cashaddr)
                     self.wallet.synchronizer.subscribe_to_addresses([cashaddr])
                 txos = self.addr_txos.get(cashaddr, [])

@@ -635,7 +635,7 @@ class Abstract_Wallet(PrintError):
         of is_mine below is sufficient.'''
         self._recv_address_set_cached, self._change_address_set_cached = frozenset(), frozenset()
 
-    def is_mine(self, address, *, check_slp_vault=False):
+    def is_mine(self, address, *, check_cashscript=True):
         ''' Note this method assumes that the entire address set is
         composed of self.get_change_addresses() + self.get_receiving_addresses().
         In subclasses, if that is not the case -- REIMPLEMENT this method! '''
@@ -659,8 +659,12 @@ class Abstract_Wallet(PrintError):
         # addresses, it starts to add up since is_mine() is called frequently
         # especially while downloading address history.
 
-        return (address in self._recv_address_set_cached
-                    or address in self._change_address_set_cached)
+        if (address in self._recv_address_set_cached
+                    or address in self._change_address_set_cached):
+            return True
+        elif isinstance(address, Address) and address.kind == Address.ADDR_P2SH and check_cashscript:
+            return cashscript.is_mine(self, address)[0]
+        return False
 
     def is_change(self, address):
         assert not isinstance(address, str)
@@ -1407,10 +1411,10 @@ class Abstract_Wallet(PrintError):
 
                 # count script inputs to be added to txi
                 mine = False
-                if cashscript.SLP_VAULT_NAME in txi['type']:
-                    mine = cashscript.is_mine(self, addr)
-                    if mine and txi['type'] == cashscript.SLP_VAULT_REVOKE:
-                        self.set_label(tx_hash, 'SLP vault revoked!')
+                if txi['type'] in cashscript.valid_script_sig_types:
+                    mine = cashscript.is_mine(self, addr)[0]
+                    if mine and cashscript.get_transaction_label_for_actions_by_others(txi['type']):
+                        self.set_label(tx_hash, cashscript.get_transaction_label_for_actions_by_others(txi['type']))
 
                 # find value from prev output
                 if mine or self.is_mine(addr):
@@ -1470,9 +1474,9 @@ class Abstract_Wallet(PrintError):
                 # check for slp vault
                 if _type == TYPE_ADDRESS:
                     if self.wallet_type == 'slp_standard' and addr.kind == Address.ADDR_P2SH:
-                        mine = cashscript.is_mine(self, addr)
+                        mine, script = cashscript.is_mine(self, addr)
                         if mine:
-                            self.set_label(tx_hash, 'SLP vault received new coins')
+                            self.set_label(tx_hash, script.name + ' received new coins')
 
                 # check for pin messages
                 if _type == TYPE_SCRIPT and cashscript.pin_protocol_id in addr.script:
@@ -2478,7 +2482,7 @@ class Abstract_Wallet(PrintError):
 
     def add_input_info(self, txin):
         address = txin['address']
-        if self.is_mine(address):
+        if self.is_mine(address, check_cashscript = False):
             txin['type'] = self.get_txin_type(address)
             # Bitcoin Cash needs value to sign
             received, spent = self.get_addr_io(address)
