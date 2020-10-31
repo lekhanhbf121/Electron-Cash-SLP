@@ -149,8 +149,8 @@ class SlpMgt(MyTreeWidget):
         for token_id, i in tokens.items():
             name     = i["name"]
             decimals = i["decimals"]
-            calculated_balance= self.get_balance_from_token_id(token_id)
             if decimals != "?":
+                calculated_balance= self.get_balance_from_token_id(token_id)
                 balancestr = format_satoshis_nofloat(calculated_balance, decimal_point=decimals, num_zeros=decimals)
                 balancestr += ' '*(9-decimals)
             else:
@@ -164,11 +164,15 @@ class SlpMgt(MyTreeWidget):
             elif i['class'] == "SLP129":
                 typestr = "NFT1 Group"
 
-            try:
-                self.parent.wallet.get_slp_token_baton(token_id)
-                item = QTreeWidgetItem([str(token_id),str(name),str(decimals),balancestr,"★", typestr])
-            except SlpNoMintingBatonFound:
-                item = QTreeWidgetItem([str(token_id),str(name),str(decimals),balancestr,"", typestr])
+            baton_sym = ""
+            if decimals != "?":
+                try:
+                    self.parent.wallet.get_slp_token_baton(token_id)
+                    baton_sym = "★"
+                except SlpNoMintingBatonFound:
+                    pass
+            
+            item = QTreeWidgetItem([str(token_id), str(name), str(decimals), balancestr, baton_sym, typestr])
 
             squishyfont = QFont(MONOSPACE_FONT)
             squishyfont.setStretch(85)
@@ -190,8 +194,8 @@ class SlpMgt(MyTreeWidget):
                     if _i["class"] == "SLP65" and _i.get("group_id", None) == token_id:
                         name =     _i["name"]
                         decimals = _i["decimals"]
-                        calculated_balance= self.get_balance_from_token_id(_token_id)
                         if decimals != "?":
+                            calculated_balance= self.get_balance_from_token_id(_token_id)
                             balancestr = format_satoshis_nofloat(calculated_balance, decimal_point=decimals, num_zeros=decimals)
                             balancestr += ' '*(9-decimals)
                         else:
