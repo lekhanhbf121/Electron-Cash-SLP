@@ -54,23 +54,40 @@ valid_script_sig_types = [
     SLP_MINT_GUARD_MINT
 ]
 
+_allow_pay_to = [
+    SLP_VAULT_ID,
+    SLP_VAULT_NAME
+]
+
 def get_transaction_label_for_actions_by_others(input_type: str) -> str:
     if input_type == SLP_VAULT_REVOKE:
         return 'SLP vault revoked!'
     return None
 
 def is_mine(wallet, address) -> (bool, object):
+    _is_known, _contact = is_known(wallet, address)
+    if _contact:
+        p2pkh_addr = get_p2pkh_owner_address(_contact.sha256, _contact.params)
+        if p2pkh_addr:
+            return (wallet.is_mine(p2pkh_addr), _contact)
+    return (False, None)
+
+def is_known(wallet, address) -> (bool, object):
     if isinstance(address, Address):
         if address.kind != Address.ADDR_P2SH:
             return (False, None)
         else:
             address = address.to_full_string(Address.FMT_SCRIPTADDR)
     contacts = [c for c in wallet.contacts.data if c.type == 'script' and c.address == address]
-    for contact in contacts:
-        p2pkh_addr = get_p2pkh_owner_address(contact.sha256, contact.params)
-        if p2pkh_addr:
-            return (wallet.is_mine(p2pkh_addr), contacts[0])
+    if len(contacts) > 0:
+        return (True, contacts[0])
     return (False, None)
+
+def allow_pay_to(wallet, address) -> (bool, object):
+    _is_known, contact = is_known(wallet, address)
+    if _is_known and contact.sha256 in _allow_pay_to:
+        return (True, contact)
+    return (False, contact)
 
 def get_p2pkh_owner_address(artifact_sha256: str, params: [str]) -> Address:
     if artifact_sha256 == SLP_VAULT_ID:
