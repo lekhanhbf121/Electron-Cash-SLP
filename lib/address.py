@@ -106,17 +106,17 @@ class OpCodes(IntEnum):
     OP_TUCK = 0x7d
 
     # splice ops
-    OP_CAT = 0x7e
-    OP_SPLIT = 0x7f   # after monolith upgrade (May 2018)
-    OP_NUM2BIN = 0x80 # after monolith upgrade (May 2018)
-    OP_BIN2NUM = 0x81 # after monolith upgrade (May 2018)
+    OP_CAT = 0x7e                       # added May 2018
+    OP_SPLIT = 0x7f                     # added May 2018 (was previously planned to be OP_SUBSTR)
+    OP_NUM2BIN = 0x80                   # added May 2018 (was previously planned to be OP_LEFT)
+    OP_BIN2NUM = 0x81                   # added May 2018 (was previously planned to be OP_RIGHT)
     OP_SIZE = 0x82
 
     # bit logic
-    OP_INVERT = 0x83
-    OP_AND = 0x84
-    OP_OR = 0x85
-    OP_XOR = 0x86
+    OP_INVERT = 0x83                    # disabled
+    OP_AND = 0x84                       # added May 2018
+    OP_OR = 0x85                        # added May 2018
+    OP_XOR = 0x86                       # added May 2018
     OP_EQUAL = 0x87
     OP_EQUALVERIFY = 0x88
     OP_RESERVED1 = 0x89
@@ -125,8 +125,8 @@ class OpCodes(IntEnum):
     # numeric
     OP_1ADD = 0x8b
     OP_1SUB = 0x8c
-    OP_2MUL = 0x8d
-    OP_2DIV = 0x8e
+    OP_2MUL = 0x8d                      # disabled
+    OP_2DIV = 0x8e                      # disabled
     OP_NEGATE = 0x8f
     OP_ABS = 0x90
     OP_NOT = 0x91
@@ -134,11 +134,11 @@ class OpCodes(IntEnum):
 
     OP_ADD = 0x93
     OP_SUB = 0x94
-    OP_MUL = 0x95
-    OP_DIV = 0x96
-    OP_MOD = 0x97
-    OP_LSHIFT = 0x98
-    OP_RSHIFT = 0x99
+    OP_MUL = 0x95                       # disabled
+    OP_DIV = 0x96                       # added May 2018
+    OP_MOD = 0x97                       # added May 2018
+    OP_LSHIFT = 0x98                    # disabled
+    OP_RSHIFT = 0x99                    # disabled
 
     OP_BOOLAND = 0x9a
     OP_BOOLOR = 0x9b
@@ -181,12 +181,11 @@ class OpCodes(IntEnum):
     OP_NOP10 = 0xb9
 
     # More crypto
-    OP_CHECKDATASIG = 0xba
-    OP_CHECKDATASIGVERIFY = 0xbb
+    OP_CHECKDATASIG = 0xba              # added Nov 15 2018
+    OP_CHECKDATASIGVERIFY = 0xbb        # added Nov 15 2018
 
     # additional byte string operations
-    OP_REVERSEBYTES = 0xbc
-
+    OP_REVERSEBYTES = 0xbc              # added May 2020
 
 P2PKH_prefix = bytes([OpCodes.OP_DUP, OpCodes.OP_HASH160, 20])
 P2PKH_suffix = bytes([OpCodes.OP_EQUALVERIFY, OpCodes.OP_CHECKSIG])
@@ -457,7 +456,12 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
     FMT_BITPAY = 2   # Supported temporarily only for compatibility
     FMT_SLPADDR = 3
 
-    _NUM_FMTS = 4  # <-- Be sure to update this to be 1+ last format above!
+    # This format is used in situations with smart contracts are being used.
+    # The 'Pay To' field does not allow sending to address with this format
+    # to protect users from doing something which may lead to loss of funds
+    FMT_SCRIPTADDR = 4  
+
+    _NUM_FMTS = 5  # <-- Be sure to update this to be 1+ last format above!
 
     # Default to CashAddr using 'simpleledger' or 'slptest' prefix
     FMT_UI = FMT_SLPADDR
@@ -478,7 +482,6 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             cls.FMT_UI = cls.FMT_SLPADDR
         else:
             cls.FMT_UI = cls.FMT_LEGACY
-
 
     @classmethod
     def from_cashaddr_string(cls, string, *, net=None):
@@ -521,6 +524,24 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             raise AddressError('address has unexpected kind {}'.format(kind))
 
     @classmethod
+    def from_scriptaddr_string(cls, string, *, net=None):
+        '''Construct from a scriptaddress string.'''
+        if net is None: net = networks.net
+        prefix = net.SCRIPTADDR_PREFIX
+        if string.upper() == string:
+            prefix = prefix.upper()
+        if ':' not in string:
+            string = ':'.join([prefix, string])
+        addr_prefix, kind, addr_hash = cashaddr.decode(string)
+        if addr_prefix != prefix:
+            raise AddressError('address has unexpected prefix {}'
+                               .format(addr_prefix))
+        if kind == cashaddr.SCRIPT_TYPE:
+            return cls(addr_hash, cls.ADDR_P2SH)
+        else:
+            raise AddressError('address has unexpected kind {}'.format(kind))
+
+    @classmethod
     def from_string(cls, string, *, net=None):
         '''Construct from an address string.'''
         if net is None: net = networks.net
@@ -529,7 +550,10 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
                 try:
                     return cls.from_slpaddr_string(string, net=net)
                 except:
-                    return cls.from_cashaddr_string(string, net=net)
+                    try:
+                        return cls.from_cashaddr_string(string, net=net)
+                    except:
+                        return cls.from_scriptaddr_string(string, net=net)
             except ValueError as e:
                 raise AddressError(str(e))
 
@@ -606,7 +630,7 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
         return cls(hash160, cls.ADDR_P2SH)
 
     @classmethod
-    def from_multisig_script(cls, script):
+    def from_P2SH_script(cls, script):
         return cls(hash160(script), cls.ADDR_P2SH)
 
     @classmethod
@@ -618,18 +642,26 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
     def to_cashaddr(self, *, net=None):
         if net is None: net = networks.net
         if self.kind == self.ADDR_P2PKH:
-            kind  = cashaddr.PUBKEY_TYPE
+            kind = cashaddr.PUBKEY_TYPE
         else:
-            kind  = cashaddr.SCRIPT_TYPE
+            kind = cashaddr.SCRIPT_TYPE
         return cashaddr.encode(net.CASHADDR_PREFIX, kind, self.hash160)
 
     def to_slpaddr(self, *, net=None):
         if net is None: net = networks.net
         if self.kind == self.ADDR_P2PKH:
-            kind  = cashaddr.PUBKEY_TYPE
+            kind = cashaddr.PUBKEY_TYPE
         else:
-            kind  = cashaddr.SCRIPT_TYPE
+            kind = cashaddr.SCRIPT_TYPE
         return cashaddr.encode(net.SLPADDR_PREFIX, kind, self.hash160)
+
+    def to_scriptaddr(self, *, net=None):
+        if net is None: net = networks.net
+        if self.kind == self.ADDR_P2SH:
+            kind = cashaddr.SCRIPT_TYPE
+        else:
+            raise AddressError('cannot convert to script address from a non-p2sh format')
+        return cashaddr.encode(net.SCRIPTADDR_PREFIX, kind, self.hash160)
 
     def to_string(self, fmt, *, net=None):
         '''Converts to a string of the given format.'''
@@ -640,7 +672,7 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
                 if cached:
                     return cached
             except (IndexError, TypeError):
-                raise AddressError('unrecognised format')
+                raise AddressError('unrecognized format')
 
         try:
             cached = None
@@ -651,6 +683,10 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
 
             if fmt == self.FMT_SLPADDR:
                 cached = self.to_slpaddr(net=net)
+                return cached
+
+            if fmt == self.FMT_SCRIPTADDR:
+                cached = self.to_scriptaddr(net=net)
                 return cached
 
             if fmt == self.FMT_LEGACY:
@@ -665,7 +701,7 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
                     verbyte = net.ADDRTYPE_P2SH_BITPAY
             else:
                 # This should never be reached due to cache-lookup check above. But leaving it in as it's a harmless sanity check.
-                raise AddressError('unrecognised format')
+                raise AddressError('unrecognized format')
 
             cached = Base58.encode_check(bytes([verbyte]) + self.hash160)
             return cached
@@ -681,6 +717,8 @@ class Address(namedtuple("AddressTuple", "hash160 kind")):
             text = ':'.join([net.CASHADDR_PREFIX, text])
         if fmt == self.FMT_SLPADDR:
             text = ':'.join([net.SLPADDR_PREFIX, text])
+        if fmt == self.FMT_SCRIPTADDR:
+            text = ':'.join([net.SCRIPTADDR_PREFIX, text])
         return text
 
     def to_ui_string(self, *, net=None):

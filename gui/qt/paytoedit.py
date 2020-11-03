@@ -35,6 +35,7 @@ from electroncash import bitcoin
 from electroncash.address import Address, ScriptOutput, AddressError
 from electroncash import networks
 from electroncash.util import PrintError
+import electroncash.cashscript as cashscript
 
 from . import util
 
@@ -140,6 +141,24 @@ class PayToEdit(PrintError, ScanQRTextEdit):
             return
         # filter out empty lines
         lines = [i for i in self.lines() if i]
+
+        # don't allow unknown "script:" addresses
+        for i, line in enumerate(lines):
+            if networks.net.SCRIPTADDR_PREFIX in line:
+                try:
+                    addr = Address.from_string(line).to_full_string(Address.FMT_SCRIPTADDR)
+                except:
+                    self.errors.append((0, 'could not parse "%s:" formatted address, cannot use with pay-to-many.'%networks.net.SCRIPTADDR_PREFIX))
+                    return
+                else:
+                    allowed, contact = cashscript.allow_pay_to(self.win.wallet, addr)
+                    if not allowed and not contact:
+                        self.errors.append((0, 'cannot send to "%s:" formatted address, because it is unknown to this wallet'%networks.net.SCRIPTADDR_PREFIX))
+                        return
+                    elif not allowed:
+                        self.errors.append((0, 'cannot send to "%s:" formatted address, because it is associated with a "%s" contract type and is not allowed to be used in "Pay To"'%(networks.net.SCRIPTADDR_PREFIX, contact.name)))
+                        return
+
         outputs = []
         total = 0
         self.payto_address = None

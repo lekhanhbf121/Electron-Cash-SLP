@@ -1,0 +1,135 @@
+// Copyright (C) 2020 Simple Ledger, Inc.
+//
+// Permission is hereby granted, free of charge, to any person
+// obtaining a copy of this software and associated documentation files
+// (the "Software"), to deal in the Software without restriction,
+// including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software,
+// and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+// BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+// ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+pragma cashscript 0.5.3;
+
+// ****************************************************************************************************
+// SlpVault 0.1
+// ****************************************************************************************************
+// 
+// The purpose of this contract is to avoid accidentally burning of SLP tokens when 
+// sending tokens to p2pkh addresses belonging to users who are not using an SLP compatible
+// wallet. Non-SLP wallets will accidentally burn SLP tokens so we normally need a compatibility
+// signal before sending.  This signal is normally in the form of use of the "simpleledger:"
+// address encoding format.
+//
+// This contract provides a safe way to send any p2pkh address SLP tokens without the need
+// for such a wallet compatibility signal before sending.  Any SLP wallet can be updated to check
+// the balances of their SLP Vault address for each respective p2pkh address.  If any balances are
+// found on the SLP Vault address, the private key for the p2pkh address can be used to sweep
+// the vault into the user's wallet.
+//
+// Block explorers can be updated to display SLP Vault token balances after a user enters
+// a P2PKH type address. The block explorers can also inform users with instructions on which wallets
+// can provide access to the SLP Vault balance so they can sweep the tokens to a normal SLP wallet.
+//
+// The other major benefit this contract provides the ability for senders to recover tokens after
+// sending at any time until the receiver has moved the coin.  To perform a revoke, the original 
+// sender needs to include the original sending transaction in three chunks.  The middle chunk should
+// represent the public key of the p2pkh address the coin should be sent to.
+//
+// WARNING: The revoke feature will not work if the original send transaction is larger than 520 bytes
+// due to the script stack item size limitation.  In this case, only the sweep would be possible.
+//
+// WARNING: The byte code for this contract could change with different cashscript compiler versions.
+// Since our intent is to standardize this SLP Vault 1.0 byte code across wallets and block explorers,
+// this contract should not be recompiled when used.  Instead the .artifact file containing the 
+// correct byte code should be loaded when used with the cashscript SDK.  For this reason, we have placed
+// "DO NOT COMPILE, SEE COMMENTS ABOVE" within the script contract to prevent users from using this file
+// directly in cashscript SDK workflows.
+//
+// Contract Methods include:
+//      - sweep(bytes outputs, pubkey pk, sig s)
+//            Allows the vault owner (i.e., the pkh owner) can sweep the coin to his wallet
+//      - revoke(bytes outputs, bytes prevTxn0, bytes prevTxn1_pk, bytes prevTxn2, sig s)
+//            Allows the sender can take back the coin back to themselves
+//
+// Constructor Inputs include:
+//      - pkh: the intended owner and recipient for any coins sent
+//
+// ****************************************************************************************************
+//
+contract SlpVault(bytes20 pkh) {
+
+    // ******************************************************************
+    // Sweep
+    // ******************************************************************
+    //
+    // Sweep funds from slp vault to an address controlled by pkh owner
+    //
+    // Parameters:
+    //      - outputs    : transaction hashOutputs preimage
+    //      - pubkey     : the pubkey of the pkh for this vault
+    //      - sig        : a signature from above pubkey for this txn
+    //
+    // ******************************************************************
+    //
+    function sweep(bytes outputs, pubkey pk, sig s) {
+
+        // check if input value is 546 satoshis, indicating possible SLP, require some op_return
+        if (int(tx.value.split(4)[0]) <= 546) {
+            require(outputs.split(8)[0] == 0x0000000000000000);
+        }
+
+        // check for output to any p2pkh, 
+        // this helps prevent accidental send to single op_return output
+        require(outputs.split(outputs.length - 2)[1] == 0x88ac);
+
+        // check for the p2pkh owner
+        require(hash160(pk) == pkh);
+        require(checkSig(s, pk));
+    }
+
+    // ******************************************************************
+    // Revoke 
+    // ******************************************************************
+    //
+    // Revoke a coin at any time before the slp vault owner sweeps 
+    // the coin
+    //
+    // WARNING: This won't work if prevTxn is larger than 520 bytes!
+    // 
+    // Parameters:
+    //      - outputs     : transaction hashOutputs preimage
+    //      - prevTxn0    : the front part of previous transaction
+    //      - prevTxn1_pk : the public key, middle part of the previous 
+    //                      transaction's signatures
+    //      - prevTxn2    : the back part of the previous transaction
+    //      - sig         : a signature from above pubkey needed for
+    //                      spending this coin
+    // ******************************************************************
+    //
+    function revoke(bytes outputs, bytes prevTxn0, bytes prevTxn1_pk, bytes prevTxn2, sig s) {
+
+        // check if input value is 546 satoshis, indicating possible SLP, require some OP_RETURN
+        if (int(tx.value.split(4)[0]) <= 546) {
+            require(tx.hashOutputs == hash256(outputs));
+            require(outputs.split(8)[0] == 0x0000000000000000);
+        }
+
+        // check the txid matches outpoint txid
+        bytes32 txid = hash256(prevTxn0 + prevTxn1_pk + prevTxn2);
+        require(tx.outpoint.split(32)[0] == txid);
+
+        // sig check, accept any pubkey within the original transaction
+        require(checkSig(s, pubkey(prevTxn1_pk)));
+    }
+}

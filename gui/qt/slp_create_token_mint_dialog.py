@@ -12,7 +12,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
 from electroncash.address import Address, PublicKey
-from electroncash.bitcoin import base_encode, TYPE_ADDRESS
+from electroncash.bitcoin import base_encode, TYPE_ADDRESS, push_script
 from electroncash.i18n import _
 from electroncash.plugins import run_hook
 
@@ -26,6 +26,8 @@ from .amountedit import SLPAmountEdit
 from .transaction_dialog import show_transaction
 
 from electroncash import networks
+
+import electroncash.cashscript as cashscript
 
 dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
@@ -44,6 +46,8 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.wallet = main_window.wallet
         self.network = main_window.network
         self.app = main_window.app
+
+        self.is_mint_guard = False
 
         if self.main_window.gui_object.warn_if_no_network(self.main_window):
             return
@@ -104,17 +108,19 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         grid.addWidget(self.token_baton_to_e, row, 1)
         row += 1
 
-        try:
-            slpAddr = self.wallet.get_unused_address().to_slpaddr()
-            self.token_pay_to_e.setText(Address.prefix_from_address_string(slpAddr) + ":" + slpAddr)
-            self.token_baton_to_e.setText(Address.prefix_from_address_string(slpAddr) + ":" + slpAddr)
-        except Exception as e:
-            pass
-
         self.token_fixed_supply_cb = cb = QCheckBox(_('Permanently end issuance'))
         self.token_fixed_supply_cb.setChecked(False)
         grid.addWidget(self.token_fixed_supply_cb, row, 0)
         cb.clicked.connect(self.show_mint_baton_address)
+        row += 1
+
+        self.use_mint_guard_cb = cb = QCheckBox(_("Protect baton with Mint Guard contract"))
+        self.use_mint_guard_cb.setChecked(False)
+        self.use_mint_guard_cb.setDisabled(False)
+        grid.addWidget(self.use_mint_guard_cb, row, 0)
+        if not networks.net.TESTNET:
+            cb.clicked.connect(self.get_mint_guard_address)
+            self.use_mint_guard_cb.setDisabled(True)
         row += 1
 
         hbox = QHBoxLayout()
@@ -137,6 +143,21 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         hbox.addWidget(self.preview_button)
         hbox.addWidget(self.mint_button)
 
+        slp_addr = self.wallet.get_unused_address()
+        self.token_pay_to_e.setText(slp_addr.to_full_string(Address.FMT_SLPADDR))
+        self.token_baton_to_e.setText(slp_addr.to_full_string(Address.FMT_SLPADDR))
+
+        self.baton_input = None
+        try:
+            baton_input = self.main_window.wallet.get_slp_token_baton(self.token_id_e.text())
+        except SlpNoMintingBatonFound as e:
+            pass
+        else:
+            if baton_input['address'].kind == Address.ADDR_P2SH and cashscript.is_mine(self.wallet, baton_input['address'])[0]:
+                self.baton_input = baton_input
+                vault_addr = self.baton_input['address']
+                self.set_use_mint_guard(vault_addr)
+
         dialogs.append(self)
         self.show()
         self.token_qty_e.setFocus()
@@ -148,12 +169,50 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.token_baton_to_e.setHidden(self.token_fixed_supply_cb.isChecked())
         self.token_baton_label.setHidden(self.token_fixed_supply_cb.isChecked())
 
-    def parse_address(self, address):
-        if networks.net.SLPADDR_PREFIX not in address:
-            address = networks.net.SLPADDR_PREFIX + ":" + address
+    def set_use_mint_guard(self, address):
+        self.use_mint_guard_cb.setChecked(True)
+        self.use_mint_guard_cb.setDisabled(True)
+        self.token_fixed_supply_cb.setChecked(False)
+        self.token_fixed_supply_cb.setDisabled(True)
+        self.token_baton_to_e.setText(address.to_full_string(Address.FMT_SCRIPTADDR))
+        self.token_baton_to_e.setDisabled(True)
+        self.is_mint_guard = True
+
+    def get_mint_guard_address(self):
+        if not self.is_mint_guard:
+            self.token_fixed_supply_cb.setChecked(False)
+            self.token_baton_to_e.setHidden(False)
+            self.token_baton_label.setHidden(False)
+
+            unused_addr = self.wallet.get_unused_address()
+            script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, self.token_id_e.text(), unused_addr.hash160.hex()]
+            pin_op_return_msg = cashscript.build_pin_msg(cashscript.SLP_MINT_GUARD_ID, script_params)
+            outputs = [pin_op_return_msg, (TYPE_ADDRESS, unused_addr, 546)]
+            tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, None)
+            self.main_window.show_transaction(tx, "New script pin for: %s"%cashscript.SLP_MINT_GUARD_NAME)  # TODO: can we have a callback after successful broadcast?
+
+            mint_guard_addr = cashscript.get_redeem_script_address(cashscript.SLP_MINT_GUARD_ID, script_params)
+            self.set_use_mint_guard(mint_guard_addr)
+        else:
+            self.is_mint_guard = False
+
+    def parse_address(self, address, prefix=networks.net.SLPADDR_PREFIX):
+        if prefix not in address:
+            address = prefix + ":" + address
         return Address.from_string(address)
 
     def mint_token(self, preview=False):
+
+        if self.is_mint_guard:
+            script_addr = Address.from_string(self.token_baton_to_e.text()).to_full_string(Address.FMT_SCRIPTADDR)
+            l = [ c for c in self.wallet.contacts.data if c.address == script_addr ]
+            if len(l) == 0:
+                self.show_message("Mint Guard address was not pinned to this wallet, un-check and check 'Protect with Mint Guard contract' again.")
+                return
+            elif len(l) > 1:
+                self.show_message("More than one script contracts for the Mint Guard.")
+                return
+
         decimals = int(self.token_dec.value())
         mint_baton_vout = 2 if self.token_baton_to_e.text() != '' and not self.token_fixed_supply_cb.isChecked() else None
         init_mint_qty = self.token_qty_e.get_amount()
@@ -172,7 +231,7 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
             slp_op_return_msg = buildMintOpReturnOutput_V1(token_id_hex, mint_baton_vout, init_mint_qty, token_type)
             outputs.append(slp_op_return_msg)
         except OPReturnTooLarge:
-            self.show_message(_("Optional string text causiing OP_RETURN greater than 223 bytes."))
+            self.show_message(_("Optional string text causing OP_RETURN greater than 223 bytes."))
             return
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
@@ -188,7 +247,10 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
 
         if not self.token_fixed_supply_cb.isChecked():
             try:
-                addr = self.parse_address(self.token_baton_to_e.text())
+                if self.is_mint_guard:
+                    addr = self.parse_address(self.token_baton_to_e.text(), networks.net.SCRIPTADDR_PREFIX)
+                else:
+                    addr = self.parse_address(self.token_baton_to_e.text())
                 outputs.append((TYPE_ADDRESS, addr, 546))
             except:
                 self.show_message(_("Enter a Baton Address in SLP address format."))
@@ -201,15 +263,26 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         coins = self.main_window.get_coins()
         fee = None
 
-        try:
-            baton_input = self.main_window.wallet.get_slp_token_baton(self.token_id_e.text())
-        except SlpNoMintingBatonFound as e:
-            self.show_message(_("No baton exists for this token."))
-            return
+        if not self.baton_input:
+            try:
+                self.baton_input = self.main_window.wallet.get_slp_token_baton(self.token_id_e.text())
+            except SlpNoMintingBatonFound as e:
+                self.show_message(_("No baton exists for this token."))
+                return
+        else:
+            self.baton_input['type'] = cashscript.SLP_MINT_GUARD_MINT
+            params = [ c.params for c in self.wallet.contacts.data if c.type == 'script' and c.address == self.baton_input['address'].to_full_string(Address.FMT_SCRIPTADDR)][0]
+            owner_p2pkh = cashscript.get_p2pkh_owner_address(cashscript.SLP_MINT_GUARD_ID, params)
+            self.baton_input['slp_mint_guard_pkh'] = owner_p2pkh.hash160.hex()
+            self.baton_input['slp_token_id'] = self.token_id_e.text()
+            self.baton_input['slp_mint_amt'] = int(self.token_qty_e.text()).to_bytes(8, 'big').hex()
+            token_rec_script = Address.from_string(self.token_pay_to_e.text()).to_script_hex()
+            self.baton_input['token_receiver_out'] = int(546).to_bytes(8, 'little').hex() + push_script(token_rec_script)
+            self.wallet.add_input_sig_info(self.baton_input, owner_p2pkh)
 
         desired_fee_rate = 1.0  # sats/B, just init this value for paranoia
         try:
-            tx = self.main_window.wallet.make_unsigned_transaction(coins, outputs, self.main_window.config, fee, None, mandatory_coins=[baton_input])
+            tx = self.main_window.wallet.make_unsigned_transaction(coins, outputs, self.main_window.config, fee, None, mandatory_coins=[self.baton_input])
             desired_fee_rate = tx.get_fee() / tx.estimated_size()  # remember the fee coin chooser & wallet gave us as a fee rate so we may use it below after adding baton to adjust fee downward to this rate.
         except NotEnoughFunds:
             self.show_message(_("Insufficient funds"))

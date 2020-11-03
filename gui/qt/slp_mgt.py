@@ -97,7 +97,7 @@ class SlpMgt(MyTreeWidget):
                     menu.addSeparator()
                 try:
                     self.parent.wallet.get_slp_token_baton(keys[0])
-                    menu.addAction(_("Mint Tool"), lambda: SlpCreateTokenMintDialog(self.parent, keys[0]))
+                    menu.addAction(_("Mint Tool..."), lambda: SlpCreateTokenMintDialog(self.parent, keys[0]))
                 except SlpNoMintingBatonFound:
                     pass
                 column = self.currentColumn()

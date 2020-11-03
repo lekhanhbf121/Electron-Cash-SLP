@@ -25,6 +25,7 @@
 #   - ImportedAddressWallet: imported address, no keystore
 #   - ImportedPrivkeyWallet: imported private keys, keystore
 #   - Standard_Wallet: one keystore, P2PKH
+#   - Slp_Vault_Wallet: one keystore, P2SH with wrapped P2PKH
 #   - Multisig_Wallet: several keystores, P2SH
 
 
@@ -67,6 +68,8 @@ from .contacts import Contacts
 
 from .slp import SlpMessage, SlpParsingError, SlpUnsupportedSlpTokenType, SlpNoMintingBatonFound, OpreturnError
 from . import slp_validator_0x01, slp_validator_0x01_nft1
+
+from . import cashscript
 
 def _(message): return message
 
@@ -255,6 +258,7 @@ class Abstract_Wallet(PrintError):
         # invoices and contacts
         self.invoices = InvoiceStore(self.storage)
         self.contacts = Contacts(self.storage)
+        self.contacts_subscribed = []
 
         # Now, finally, after object is constructed -- we can do this
         self.load_keystore()
@@ -277,7 +281,8 @@ class Abstract_Wallet(PrintError):
     @classmethod
     def to_Address_dict(cls, d):
         '''Convert a dict of strings to a dict of Adddress objects.'''
-        return {Address.from_string(text): value for text, value in d.items()}
+        _d = {Address.from_string(text): value for text, value in d.items()}
+        return _d
 
     @classmethod
     def from_Address_dict(cls, d):
@@ -630,7 +635,7 @@ class Abstract_Wallet(PrintError):
         of is_mine below is sufficient.'''
         self._recv_address_set_cached, self._change_address_set_cached = frozenset(), frozenset()
 
-    def is_mine(self, address):
+    def is_mine(self, address, *, check_cashscript=True):
         ''' Note this method assumes that the entire address set is
         composed of self.get_change_addresses() + self.get_receiving_addresses().
         In subclasses, if that is not the case -- REIMPLEMENT this method! '''
@@ -651,10 +656,15 @@ class Abstract_Wallet(PrintError):
         # Do a 2 x O(logN) lookup using sets rather than 2 x O(N) lookups
         # if we were to use the address lists (this was the previous way).
         # For small wallets it doesn't matter -- but for wallets with 5k or 10k
-        # addresses, it starts to add up siince is_mine() is called frequently
+        # addresses, it starts to add up since is_mine() is called frequently
         # especially while downloading address history.
-        return (address in self._recv_address_set_cached
-                    or address in self._change_address_set_cached)
+
+        if (address in self._recv_address_set_cached
+                    or address in self._change_address_set_cached):
+            return True
+        elif isinstance(address, Address) and address.kind == Address.ADDR_P2SH and check_cashscript:
+            return cashscript.is_mine(self, address)[0]
+        return False
 
     def is_change(self, address):
         assert not isinstance(address, str)
@@ -907,6 +917,9 @@ class Abstract_Wallet(PrintError):
     def get_slp_token_baton(self, slpTokenId):
         # look for our minting baton
         with self.lock:
+            tok_info = self.token_types.get(slpTokenId)
+            if not tok_info or tok_info.get('decimals', "?") == "?":
+                raise SlpNoMintingBatonFound()
             for addr, addrdict in self._slp_txo.copy().items():
                 for txid, txdict in addrdict.copy().items():
                     for idx, txo in txdict.copy().items():
@@ -930,7 +943,7 @@ class Abstract_Wallet(PrintError):
             self.frozen_coins.discard(txi)
 
         """
-        SLP -- removes ALL SLP UTXOs that are either unrelated, or unvalidated
+        SLP -- removes ALL SLP UTXOs that are either unrelated, or not yet validated
         """
         if exclude_slp:
             with self.lock:
@@ -1082,7 +1095,7 @@ class Abstract_Wallet(PrintError):
         return self.get_utxos(domain=domain, exclude_frozen=True, mature=True, confirmed_only=confirmed_only)
 
     def get_slp_spendable_coins(self, slpTokenId, domain, config, isInvoice = False):
-        confirmed_only = config.get('confirmed_only', False)
+        confirmed_only = config.get('confirmed_only', DEFAULT_CONFIRMED_ONLY)
         # if (isInvoice):
         #     confirmed_only = True
         return self.get_slp_utxos(slpTokenId, domain=domain, exclude_frozen=True, confirmed_only=confirmed_only)
@@ -1136,7 +1149,7 @@ class Abstract_Wallet(PrintError):
         ''' Note that exclude_frozen = True checks for BOTH address-level and coin-level frozen status. '''
         coins = []
         if domain is None:
-            domain = self.get_addresses()
+            domain = [ Address.from_string(c.address) for c in self.contacts.data if c.type == 'script' ] + self.get_addresses()  #TODO: need to filter for cashscript.is_mine?
         if exclude_frozen:
             domain = set(domain) - self.frozen_addresses
         for addr in domain:
@@ -1395,8 +1408,16 @@ class Abstract_Wallet(PrintError):
                 if txi['type'] == 'coinbase':
                     continue
                 addr = txi.get('address')
+
+                # count script inputs to be added to txi
+                mine = False
+                if txi['type'] in cashscript.valid_script_sig_types:
+                    mine = cashscript.is_mine(self, addr)[0]
+                    if mine and cashscript.get_transaction_label_for_actions_by_others(txi['type']):
+                        self.set_label(tx_hash, cashscript.get_transaction_label_for_actions_by_others(txi['type']))
+
                 # find value from prev output
-                if self.is_mine(addr):
+                if mine or self.is_mine(addr):
                     prevout_hash, prevout_n, ser = txin_get_info(txi)
                     dd = self.txo.get(prevout_hash, {})
                     for n, v, is_cb in dd.get(addr, []):
@@ -1449,7 +1470,31 @@ class Abstract_Wallet(PrintError):
                 ser = tx_hash + ':%d'%n
                 _type, addr, v = txo
                 mine = False
-                if self.is_mine(addr):
+
+                # check for slp vault
+                if _type == TYPE_ADDRESS:
+                    if self.wallet_type == 'slp_standard' and addr.kind == Address.ADDR_P2SH:
+                        mine, script = cashscript.is_mine(self, addr)
+                        if mine:
+                            self.set_label(tx_hash, script.name + ' received new coins')
+
+                # check for pin messages
+                if _type == TYPE_SCRIPT and cashscript.pin_protocol_id in addr.script:
+                    try:
+                        pin = cashscript.ScriptPin.parsePinScriptOutput(addr)
+                    except:
+                        pass
+                    else:
+                        if self.contacts.handle_script_pin(pin):
+                            self.set_label(tx_hash, 'New script pin for: ' + cashscript.get_contract_name_string(pin.artifact_sha256.hex()))
+                        if pin.artifact_sha256.hex() in networks.net.SCRIPT_ARTIFACTS:
+                            artifact_entry = networks.net.SCRIPT_ARTIFACTS.get(pin.artifact_sha256.hex())
+                            label_string = cashscript.get_contact_label(self, pin.artifact_sha256.hex(), [p.hex() for p in pin.constructor_inputs])
+                            key = pin.address.to_full_string(Address.FMT_SCRIPTADDR)
+                            if not self.labels.get(key):
+                                self.set_label(key, label_string)
+
+                if mine or self.is_mine(addr):
                     # add coin to self.txo since it's mine.
                     mine = True
                     l = d.get(addr)
@@ -2437,13 +2482,17 @@ class Abstract_Wallet(PrintError):
 
     def add_input_info(self, txin):
         address = txin['address']
-        if self.is_mine(address):
+        if self.is_mine(address, check_cashscript = False):
             txin['type'] = self.get_txin_type(address)
             # Bitcoin Cash needs value to sign
             received, spent = self.get_addr_io(address)
             item = received.get(txin['prevout_hash']+':%d'%txin['prevout_n'])
-            tx_height, value, is_cb = item
-            txin['value'] = value
+            try:
+                tx_height, value, is_cb = item
+            except TypeError:
+                pass
+            else:
+                txin['value'] = value
             self.add_input_sig_info(txin, address)
 
     def add_input_info_for_bitcoinfiles(self, txin):
@@ -3079,8 +3128,7 @@ class ImportedAddressWallet(ImportedWalletBase):
 
     def get_addresses(self, include_change=False):
         if not self._sorted:
-            self._sorted = sorted(self.addresses,
-                                  key=lambda addr: addr.to_ui_string())
+            self._sorted = sorted(self.addresses, key=lambda addr: addr.to_ui_string())
         return self._sorted
 
     def import_address(self, address):
@@ -3378,11 +3426,106 @@ class Standard_Wallet(Simple_Deterministic_Wallet):
 
 
 class Slp_Standard_Wallet(Standard_Wallet):
+    '''
+    This type of wallet has a default coin type of 245 instead of 145.
+    '''
     wallet_type = 'slp_standard'
     def __init__(self, storage):
         storage.put('wallet_type', self.wallet_type)
         super().__init__(storage)
 
+
+class Slp_Vault_Wallet(Deterministic_Wallet):
+    '''
+    This wallet type uses p2sh to wrap p2pkh in provide additional security 
+    for SLP.  
+    
+    The type of address used by this wallet allows users to send tokens to ANY
+    p2pkh bitcoin address without worrying about the chance of tokens being burned.
+
+    This will use a default coin type of 145 since p2sh is being used and
+    non-SLP wallets won't see the SLP or BCH balances.
+    '''
+    wallet_type = 'slp_vault_p2sh'
+
+    def __init__(self, storage):
+        storage.put('wallet_type', self.wallet_type)
+        super().__init__(storage)
+
+    def get_pubkeys(self, c, i):
+        return self.derive_pubkeys(c, i)
+
+    def pubkeys_to_address(self, pubkeys):
+        assert len(pubkeys)==1
+        pubkeys = [bytes.fromhex(pubkey) for pubkey in pubkeys]
+        redeem_script = self.pubkeys_to_redeem_script(pubkeys)
+        return Address.from_P2SH_script(redeem_script)
+
+    def pubkeys_to_redeem_script(self, pubkeys):
+        assert len(pubkeys)==1
+        return bytes.fromhex(cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [hash160(pubkeys[0]).hex()]))
+
+    def derive_pubkeys(self, c, i):
+        return [k.derive_pubkey(c, i) for k in self.get_keystores()]
+
+    def load_keystore(self):
+        self.keystores = {}
+        name = 'x1/'
+        self.keystores[name] = load_keystore(self.storage, name)
+        self.keystore = self.keystores['x1/']
+        xtype = bitcoin.xpub_type(self.keystore.xpub)
+        self.txin_type = cashscript.SLP_VAULT_NAME if xtype == 'standard' else xtype
+
+    def save_keystore(self):
+        for name, k in self.keystores.items():
+            self.storage.put(name, k.dump())
+
+    def get_keystore(self):
+        return self.keystores.get('x1/')
+
+    def get_keystores(self):
+        return [self.get_keystore()]
+
+    def update_password(self, old_pw, new_pw, encrypt=False):
+        if old_pw is None and self.has_password():
+            raise InvalidPassword()
+        for name, keystore in self.keystores.items():
+            if keystore.can_change_password():
+                keystore.update_password(old_pw, new_pw)
+                self.storage.put(name, keystore.dump())
+        self.storage.set_password(new_pw, encrypt)
+        self.storage.write()
+
+    def has_seed(self):
+        return self.keystore.has_seed()
+
+    def can_change_password(self):
+        return self.keystore.can_change_password()
+
+    def is_watching_only(self):
+        return not any([not k.is_watching_only() for k in self.get_keystores()])
+
+    def get_master_public_key(self):
+        return self.keystore.get_master_public_key()
+
+    def get_master_public_keys(self):
+        return [k.get_master_public_key() for k in self.get_keystores()]
+
+    def get_fingerprint(self):
+        return ''.join(sorted(self.get_master_public_keys()))
+
+    def add_input_sig_info(self, txin, address):
+        # x_pubkeys are not sorted here because it would be too slow
+        # they are sorted in transaction.get_sorted_pubkeys
+        derivation = self.get_address_index(address)
+        txin['x_pubkeys'] = [k.get_xpubkey(*derivation) for k in self.get_keystores()]
+        txin['pubkeys'] = None
+        # we need n place holders
+        txin['signatures'] = [None]
+        txin['num_sig'] = 1
+
+    def is_multisig(self):
+        return False
 
 class Multisig_Wallet(Deterministic_Wallet):
     # generic m of n
@@ -3399,7 +3542,7 @@ class Multisig_Wallet(Deterministic_Wallet):
     def pubkeys_to_address(self, pubkeys):
         pubkeys = [bytes.fromhex(pubkey) for pubkey in pubkeys]
         redeem_script = self.pubkeys_to_redeem_script(pubkeys)
-        return Address.from_multisig_script(redeem_script)
+        return Address.from_P2SH_script(redeem_script)
 
     def pubkeys_to_redeem_script(self, pubkeys):
         return Script.multisig_script(self.m, sorted(pubkeys))
@@ -3468,7 +3611,7 @@ class Multisig_Wallet(Deterministic_Wallet):
         return True
 
 
-wallet_types = ['standard', 'slp_standard', 'multisig', 'slp_multisig', 'imported', 'slp_imported']
+wallet_types = ['standard', 'slp_standard', 'slp_vault_p2sh', 'multisig', 'slp_multisig', 'imported', 'slp_imported']
 
 def register_wallet_type(category):
     wallet_types.append(category)
@@ -3476,6 +3619,7 @@ def register_wallet_type(category):
 wallet_constructors = {
     'standard': Standard_Wallet,
     'slp_standard': Slp_Standard_Wallet,
+    'slp_vault_p2sh': Slp_Vault_Wallet,
     'old': Standard_Wallet,
     'xpub': Standard_Wallet,
     'imported_privkey': ImportedPrivkeyWallet,

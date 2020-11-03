@@ -33,8 +33,8 @@ from . import util
 from .keystore import bip44_derivation, bip44_derivation_245
 from .wallet import (ImportedAddressWallet, Slp_ImportedAddressWallet,
                      ImportedPrivkeyWallet, Slp_ImportedPrivkeyWallet,
-                     Standard_Wallet, Slp_Standard_Wallet, Multisig_Wallet,
-                     wallet_types)
+                     Standard_Wallet, Slp_Standard_Wallet, Slp_Vault_Wallet,
+                     Multisig_Wallet, wallet_types)
 from .i18n import _, ngettext
 
 
@@ -86,6 +86,7 @@ class BaseWizard(util.PrintError):
         ])
         wallet_kinds = [
             ('slp_standard',  _("Standard wallet")),
+            # ('slp_vault_p2sh', _("EXPERIMENTAL SLP Vault wallet")),
             ('slp_multisig',  _("Multi-signature wallet")),
             ('slp_imported',  _("Import Bitcoin Cash addresses or private keys")),
         ]
@@ -94,7 +95,7 @@ class BaseWizard(util.PrintError):
 
     def on_wallet_type(self, choice):
         self.wallet_type = choice
-        if choice == 'slp_standard':
+        if choice == 'slp_standard' or choice == 'slp_vault_p2sh':
             action = 'choose_keystore'
         elif choice == 'slp_multisig':
             action = 'choose_multisig'
@@ -111,10 +112,10 @@ class BaseWizard(util.PrintError):
         self.multisig_dialog(run_next=on_multisig)
 
     def choose_keystore(self):
-        assert self.wallet_type in ['slp_standard', 'slp_multisig']
+        assert self.wallet_type in ['slp_standard', 'slp_vault_p2sh', 'slp_multisig']
         i = len(self.keystores)
         title = _('Add cosigner') + ' (%d of %d)'%(i+1, self.n) if self.wallet_type=='slp_multisig' else _('Keystore')
-        if self.wallet_type =='slp_standard' or i==0:
+        if self.wallet_type == 'slp_standard' or i==0:
             message = _('Do you want to create a new seed, or to restore a wallet using an existing seed?')
             choices = [
                 ('create_bip39_seed', _('Create a new seed')),
@@ -123,6 +124,15 @@ class BaseWizard(util.PrintError):
             ]
             if not self.is_kivy:
                 choices.append(('choose_hw_device',  _('Use a hardware device')))
+        elif self.wallet_type == 'slp_vault_p2sh':
+            message = _('Do you want to create a new seed, or to restore a wallet using an existing seed?')
+            choices = [
+                ('create_bip39_seed', _('Create a new seed')),
+                ('restore_from_seed', _('I already have a seed')),
+                # ('restore_from_key', _('Use public or private keys')),
+            ]
+            # if not self.is_kivy:
+            #     choices.append(('choose_hw_device',  _('Use a hardware device')))
         else:
             message = _('Add a cosigner to your multi-sig wallet')
             choices = [
@@ -296,6 +306,8 @@ class BaseWizard(util.PrintError):
             # There is no general standard for HD multisig.
             # This is partially compatible with BIP45; assumes index=0
             default_derivation = "m/45'/0"
+        elif self.wallet_type=='slp_vault_p2sh':
+            default_derivation = bip44_derivation(0)
         else:
             default_derivation = bip44_derivation_245(0)
         self.derivation_dialog(f, default_derivation)
@@ -366,7 +378,7 @@ class BaseWizard(util.PrintError):
         self.derivation_dialog(f, bip44_derivation_245(0))
 
     def create_keystore(self, seed, passphrase):
-        k = keystore.from_seed(seed, passphrase, self.wallet_type == 'slp_multisig')
+        k = keystore.from_seed(seed, passphrase, 'multisig' in self.wallet_type or self.wallet_type == 'slp_vault_p2sh')
         self.on_keystore(k)
 
     def on_bip44(self, seed, passphrase, derivation):
@@ -379,6 +391,14 @@ class BaseWizard(util.PrintError):
             from .bitcoin import xpub_type
             t1 = xpub_type(k.xpub)
         if self.wallet_type == 'slp_standard':
+            if has_xpub and t1 not in ['standard']:
+                self.show_error(_('Wrong key type') + ' %s'%t1)
+                self.run('choose_keystore')
+                return
+            self.keystores.append(k)
+            self.run('create_wallet')
+        elif self.wallet_type == 'slp_vault_p2sh':
+            assert has_xpub
             if has_xpub and t1 not in ['standard']:
                 self.show_error(_('Wrong key type') + ' %s'%t1)
                 self.run('choose_keystore')
@@ -430,6 +450,11 @@ class BaseWizard(util.PrintError):
             keys = self.keystores[0].dump()
             self.storage.put('keystore', keys)
             self.wallet = Slp_Standard_Wallet(self.storage)
+            self.run('create_addresses')
+        elif self.wallet_type == 'slp_vault_p2sh':
+            self.storage.put('x1/', k.dump())
+            self.storage.write()
+            self.wallet = Slp_Vault_Wallet(self.storage)
             self.run('create_addresses')
         elif self.wallet_type == 'multisig':
             raise Exception('Wallet type is not handled in this version')

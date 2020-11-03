@@ -122,21 +122,24 @@ class SlpTransactionChecker:
                     addr = txo['address']
                     prev_out = txo['prevout_hash']
                     prev_n = txo['prevout_n']
-                    with wallet.lock:
-                        try:
-                            slp_input = wallet._slp_txo[addr][prev_out][prev_n]
-                        except KeyError:
-                            pass
-                        else:
-                            if slp_input['qty'] == 0:
-                                continue
-                            if isinstance(slp_input['qty'], int):
-                                input_slp_qty += slp_input['qty']
-                            if slp_input['token_id'] != tid:
-                                print_error("SLP check failed for SEND due to incorrect" \
-                                                + " tokenId in txn input")
-                                raise SlpWrongTokenID('Transaction contains SLP inputs' \
-                                                        + ' with incorrect token id.')
+                    try:
+                        input_slp_qty += txo['slp_value']
+                    except:
+                        with wallet.lock:
+                            try:
+                                slp_input = wallet._slp_txo[addr][prev_out][prev_n]
+                            except KeyError:
+                                pass
+                            else:
+                                if slp_input['qty'] == 0:
+                                    continue
+                                if isinstance(slp_input['qty'], int):
+                                    input_slp_qty += slp_input['qty']
+                                if slp_input['token_id'] != tid:
+                                    print_error("SLP check failed for SEND due to incorrect" \
+                                                    + " tokenId in txn input")
+                                    raise SlpWrongTokenID('Transaction contains SLP inputs' \
+                                                            + ' with incorrect token id.')
 
                 if input_slp_qty < sum(slp_outputs):
                     print_error("SEND failed due to insufficient SLP inputs")

@@ -1,0 +1,11 @@
+{
+    "32b14aa93b0d0cd360a3e0204ac6ac2087564d2aa7cd7462db073358b6a55c62": {
+        "location": "cashscript/slp_vault.artifact",
+        "mainnet": false,
+        "maxSendTxSize": 520
+    },
+    "cf7ced1c3e2ff3d6620a9cc5d3cb000a5109fd09ce6b0ba86051424a3ede980d": {
+        "location": "cashscript/slp_mint_guard.artifact",
+        "mainnet": false
+    }
+}

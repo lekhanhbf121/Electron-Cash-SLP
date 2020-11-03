@@ -43,6 +43,14 @@ class TestWalletKeystoreAddressIntegrity(unittest.TestCase):
         w.synchronize()
         return w
 
+    def _create_slp_vault_wallet(self, ks):
+        store = storage.WalletStorage('if_this_exists_mocking_failed_648151893')
+        store.put('keystore', ks.dump())
+        store.put('gap_limit', self.gap_limit)
+        w = wallet.Slp_Vault_Wallet(store)
+        w.synchronize()
+        return w
+
     @mock.patch.object(storage.WalletStorage, '_write')
     def test_electrum_seed_standard(self, mock_write):
         seed_words = 'cycle rocket west magnet parrot shuffle foot correct salt library feed song'

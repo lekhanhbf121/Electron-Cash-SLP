@@ -1,0 +1,129 @@
+// Copyright (C) 2020 Simple Ledger, Inc.
+//
+// Permission is hereby granted, free of charge, to any person
+// obtaining a copy of this software and associated documentation files
+// (the "Software"), to deal in the Software without restriction,
+// including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software,
+// and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+// BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+// ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+pragma cashscript 0.5.3;
+
+// ****************************************************************************************************
+// SlpMintGuard 0.1
+// ****************************************************************************************************
+//
+// Guards the minting baton from ever being burned.
+//
+// NOTE: OP_CODESEPARATOR must be manually added to the bytecode before each
+//       instance of OP_CHECKDATASIGVERIFY.  This allows the preimage to be lower
+//       than 520 bytes.
+//
+// Contract Methods include:
+//      - Mint(bytes8 slpAmt, bytes tokenReceiverOut, bytes changeOutput, bytes scriptBase, pubkey pk, sig s)
+//      - Transfer(pubkey newPk, bytes tokenReceiverOut, bytes changeOutput, bytes scriptBase, pubkey pk, sig s)
+//
+// Constructor Inputs include:
+//      - scriptBaseSha256: the sha256 of the base script required to be enforced 
+//      - slpMintFront: the front part of the mint op_return message, less token id, baton idx, and amount
+//      - tokenId: the token's ID
+//      - pkh: the intended owner and recipient for any coins sent
+//
+// ****************************************************************************************************
+//
+contract SlpMintGuard(bytes32 scriptBaseSha256, bytes23 slpMintFront, bytes32 tokenId, bytes20 pkh) {
+
+    // ******************************************************************
+    // Transfer 
+    // ******************************************************************
+    //
+    // Transfer the Mint Vault to a new address.
+    // 
+    // Parameters:
+    //      - newPk            : public key for new owner
+    //      - tokenReceiverOut : serialized output for the token receiver
+    //      - changeOutput     : serialized output for bch change, use
+    //                           0x00000000 for no change output
+    //      - scriptBase       : script base to be used for receiver to
+    //                           match scriptBaseSha256
+    //      - pubkey           : the pubkey of the pkh for this vault
+    //      - s                : a signature from above pubkey needed for
+    //                           spending this coin
+    // ******************************************************************
+    //
+    function Transfer(pubkey newPk, bytes tokenReceiverOut, bytes changeOutput, bytes scriptBase, pubkey pk, sig s) {
+
+        // check pubkey length is correct
+        require(newPk.length == 33);
+
+        // slp mint message 
+        bytes slpMsg = slpMintFront + tokenId + 0x010208 + 0x0000000000000000;
+        bytes batonOut = new OutputP2SH(0x2202000000000000, hash160(0x14 + hash160(newPk) + 0x20 + tokenId + 0x17 + slpMintFront + 0x20 + scriptBaseSha256 + scriptBase));
+        bytes baseOuts = slpMsg + tokenReceiverOut + batonOut;
+        if (changeOutput != 0x00000000) {
+            require(tx.hashOutputs == hash256(baseOuts + changeOutput));
+        } else {
+            require(tx.hashOutputs == hash256(baseOuts));
+        }
+
+        // require script base hash
+        require(sha256(scriptBase) == scriptBaseSha256);
+        // manually place OP_CODESEPARATOR here
+
+        // check for the p2pkh owner
+        require(hash160(pk) == pkh);
+        require(checkSig(s, pk));
+    }
+
+    // ******************************************************************
+    // Mint
+    // ******************************************************************
+    //
+    // Mint more tokens
+    //
+    // Parameters:
+    //      - slpAmt           : the amount to be minted
+    //      - tokenReceiverOut : the output for the token receiver
+    //      - changeOutput     : serialized output for bch change, use
+    //                           0x00000000 for no change output
+    //      - scriptBase       : script base to be used for receiver to
+    //                           match scriptBaseSha256
+    //      - pubkey           : the pubkey of the pkh for this vault
+    //      - sig              : a signature from above pubkey for this txn
+    //
+    // ******************************************************************
+    //
+    function Mint(bytes8 slpAmt, bytes tokenReceiverOut, bytes changeOutput, bytes scriptBase, pubkey pk, sig s) {
+ 
+        // slp mint message 
+        bytes slpMsg = slpMintFront + tokenId + 0x010208 + slpAmt;
+        bytes batonOut = new OutputP2SH(0x2202000000000000, hash160(0x14 + pkh + 0x20 + tokenId + 0x17 + slpMintFront + 0x20 + scriptBaseSha256 + scriptBase));
+        bytes baseOuts = slpMsg + tokenReceiverOut + batonOut;
+        if (changeOutput != 0x00000000) {
+            require(tx.hashOutputs == hash256(baseOuts + changeOutput));
+        } else {
+            require(tx.hashOutputs == hash256(baseOuts));
+        }
+
+        // require script base hash
+        require(sha256(scriptBase) == scriptBaseSha256);
+        // manually place OP_CODESEPARATOR here
+
+        // check for the p2pkh owner
+        require(hash160(pk) == pkh);
+        require(checkSig(s, pk));
+    }
+
+}

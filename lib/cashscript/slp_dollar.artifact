@@ -1,0 +1,82 @@
+{
+  "contractName": "SlpDollar",
+  "constructorInputs": [
+    {
+      "name": "isFrozen",
+      "type": "bytes"
+    },
+    {
+      "name": "slpAmt",
+      "type": "bytes8"
+    },
+    {
+      "name": "pkh",
+      "type": "bytes20"
+    },
+    {
+      "name": "issuerPk",
+      "type": "pubkey"
+    },
+    {
+      "name": "tokenId",
+      "type": "bytes32"
+    }
+  ],
+  "abi": [
+    {
+      "name": "send",
+      "covenant": true,
+      "inputs": [
+        {
+          "name": "payAmt",
+          "type": "bytes8"
+        },
+        {
+          "name": "payPk",
+          "type": "pubkey"
+        },
+        {
+          "name": "changeAmt",
+          "type": "bytes8"
+        },
+        {
+          "name": "changeOutput",
+          "type": "bytes"
+        },
+        {
+          "name": "pk",
+          "type": "pubkey"
+        },
+        {
+          "name": "s",
+          "type": "sig"
+        }
+      ]
+    },
+    {
+      "name": "freeze",
+      "covenant": true,
+      "inputs": [
+        {
+          "name": "newFreezeState",
+          "type": "bytes"
+        },
+        {
+          "name": "changeOutput",
+          "type": "bytes"
+        },
+        {
+          "name": "issuerSig",
+          "type": "sig"
+        }
+      ]
+    }
+  ],
+  "bytecode": "OP_5 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_6 OP_PICK 6b OP_SPLIT OP_NIP OP_SIZE 34 OP_SUB OP_SPLIT OP_12 OP_SPLIT OP_NIP 20 OP_SPLIT OP_DROP OP_2 OP_PICK 0101 OP_EQUAL OP_NOT OP_VERIFY OP_9 OP_PICK OP_SIZE OP_NIP OP_8 OP_NUMEQUALVERIFY OP_10 OP_PICK OP_SIZE OP_NIP 21 OP_NUMEQUALVERIFY OP_11 OP_PICK OP_SIZE OP_NIP OP_8 OP_NUMEQUALVERIFY 0000000000000000406a04534c500001010453454e4420 OP_7 OP_ROLL OP_CAT OP_8 OP_CAT OP_9 OP_PICK OP_CAT OP_8 OP_CAT OP_11 OP_PICK OP_CAT OP_ROT 20 OP_SPLIT OP_NIP 2202000000000000 OP_DUP 17a914 OP_CAT OP_1 OP_6 OP_PICK OP_CAT OP_8 OP_CAT OP_12 OP_ROLL OP_CAT 14 OP_CAT OP_12 OP_PICK OP_HASH160 OP_CAT OP_3 OP_PICK OP_CAT OP_HASH160 OP_CAT 87 OP_CAT OP_OVER 17a914 OP_CAT OP_1 OP_7 OP_ROLL OP_CAT OP_8 OP_CAT OP_13 OP_ROLL OP_CAT 14 OP_CAT OP_8 OP_PICK OP_CAT OP_4 OP_ROLL OP_CAT OP_HASH160 OP_CAT 87 OP_CAT OP_ROT 1976a914 OP_CAT OP_10 OP_ROLL OP_HASH160 OP_CAT 88ac OP_CAT OP_2SWAP OP_CAT OP_ROT OP_CAT OP_SWAP OP_CAT OP_7 OP_ROLL OP_CAT OP_HASH256 OP_EQUALVERIFY OP_5 OP_PICK OP_HASH160 OP_ROT OP_EQUALVERIFY OP_2ROT OP_2DUP OP_SWAP OP_SIZE OP_1SUB OP_SPLIT OP_DROP OP_7 OP_ROLL OP_SHA256 OP_ROT OP_CHECKDATASIGVERIFY OP_CHECKSIG OP_NIP OP_NIP OP_NIP OP_ELSE OP_5 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_5 OP_PICK OP_NOP 68 OP_SPLIT OP_NIP OP_SIZE 34 OP_SUB OP_SPLIT OP_12 OP_SPLIT OP_NIP 20 OP_SPLIT OP_DROP OP_8 OP_PICK OP_1 OP_EQUAL OP_IF OP_2 OP_PICK 00 OP_EQUALVERIFY OP_ELSE OP_8 OP_PICK 00 OP_EQUAL OP_IF OP_2 OP_PICK OP_1 OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_1 OP_9 OP_ROLL OP_CAT OP_ROT OP_2 OP_SPLIT OP_NIP OP_CAT 2202000000000000 OP_DUP 17a914 OP_CAT OP_ROT OP_HASH160 OP_CAT 87 OP_CAT OP_SWAP 1976a914 OP_CAT OP_5 OP_ROLL OP_CAT 88ac OP_CAT 0000000000000000376a04534c500001010453454e4420 OP_7 OP_ROLL OP_CAT OP_8 OP_CAT OP_5 OP_ROLL OP_CAT OP_3 OP_ROLL OP_SWAP OP_3 OP_ROLL OP_CAT OP_ROT OP_CAT OP_5 OP_ROLL OP_CAT OP_HASH256 OP_EQUALVERIFY OP_3 OP_ROLL OP_ROT OP_2DUP OP_SWAP OP_SIZE OP_1SUB OP_SPLIT OP_DROP OP_5 OP_ROLL OP_SHA256 OP_ROT OP_CHECKDATASIGVERIFY OP_CHECKSIG OP_NIP OP_ENDIF",
+  "source": "// Copyright (C) 2020 Simple Ledger, Inc.\n//\n// Permission is hereby granted, free of charge, to any person\n// obtaining a copy of this software and associated documentation files\n// (the \"Software\"), to deal in the Software without restriction,\n// including without limitation the rights to use, copy, modify, merge,\n// publish, distribute, sublicense, and/or sell copies of the Software,\n// and to permit persons to whom the Software is furnished to do so,\n// subject to the following conditions:\n//\n// The above copyright notice and this permission notice shall be\n// included in all copies or substantial portions of the Software.\n//\n// THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\n// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF\n// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\n// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS\n// BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN\n// ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN\n// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n// SOFTWARE.\npragma cashscript 0.5.3;\n\n// ****************************************************************************************************\n// SlpDollar v0.1\n// ****************************************************************************************************\n// \n// This contract demonstrates how to implement a digital dollar using the Simple Ledger Protocol (SLP).\n// Extremely low transaction fees and fast confirmation times make SLP an effective and efficient\n// platform for building a Central Bank Digital Currency (CBDC).\n//\n// CBDC issuers are provided the ability to freeze or unfreeze a user's coins, at will, using the \n// \"freeze\" contract method.\n//\n// Send transactions are required to have two (2) digital dollar outputs, one payment receiver, and\n// one change back to the sender. The payment receiver's p2pkh address will receive a small BCH\n// amount (i.e., \"payNotifier\") to serve as a notification about the newly received dollar.\n//\n// Contract Methods include:\n//      - send(): allows the digital dollar owner to spend,\n//      - freeze(): allows CBDC issuer to freeze or unfreeze a coin\n//\n// Constructor Inputs include:\n//      - isFrozen: a state variable indicating the freeze status for a coin (1 byte)\n//      - slpAmt: a state variable holding the slp amount (8 bytes)\n//      - pkh: a 20-byte state variable representing the current coin owner's public key hash\n//      - issuerPk: the CBDC issuer's public key used for freeze/unfreeze (research tree signatures)\n//      - tokenId: the token id for the issuer's token\n//\n// ****************************************************************************************************\n//\ncontract SlpDollar(bytes isFrozen, bytes8 slpAmt, bytes20 pkh, pubkey issuerPk, bytes32 tokenId) {\n\n    // ******************************************************************\n    // Send\n    // ******************************************************************\n    //\n    // Send coin\n    //\n    //  - payAmt: Payment digital dollar amount for txn output 1\n    //  - payPk: Payment public key for txn output 1\n    //  - changeAmt: Change digital dollar amount sent back to pkh\n    //  - changeOutput: Any p2pkh output to facilitate blockchain fees\n    //  - pk: the pubkey of the pkh for this coin\n    //  - s: a signature from above pubkey for this coin\n    //\n    // ******************************************************************\n    //\n    function send(bytes8 payAmt, pubkey payPk, bytes8 changeAmt, bytes changeOutput, pubkey pk, sig s) {\n\n        // verify coin is not frozen\n        require(isFrozen != 0x0101);\n\n        // check output format requirements (payment receiver + change address + tax payment receiver + dust tag for notification to payment receiver's p2pkh wallet)\n        require(payAmt.length == 8);\n        require(payPk.length == 33);\n        require(changeAmt.length == 8);\n        bytes slpMsg = 0x0000000000000000406a04534c500001010453454e4420 + tokenId + 0x08 + payAmt + 0x08 + changeAmt;\n        bytes code = tx.bytecode.split(32)[1];  // get slice after \"isFrozen\" (2), \"slpAmt\" (9), and receiver \"pkh\" (21)\n        bytes8 dust = 0x2202000000000000;\n        bytes p2shPay = new OutputP2SH(dust, hash160(0x01 + isFrozen + 0x08 + payAmt + 0x14 + hash160(payPk) + code));\n        bytes p2shChange = new OutputP2SH(dust, hash160(0x01 + isFrozen + 0x08 + changeAmt + 0x14 + pkh + code));\n        bytes payNotifier = new OutputP2PKH(dust, hash160(payPk)); // this dust provides a notification to the payment receiver's standard HD wallet\n        require(hash256(slpMsg + p2shPay + p2shChange + payNotifier + changeOutput) == tx.hashOutputs);\n\n        // check p2pkh\n        require(hash160(pk) == pkh);\n        require(checkSig(s, pk));\n    }\n\n    // ******************************************************************\n    // Freeze/Unfreeze\n    // ******************************************************************\n    //\n    // Freeze or unfreeze coin\n    //\n    //  - newFreezeState: either 0x01 (freeze) or 0x00 (unfreeze)\n    //  - changeOutput: Any p2pkh output to facilitate blockchain fees\n    //  - issuerSig: CBDC issuer's txn signature\n    //\n    // ******************************************************************\n    //\n    function freeze(bytes newFreezeState, bytes changeOutput, sig issuerSig) {\n\n        // update byte code to frozen or unfrozen\n        if (newFreezeState == 0x01) {\n            require(isFrozen == 0x00);\n        } else if (newFreezeState == 0x00) {\n            require(isFrozen == 0x01);\n        }\n        bytes bytecode = 0x01 + newFreezeState + tx.bytecode.split(2)[1];\n        bytes8 dust = 0x2202000000000000;\n        bytes out = new OutputP2SH(dust, hash160(bytecode));\n        bytes dustNotification = new OutputP2PKH(dust, pkh);\n\n        // check slp message to prevent burning\n        bytes slpMsg = 0x0000000000000000376a04534c500001010453454e4420 + tokenId + 0x08 + slpAmt;\n        require(tx.hashOutputs == hash256(slpMsg + out + dustNotification + changeOutput));\n\n        // check issuer's sig\n        require(checkSig(issuerSig, issuerPk));\n    }\n}",
+  "compiler": {
+    "name": "cashc",
+    "version": "0.5.3"
+  },
+  "updatedAt": "2020-10-27T18:07:39.982Z"
+}

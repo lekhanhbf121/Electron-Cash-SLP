@@ -35,6 +35,19 @@ def _read_json_dict(filename):
         r = {}
     return r
 
+def _load_cashscript_artifacts(filename):
+    try:
+        data = pkgutil.get_data(__name__, filename)
+        r = json.loads(data.decode('utf-8'))
+    except:
+        r = {}
+    for key in r:
+        data = pkgutil.get_data(__name__, r[key]['location'])
+        a = json.loads(data.decode('utf-8'))
+
+        r[key]['artifact'] = a
+    return r
+
 class AbstractNet:
     TESTNET = False
     asert_daa = ASERTDaa()
@@ -52,6 +65,7 @@ class MainNet(AbstractNet):
     ADDRTYPE_P2SH_BITPAY = 40
     CASHADDR_PREFIX = "bitcoincash"
     SLPADDR_PREFIX = "simpleledger"
+    SCRIPTADDR_PREFIX = "script"
     HEADERS_URL = "http://bitcoincash.com/files/blockchain_headers"
     GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
     DEFAULT_PORTS = {'t': '50001', 's': '50002'}
@@ -87,6 +101,7 @@ class MainNet(AbstractNet):
         'standard': 0x0488b21e,
     }
 
+    SCRIPT_ARTIFACTS = _load_cashscript_artifacts('cashscript_artifacts.json')
 
 class TestNet(AbstractNet):
     TESTNET = True
@@ -98,6 +113,7 @@ class TestNet(AbstractNet):
     ADDRTYPE_P2SH_BITPAY = 196  # Unsure
     CASHADDR_PREFIX = "bchtest"
     SLPADDR_PREFIX = "slptest"
+    SCRIPTADDR_PREFIX = "scripttest"
     HEADERS_URL = "http://bitcoincash.com/files/testnet_headers"
     GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"
     DEFAULT_PORTS = {'t':'51001', 's':'51002'}
@@ -125,6 +141,7 @@ class TestNet(AbstractNet):
         'standard': 0x043587cf,
     }
 
+    SCRIPT_ARTIFACTS = _load_cashscript_artifacts('cashscript_artifacts.json')
 
 class TestNet4(TestNet):
     GENESIS = "000000001dd410c49a788668ce26751718cc797474d3152a5fc073dd44fd9f7b"
@@ -145,6 +162,7 @@ class TestNet4(TestNet):
     # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
     CW144_HEIGHT = 3000
 
+    SCRIPT_ARTIFACTS = _load_cashscript_artifacts('cashscript_artifacts.json')
 
 class ScaleNet(TestNet):
     GENESIS = "00000000e6453dc2dfe1ffa19023f86002eb11dbb8e87d0291a4599f0430be52"
@@ -165,6 +183,7 @@ class ScaleNet(TestNet):
     # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
     CW144_HEIGHT = 3000
 
+    SCRIPT_ARTIFACTS = _load_cashscript_artifacts('cashscript_artifacts.json')
 
 # All new code should access this to get the current network config.
 net = MainNet

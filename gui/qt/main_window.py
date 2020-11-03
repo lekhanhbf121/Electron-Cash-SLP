@@ -38,7 +38,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 
 from electroncash import keystore, get_config
-from electroncash.address import Address, ScriptOutput
+from electroncash.address import Address, Script, ScriptOutput, hash160
 from electroncash.bitcoin import COIN, TYPE_ADDRESS, TYPE_SCRIPT
 from electroncash import networks
 from electroncash.plugins import run_hook
@@ -52,7 +52,8 @@ import electroncash.web as web
 from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
-from electroncash.wallet import Multisig_Wallet, sweep_preparations
+from electroncash.wallet import Multisig_Wallet, Slp_Vault_Wallet, sweep_preparations
+from electroncash.contacts import Contact, ScriptContact
 try:
     from electroncash.plot import plot_history
 except:
@@ -76,6 +77,8 @@ from electroncash.util import format_satoshis_nofloat
 from .slp_create_token_genesis_dialog import SlpCreateTokenGenesisDialog
 from .bfp_download_file_dialog import BfpDownloadFileDialog
 from .bfp_upload_file_dialog import BitcoinFilesUploadDialog
+
+import electroncash.cashscript as cashscript
 
 try:
     # pre-load QtMultimedia at app start, if possible
@@ -1213,9 +1216,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         d = address_dialog.AddressDialog(self,  addr, windowParent=parent)
         d.exec_()
 
-    def show_transaction(self, tx, tx_desc = None):
+    def show_transaction(self, tx, tx_desc=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
         '''tx_desc is set only for txs created in the Send tab'''
-        d = show_transaction(tx, self, tx_desc)
+        d = show_transaction(tx, self, tx_desc, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=require_tx_in_wallet)
         self._tx_dialogs.add(d)
 
     def addr_toggle_slp(self, force_slp=False):
@@ -1647,6 +1650,71 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.receive_address = addr
         self.show_receive_tab()
         self.update_receive_address_widget()
+
+    def revoke_slp_vault(self, coins):
+        for coin in coins:
+            txn = self.wallet.transactions[coin['prevout_hash']]
+            Transaction.tx_cache_put(txn, coin['prevout_hash'])
+            pubkey = None
+            rec_addr = None
+            #addr = coin['address']
+            for inp in txn.inputs():
+                if self.wallet.is_mine(inp['address']) and inp['type'] == 'p2pkh':
+                    pubkey = inp['pubkeys'][0]
+                    rec_addr = inp['address']
+            if pubkey == None:
+                continue
+            slpmsg = None
+            try:
+                slpmsg = slp.SlpMessage.parseSlpOutputScript(txn.outputs()[0][1])
+            except:
+                pass
+            outputs = []
+            if slpmsg:
+                token_id = slpmsg.op_return_fields['token_id_hex']
+                if not self.wallet.token_types.get(token_id, None):
+                    self.show_message("First need to add Token ID:\n" + token_id)
+                amts = list(slpmsg.op_return_fields['token_output'])
+                coin['slp_value'] = amts[coin['tx_pos']]
+                slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [coin['slp_value']], self.wallet.token_types.get(token_id)['class'])
+                outputs.append(slp_op_return_msg)
+                outputs.append((TYPE_ADDRESS, rec_addr, 546))
+            else:
+                outputs.append((TYPE_ADDRESS, rec_addr, coin['value']))
+            coin['type'] = cashscript.SLP_VAULT_REVOKE
+            coin['num_sig'] = 1
+            coin['pubkeys'] = [pubkey]
+            self.wallet.add_input_sig_info(coin, rec_addr)
+            tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[coin])
+            self.show_transaction(tx, "SLP vault revoke", require_tx_in_wallet=False)
+
+    def sweep_slp_vault(self, coins):
+        for coin in coins:
+            cash_addr = Address.from_P2PKH_hash(bytes.fromhex(coin['slp_vault_pkh']))
+            txn = self.wallet.transactions[coin['prevout_hash']]
+            slpmsg = None
+            try:
+                slpmsg = slp.SlpMessage.parseSlpOutputScript(txn.outputs()[0][1])
+            except:
+                pass
+            outputs = []
+            if slpmsg:
+                token_id = slpmsg.op_return_fields['token_id_hex']
+                if not self.wallet.token_types.get(token_id, None):
+                    self.show_message("First need to add Token ID:\n" + token_id)
+                amts = list(slpmsg.op_return_fields['token_output'])
+                coin['slp_value'] = amts[coin['prevout_n']]
+                slp_op_return_msg = slp.buildSendOpReturnOutput_V1(token_id, [coin['slp_value']], self.wallet.token_types.get(token_id)['class'])
+                outputs.append(slp_op_return_msg)
+                outputs.append((TYPE_ADDRESS, cash_addr, 546))
+            else:
+                outputs.append((TYPE_ADDRESS, cash_addr, coin['value']))
+            coin['type'] = cashscript.SLP_VAULT_SWEEP
+            coin['num_sig'] = 1
+            coin['pubkeys'] = self.wallet.get_public_keys(cash_addr)
+            self.wallet.add_input_sig_info(coin, cash_addr)
+            tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[coin])
+            self.show_transaction(tx, "SLP vault sweep", require_tx_in_wallet=False)
 
     def update_receive_qr(self):
         if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not '':
@@ -2332,12 +2400,23 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         for item in self.pay_from:
             self.from_list.addTopLevelItem(QTreeWidgetItem( [format(item), self.format_amount(item['value']) ]))
 
-    def get_contact_payto(self, key):
-        _type, label = self.contacts.get(key)
-        return label + '  <' + key + '>' if _type == 'address' else key
+    def get_contact_payto(self, contact : Contact) -> str:
+        assert isinstance(contact, Contact) or isinstance(contact, ScriptContact)
+        _type, label = contact.type, contact.name
+        emoji_str = ''
+        mod_type = _type
+        mine_str = ''
+        if _type == 'openalias':
+            return contact.address
+        return label + emoji_str + '  ' + mine_str + '<' + contact.address + '>' if mod_type in ('address') else None
+
 
     def update_completions(self):
-        l = [self.get_contact_payto(key) for key in self.contacts.keys()]
+        l = []
+        for contact in self.contact_list.get_full_contacts(include_pseudo=True):
+            s = self.get_contact_payto(contact)
+            if s is not None: l.append(s)
+        l.sort(key=lambda x: x.lower())  # case-insensitive sort
         self.completions.setStringList(l)
 
     def protected(func):
@@ -2376,7 +2455,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_message(_("No SLP token amount provided."))
                 return
             try:
-                """ Guard against multiline 'Pay To' field """
                 amt = []
                 is_paytomany_slp = False
                 try: # first, try to read amount from payto for multi-output
@@ -2407,7 +2485,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     """ Require SLPADDR prefix in 'Pay To' field. """
                     if networks.net.SLPADDR_PREFIX not in self.payto_e.address_string_for_slp_check and not is_paytomany_slp:
                         self.show_error(_("Address provided is not in SLP Address format.\n\nThe address should be encoded using 'simpleledger:' or 'slptest:' URI prefix."))
-                        return
+                        if not networks.net.TESTNET and networks.net.SCRIPTADDR_PREFIX not in self.payto_e.address_string_for_slp_check:
+                            return
                     if slp_op_return_msg:
                         bch_outputs = [ slp_op_return_msg ]
             except OPReturnTooLarge as e:
@@ -2631,17 +2710,17 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.sign_tx_with_password(tx, sign_done, password)
 
     @protected
-    def sign_tx(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
-        self.sign_tx_with_password(tx, callback, password, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn)
+    def sign_tx(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
+        self.sign_tx_with_password(tx, callback, password, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn, require_tx_in_wallet=require_tx_in_wallet)
 
-    def sign_tx_with_password(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
+    def sign_tx_with_password(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
         '''Sign the transaction in a separate thread.  When done, calls
         the callback with a success code of True or False.
         '''
 
         # check transaction SLP validity before signing
         try:
-            assert SlpTransactionChecker.check_tx_slp(self.wallet, tx, coins_to_burn=slp_coins_to_burn, amt_to_burn=slp_amt_to_burn)
+            assert SlpTransactionChecker.check_tx_slp(self.wallet, tx, coins_to_burn=slp_coins_to_burn, amt_to_burn=slp_amt_to_burn, require_tx_in_wallet=require_tx_in_wallet)
         except (Exception, AssertionError) as e:
             self.show_warning(str(e))
             return
@@ -3046,6 +3125,28 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         slp_address = ButtonsLineEdit()
         slp_address.setReadOnly(True)
         slp_address.addCopyButton()
+        slp_vault_address = ButtonsLineEdit()
+        slp_vault_address.setReadOnly(True)
+        view_vault_btn = QPushButton(_("Generate SLP Vault Address"))
+
+        def slp_vault_toggle():
+            if slp_vault_address.text() == '':
+                self.show_message("You must provide a P2PKH address to get the SLP Vault address.")
+            else:
+                outputs = []
+                artifact_sha256 = cashscript.SLP_VAULT_ID
+                addr = Address.from_string(source_address.text().strip())
+                script_params = [addr.hash160.hex()]
+                pin_op_return_msg = cashscript.build_pin_msg(artifact_sha256, script_params)
+                outputs.append(pin_op_return_msg)
+                outputs.append((TYPE_ADDRESS, addr, 546))
+                if not self.wallet.is_mine(addr):
+                    outputs.append((TYPE_ADDRESS, self.wallet.get_unused_address(), 546))
+                tx = self.wallet.make_unsigned_transaction(self.get_coins(), outputs, self.config, None, mandatory_coins=[])
+                self.show_transaction(tx, "New script pin for: SLP Vault")
+
+        view_vault_btn.clicked.connect(slp_vault_toggle)
+
         widgets = [
             (cash_address, Address.FMT_CASHADDR),
             (legacy_address, Address.FMT_LEGACY),
@@ -3062,6 +3163,16 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     widget.setText(addr.to_full_string(fmt))
                 else:
                     widget.setText('')
+
+            # SLP Vault conversion
+            slp_vault_address.setText('')
+            try:
+                if addr.kind == addr.ADDR_P2PKH:
+                    slp_vault_address.setText(cashscript.get_redeem_script_address_string(cashscript.SLP_VAULT_ID, [addr.hash160.hex()]))
+                else:
+                    slp_vault_address.setText('')
+            except AttributeError:
+                pass
 
         source_address.textChanged.connect(convert_address)
 
@@ -3085,8 +3196,20 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         label.setBuddy(legacy_address)
         grid.addWidget(label, 2, 0)
         grid.addWidget(legacy_address, 2, 1)
-        grid.addWidget(QLabel(_('SLP address')), 3, 0)
+
+        label = QLabel(_('SLP address'))
+        label.setBuddy(slp_address)
+        grid.addWidget(label, 3, 0)
         grid.addWidget(slp_address, 3, 1)
+
+        vault_label = QLabel(_('SLP Vault'))
+        label.setBuddy(slp_vault_address)
+        grid.addWidget(vault_label, 4, 0)
+        grid.addWidget(view_vault_btn, 4, 1)
+        if not networks.net.TESTNET:
+            view_vault_btn.setHidden(True)
+            vault_label.setHidden(True)
+
         w.setLayout(grid)
 
         label = WWLabel(_(
@@ -3221,38 +3344,79 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.payto_e.setText(text)
             self.payto_e.setFocus()
 
-    def set_contact(self, label, address):
-        if not Address.is_valid(address):
+    def set_contact(self, label, address, typ='address', replace=None) -> Contact:
+        ''' Returns a reference to the newly inserted Contact object.
+        replace is optional and if specified, replace an existing contact,
+        otherwise add a new one.
+        Note that duplicate contacts will not be added multiple times, but in
+        that case the returned value would still be a valid Contact.
+        Returns None on failure.'''
+        assert typ in ('address', 'cashacct', 'script')
+        contact = None
+        if typ == 'cashacct':
+            tup = self.resolve_cashacct(label)  # this displays an error message for us
+            if not tup:
+                self.contact_list.update() # Displays original
+                return
+            info, label = tup
+            address = info.address.to_ui_string()
+            contact = Contact(name=label, address=address, type=typ)
+        elif typ == 'script':
+            contact = ScriptContact(name=label, address=replace.address, type=replace.type, sha256=replace.sha256, params=replace.params)
+        elif not Address.is_valid(address):
+            # Bad 'address' code path
             self.show_error(_('Invalid Address'))
             self.contact_list.update()  # Displays original unchanged value
-            return False
-        old_entry = self.contacts.get(address, None)
-        self.contacts[address] = ('address', label)
+            return
+        else:
+            # Good 'address' code path...
+            contact = Contact(name=label, address=address, type=typ)
+        assert contact
+        if replace != contact:
+            if self.contacts.has(contact):
+                self.show_error(_(f"A contact named {contact.name} with the same address and type already exists."))
+                self.contact_list.update()
+                return replace or contact
+            self.contacts.add(contact, replace_old=replace, unique=True)
         self.contact_list.update()
         self.history_list.update()
         self.history_updated_signal.emit() # inform things like address_dialog that there's a new history
         self.update_completions()
 
         # The contact has changed, update any addresses that are displayed with the old information.
-        run_hook('update_contact', address, self.contacts[address], old_entry)
-        return True
+        run_hook('update_contact2', contact, replace)
+        return contact
 
-    def delete_contacts(self, addresses):
-        contact_str = " + ".join(addresses) if len(addresses) <= 3 else _("{} contacts").format(len(addresses))
-        if not self.question(_("Remove {} from your list of contacts?")
-                             .format(contact_str)):
+    def delete_contacts(self, contacts):
+        n = len(contacts)
+        qtext = ''
+        if n <= 3:
+            def fmt(contact):
+                if len(contact.address) > 20:
+                    addy = contact.address[:10] + '…' + contact.address[-10:]
+                else:
+                    addy = contact.address
+                return f"{contact.name} <{addy}>"
+            names = [fmt(contact) for contact in contacts]
+            contact_str = ", ".join(names)
+            qtext = _("Remove {list_of_contacts} from your contact list?").format(list_of_contacts = contact_str)
+        else:
+            # Note: we didn't use ngettext here for plural check because n > 1 in this branch
+            qtext = _("Remove {number_of_contacts} contacts from your contact list?").format(number_of_contacts=n)
+        if not self.question(qtext):
             return
         removed_entries = []
-        for address in addresses:
-            if address in self.contacts.keys():
-                removed_entries.append((address, self.contacts[address]))
-            self.contacts.pop(address)
+        for contact in contacts:
+            if self.contacts.remove(contact):
+                removed_entries.append(contact)
 
         self.history_list.update()
         self.history_updated_signal.emit() # inform things like address_dialog that there's a new history
         self.contact_list.update()
         self.update_completions()
-        run_hook('delete_contacts', removed_entries)
+
+        run_hook('delete_contacts2', removed_entries)
+
 
     def add_token_type(self, token_class, token_id, token_name, decimals_divisibility, *, error_callback=None, show_errors=True, allow_overwrite=False):
         # FIXME: are both args error_callback and show_errors both necessary?
@@ -3982,7 +4146,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.show_message(_("This is a watching-only wallet"))
             return
 
-        if isinstance(self.wallet, Multisig_Wallet):
+        if isinstance(self.wallet, Multisig_Wallet) or isinstance(self.wallet, Slp_Vault_Wallet):
             if bip38:
                 self.show_error(_('WARNING: This is a multi-signature wallet.') + '\n' +
                                 _("It cannot be used with BIP38 encrypted keys."))

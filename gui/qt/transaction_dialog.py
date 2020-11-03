@@ -48,6 +48,8 @@ from .util import *
 
 from electroncash.util import format_satoshis_nofloat
 
+import electroncash.cashscript as cashscript
+
 dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
 if False:
@@ -58,8 +60,8 @@ else:
     # On Linux & macOS it looks fine so we go with the more fancy unicode
     SCHNORR_SIGIL = "ⓢ"
 
-def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
-    d = TxDialog(tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn)
+def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
+    d = TxDialog(tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn, require_tx_in_wallet=require_tx_in_wallet)
     dialogs.append(d)
     d.show()
     return d
@@ -71,7 +73,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
 
     BROADCAST_COOLDOWN_SECS = 5.0
 
-    def __init__(self, tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
+    def __init__(self, tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None, require_tx_in_wallet=True):
         '''Transactions in the wallet will show their description.
         Pass desc to give a description for txs not yet in the wallet.
         '''
@@ -96,6 +98,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         self.tx_height = None
         self.slp_coins_to_burn = slp_coins_to_burn
         self.slp_amt_to_burn = slp_amt_to_burn
+        self.require_tx_in_wallet = require_tx_in_wallet
         
         # Parse SLP output data
         self.slp_outputs = []
@@ -384,8 +387,11 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
             cleanup()
 
         self.main_window.push_top_level_window(self)
-        self.main_window.sign_tx(self.tx, sign_done, on_pw_cancel=cleanup,
-                                    slp_coins_to_burn=self.slp_coins_to_burn, slp_amt_to_burn=self.slp_amt_to_burn)
+        self.main_window.sign_tx(self.tx, sign_done,
+                                    on_pw_cancel=cleanup,
+                                    slp_coins_to_burn=self.slp_coins_to_burn,
+                                    slp_amt_to_burn=self.slp_amt_to_burn,
+                                    require_tx_in_wallet=self.require_tx_in_wallet)
 
     def save(self):
         name = 'signed_%s.txn' % (self.tx.txid()[0:8]) if self.tx.is_complete() else 'unsigned.txn'
@@ -575,17 +581,21 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         box_char = "█"
         self.recv_legend = QLabel("<font color=" + ColorScheme.BLUE.as_color(background=True).name() + ">" + box_char + "</font> = " + _("Receiving Address"))
         self.change_legend = QLabel("<font color=" + ColorScheme.YELLOW.as_color(background=True).name() + ">" + box_char + "</font> = " + _("Change Address"))
+        self.vault_legend = QLabel("<font color=" + ColorScheme.PINK.as_color(background=True).name() + ">" + box_char + "</font> = " + _("CashScript Address"))
         self.slp_legend = QLabel("<font color=" + ColorScheme.GREEN.as_color(background=True).name() + ">" + box_char + "</font> = " + _("SLP Output"))
         f = self.recv_legend.font(); f.setPointSize(f.pointSize()-1)
         self.recv_legend.setFont(f)
         self.change_legend.setFont(f)
+        self.vault_legend.setFont(f)
         self.slp_legend.setFont(f)
         hbox.addStretch(2)
         hbox.addWidget(self.recv_legend)
         hbox.addWidget(self.change_legend)
+        hbox.addWidget(self.vault_legend)
         hbox.addWidget(self.slp_legend)
         self.recv_legend.setHidden(True)
         self.change_legend.setHidden(True)
+        self.vault_legend.setHidden(True)
         self.slp_legend.setHidden(True)
 
         o_text.setOpenLinks(False)  # disable automatic link opening
@@ -644,19 +654,28 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         chg = QTextCharFormat(lnk)
         chg.setBackground(QBrush(ColorScheme.YELLOW.as_color(True)))
         chg.setForeground(QBrush(ColorScheme.DEFAULT.as_color()))
+        vlt = QTextCharFormat(lnk)
+        vlt.setBackground(QBrush(ColorScheme.PINK.as_color(True)))
+        vlt.setForeground(QBrush(ColorScheme.DEFAULT.as_color()))
         slp = QTextCharFormat()
         slp.setBackground(QBrush(ColorScheme.GREEN.as_color(True)))
         slp.setForeground(QBrush(ColorScheme.DEFAULT.as_color()))
-        rec_ct, chg_ct = 0, 0
+        rec_ct, chg_ct, vlt_ct = 0, 0, 0
 
         def text_format(addr):
-            nonlocal rec_ct, chg_ct
-            if isinstance(addr, Address) and self.wallet.is_mine(addr):
+            nonlocal rec_ct, chg_ct, vlt_ct
+            is_my_cashscript = cashscript.is_mine(self.wallet, addr)[0]
+            if isinstance(addr, Address) and (self.wallet.is_mine(addr) or is_my_cashscript):
                 if self.wallet.is_change(addr):
                     chg_ct += 1
                     chg2 = QTextCharFormat(chg)
                     chg2.setAnchorHref(addr.to_ui_string())
                     return chg2
+                elif is_my_cashscript:
+                    vlt_ct += 1
+                    vlt2 = QTextCharFormat(vlt)
+                    vlt2.setAnchorHref(addr.to_ui_string())
+                    return vlt2
                 else:
                     rec_ct += 1
                     rec2 = QTextCharFormat(rec)
@@ -732,6 +751,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         # make the change & receive legends appear only if we used that color
         self.recv_legend.setVisible(bool(rec_ct))
         self.change_legend.setVisible(bool(chg_ct))
+        self.vault_legend.setVisible(bool(vlt_ct))
 
     @staticmethod
     def _copy_to_clipboard(text, widget):

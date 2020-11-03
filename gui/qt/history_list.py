@@ -73,7 +73,10 @@ class HistoryList(MyTreeWidget):
 
     def get_domain(self):
         '''Replaced in address_dialog.py'''
-        return self.wallet.get_addresses()
+        extra_addr = []
+        if self.wallet.wallet_type == 'slp_standard':
+            extra_addr = [ addr for addr in self.wallet._history if addr.kind == Address.ADDR_P2SH ]
+        return self.wallet.get_addresses() + extra_addr
 
     @rate_limited(1.0, classlevel=True, ts_after=True) # We rate limit the history list refresh no more than once every second, app-wide
     def update(self):

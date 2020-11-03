@@ -44,6 +44,8 @@ import warnings
 #
 from .keystore import xpubkey_to_address, xpubkey_to_pubkey
 
+from . import cashscript
+
 NO_SIGNATURE = 'ff'
 
 
@@ -279,13 +281,91 @@ def parse_scriptSig(d, _bytes):
         d['address'] = address
         return
 
+    # cashscript related scriptSigs parsed here
+    cashscript_id, contract_abi_name = cashscript.get_script_sig_type(decoded)
+    if cashscript_id:
+        if contract_abi_name == cashscript.SLP_VAULT_SWEEP:
+            sig = bh2u(decoded[0][1])
+            x_pubkey = bh2u(decoded[1][1])
+            try:
+                signatures = parse_sig([sig])
+                pubkey, _ = xpubkey_to_address(x_pubkey)
+            except:
+                print_error("cannot find address in input script", bh2u(_bytes))
+                return
+            redeemScript = decoded[5][1]
+            if redeemScript.hex() == cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [hash160(bytes.fromhex(pubkey)).hex()]):
+                outputs_preimage = bh2u(decoded[2][1])
+                tx_preimage = bh2u(decoded[3][1])
+                d['type'] = cashscript.SLP_VAULT_SWEEP
+                d['signatures'] = signatures
+                d['slp_vault_pkh'] = hash160(bytes.fromhex(pubkey)).hex()
+                d['x_pubkeys'] = [x_pubkey]
+                d['num_sig'] = 1
+                d['pubkeys'] = [pubkey]
+                d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
+                d['hashoutputs_preimage'] = outputs_preimage
+                d['tx_preimage'] = tx_preimage
+                return
+        elif contract_abi_name == cashscript.SLP_VAULT_REVOKE:
+            sig = bh2u(decoded[0][1])
+            x_pubkey = bh2u(decoded[2][1])
+            try:
+                signatures = parse_sig([sig])
+                pubkey, _ = xpubkey_to_address(x_pubkey)
+            except:
+                print_error("cannot find address in input script", bh2u(_bytes))
+                return
+            try: 
+                pkh = decoded[7][1][1:21]
+            except:
+                print_error("failed to extract pkh for a slp vault revoke")
+                return
+            redeemScript = decoded[7][1]
+            if redeemScript.hex() == cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [pkh.hex()]):
+                outputs_preimage = bh2u(decoded[4][1])
+                tx_preimage = bh2u(decoded[5][1])
+                d['type'] = cashscript.SLP_VAULT_REVOKE
+                d['signatures'] = signatures
+                d['slp_vault_pkh'] = pkh.hex()
+                d['num_sig'] = 1
+                d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
+                d['hashoutputs_preimage'] = outputs_preimage
+                d['tx_preimage'] = tx_preimage
+                return
+        elif contract_abi_name == cashscript.SLP_MINT_GUARD_MINT:
+            sig = bh2u(decoded[0][1])
+            x_pubkey = bh2u(decoded[2][1])
+            try:
+                signatures = parse_sig([sig])
+                pubkey, _ = xpubkey_to_address(x_pubkey)
+            except:
+                print_error("cannot find address in input script", bh2u(_bytes))
+                return
+            try:
+                pkh = decoded[6][1][4:24]
+            except:
+                print_error("could not extract pkh for slp mint guard")
+            redeemScript = decoded[7][1]
+            if redeemScript.hex() == cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [pkh.hex()]):
+                outputs_preimage = bh2u(decoded[4][1])
+                tx_preimage = bh2u(decoded[5][1])
+                d['type'] = cashscript.SLP_MINT_GUARD_MINT
+                d['signatures'] = signatures
+                d['slp_vault_pkh'] = pkh.hex()
+                d['num_sig'] = 1
+                d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
+                d['hashoutputs_preimage'] = outputs_preimage
+                d['tx_preimage'] = tx_preimage
+                return
+
     # p2sh transaction, m of n
     match = [ opcodes.OP_0 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 1)
     if not match_decoded(decoded, match):
         print_error("cannot find address in input script", bh2u(_bytes))
         return
     x_sig = [bh2u(x[1]) for x in decoded[1:-1]]
-    m, n, x_pubkeys, pubkeys, redeemScript = parse_redeemScript(decoded[-1][1])
+    m, n, x_pubkeys, pubkeys, redeemScript = parse_multisig_redeemScript(decoded[-1][1])
     # write result in d
     d['type'] = 'p2sh'
     d['num_sig'] = m
@@ -295,8 +375,7 @@ def parse_scriptSig(d, _bytes):
     d['redeemScript'] = redeemScript
     d['address'] = Address.from_P2SH_hash(hash160(redeemScript))
 
-
-def parse_redeemScript(s):
+def parse_multisig_redeemScript(s):
     dec2 = [ x for x in script_GetOp(s) ]
     # the following throw exception when redeemscript has one or zero opcodes
     m = dec2[0][0] - opcodes.OP_1 + 1
@@ -415,18 +494,19 @@ def multisig_script(public_keys, m):
     keylist = [op_push(len(k)//2) + k for k in public_keys]
     return op_m + ''.join(keylist) + op_n + 'ae'
 
-
-
-
 class Transaction:
 
     SIGHASH_FORKID = 0x40  # do not use this; deprecated
     FORKID = 0x000000  # do not use this; deprecated
+    _last_txn = None
 
     def __str__(self):
         if self.raw is None:
             self.raw = self.serialize()
         return self.raw
+
+    def __call__(self, *args, **kwargs):
+        _last_txn = self
 
     def __init__(self, raw, sign_schnorr=False):
         if raw is None:
@@ -660,6 +740,44 @@ class Transaction:
             script = '00' + script
             redeem_script = multisig_script(pubkeys, txin['num_sig'])
             script += push_script(redeem_script)
+        elif _type == cashscript.SLP_VAULT_SWEEP:
+            redeem_script = cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [txin['slp_vault_pkh']])
+            outputs = txin['hashoutputs_preimage']
+            preimage = txin['tx_preimage']
+            script += push_script(pubkeys[0]) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_0) + push_script(redeem_script)
+        elif _type == cashscript.SLP_VAULT_REVOKE:
+            redeem_script = cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [txin['slp_vault_pkh']])
+            outputs = txin['hashoutputs_preimage']
+            preimage = txin['tx_preimage']
+            #print(Address.from_P2SH_script(bytes.fromhex(redeem_script)).to_script().hex())
+            txn = self._fetched_tx_cache.get(txin['prevout_hash']).raw
+            txn_1 = txn
+            txn_2_pubkey = "00"
+            txn_3 = "00"
+            if not estimate_size and len(pubkeys[0]) == 66 and pubkeys[0][:2] != "00":
+                txn_1 = txn.split(pubkeys[0], 1)[0]
+                txn_2_pubkey = pubkeys[0]
+                txn_3 = txn.split(pubkeys[0], 1)[1]
+            script += push_script(txn_3) + push_script(txn_2_pubkey) + push_script(txn_1) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_1) + push_script(redeem_script)
+        elif _type == cashscript.SLP_MINT_GUARD_MINT:
+            redeem_script = cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']])
+            #print(Address.from_P2SH_script(bytes.fromhex(redeem_script)).to_script().hex())
+            changeOutputs = txin['change_output_preimage']
+            tokenReceiverOut = txin['token_receiver_out']
+            slpAmt = txin['slp_mint_amt']
+            preimage = txin['tx_preimage']
+            scriptBase = cashscript.get_base_script(cashscript.SLP_MINT_GUARD_ID)
+            script += push_script(pubkeys[0]) + push_script(scriptBase) + push_script(changeOutputs) + push_script(tokenReceiverOut) + push_script(slpAmt) + push_script(preimage) + int_to_hex(opcodes.OP_1) + push_script(redeem_script)
+        elif _type == cashscript.SLP_MINT_GUARD_TRANSFER:
+            redeem_script = cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']])
+            #print(Address.from_P2SH_script(bytes.fromhex(redeem_script)).to_script().hex())
+            newPk = txin['slp_mint_guard_transfer_pk']
+            changeOutputs = txin['change_output_preimage']
+            tokenReceiverOut = txin['token_receiver_out']
+            slpAmt = txin['slp_mint_amt']
+            preimage = txin['tx_preimage']
+            scriptBase = cashscript.get_base_script(cashscript.SLP_MINT_GUARD_ID)
+            script += push_script(pubkeys[0]) + push_script(scriptBase) + push_script(changeOutputs) + push_script(tokenReceiverOut) + push_script(newPk) + push_script(preimage) + int_to_hex(opcodes.OP_0) + push_script(redeem_script)
         elif _type == 'p2pkh':
             script += push_script(pubkeys[0])
         elif _type == 'unknown':
@@ -677,7 +795,6 @@ class Transaction:
         signatures = list(filter(None, x_signatures))
         return len(signatures) == num_sig
 
-
     @classmethod
     def get_preimage_script(self, txin):
         _type = txin['type']
@@ -686,6 +803,12 @@ class Transaction:
         elif _type == 'p2sh':
             pubkeys, x_pubkeys = self.get_sorted_pubkeys(txin)
             return multisig_script(pubkeys, txin['num_sig'])
+        elif cashscript.SLP_VAULT_NAME in _type:
+            return cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [txin['slp_vault_pkh']])
+        elif _type == cashscript.SLP_MINT_GUARD_MINT:
+            return cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']], for_preimage=True, code_separator_pos=2)
+        elif _type == cashscript.SLP_MINT_GUARD_TRANSFER:
+            return cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']], for_preimage=True, code_separator_pos=1)
         elif _type == 'p2pk':
             pubkey = txin['pubkeys'][0]
             return public_key_to_p2pk_script(pubkey)
@@ -719,6 +842,7 @@ class Transaction:
         self._inputs.sort(key = lambda i: (i['prevout_hash'], i['prevout_n']))
         self._outputs.sort(key = lambda o: (o[2], self.pay_script(o[1])))
 
+    @classmethod
     def serialize_output(self, output):
         output_type, addr, amount = output
         s = int_to_hex(amount, 8)
@@ -814,6 +938,25 @@ class Transaction:
         nLocktime = int_to_hex(self.locktime, 4)
         inputs = self.inputs()
         outputs = self.outputs()
+
+        # cashscript signing stuff
+        for i in range(len(inputs)):
+            if cashscript.SLP_VAULT_NAME in inputs[i]['type']:
+                inputs[i]['hashoutputs_preimage'] = ''.join(self.serialize_output(o) for o in self.outputs())
+                try:
+                    inputs[i]['tx_preimage'] = self.serialize_preimage(i)
+                except (IndexError, InputValueMissing):
+                    pass
+            elif cashscript.SLP_MINT_GUARD_NAME in inputs[i]['type']:
+                if len(self.outputs()) == 4:
+                    inputs[i]['change_output_preimage'] = self.serialize_output(self.outputs()[len(self.outputs())-1])
+                else:
+                    inputs[i]['change_output_preimage'] = '00000000'
+                try:
+                    inputs[i]['tx_preimage'] = self.serialize_preimage(i)
+                except (IndexError, InputValueMissing):
+                    pass
+
         txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size, self._sign_schnorr), estimate_size) for txin in inputs)
         txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
         return nVersion + txins + txouts + nLocktime
@@ -886,6 +1029,18 @@ class Transaction:
     @classmethod
     def estimated_input_size(self, txin, sign_schnorr=False):
         '''Return an estimated of serialized input size in bytes.'''
+
+        if cashscript.SLP_VAULT_NAME in txin['type']:
+            # for fee estimation we assume 3 outputs (1 SLP send msg, 1 SLP dust, 1 BCH output)
+            txin['hashoutputs_preimage'] = '0000000000000000376a04534c500001010453454e44203c346636ec989568854d4d74e6352a756702962c5facaec75cb51f32fb5dde9108000000000000000122020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac22020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac'
+            txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, ['00'])) + '00' * 8 + '00' * 4 + '00'*32 + '00' * 8
+        elif txin['type'] == cashscript.SLP_MINT_GUARD_MINT:
+            txin['change_output_preimage'] = '00'*8 + '1976a914000000000000000000000000000000000000000088ac'  # should be p2pkh
+            txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(cashscript.get_redeem_script_dummy(cashscript.SLP_MINT_GUARD_ID, for_preimage=True, code_separator_pos=2)) + '00' * 8 + '00' * 4 + '00'*32 + '00' * 8
+        elif txin['type'] == cashscript.SLP_MINT_GUARD_TRANSFER:
+            txin['change_output_preimage'] = '00'*8 + '1976a914000000000000000000000000000000000000000088ac'  # should be p2pkh
+            txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(cashscript.get_redeem_script_dummy(cashscript.SLP_MINT_GUARD_ID, for_preimage=True, code_separator_pos=1)) + '00' * 8 + '00' * 4 + '00'*32 + '00' * 8
+
         script = self.input_script(txin, True, sign_schnorr=sign_schnorr)
         return len(self.serialize_input(txin, script, True)) // 2  # ASCII hex string
 
@@ -940,7 +1095,6 @@ class Transaction:
                     reason.insert(0, repr(e))
             return False
 
-
     @staticmethod
     def _ecdsa_sign(sec, pre_hash):
         pkey = regenerate_key(sec)
@@ -957,7 +1111,6 @@ class Transaction:
         sig = schnorr.sign(sec, pre_hash)
         assert schnorr.verify(pubkey, sig, pre_hash)  # verify what we just signed
         return sig
-
 
     def sign(self, keypairs, *, use_cache=False):
         for i, txin in enumerate(self.inputs()):

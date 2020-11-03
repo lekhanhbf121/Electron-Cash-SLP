@@ -30,7 +30,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QKeySequence
 from PyQt5.QtWidgets import QTreeWidgetItem, QAbstractItemView, QMenu
 from electroncash.i18n import _
-from electroncash.address import Address
+from electroncash.address import Address, Script, hash160
 from electroncash.plugins import run_hook
 import electroncash.web as web
 from electroncash.util import profiler
@@ -39,14 +39,13 @@ from electroncash import networks
 
 class AddressList(MyTreeWidget):
     filter_columns = [0, 1, 2]  # Address, Label, Balance
-
     def __init__(self, parent=None):
         super().__init__(parent, self.create_menu, [], 2, deferred_updates=True)
+        self.wallet = self.parent.wallet
         self.refresh_headers()
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSortingEnabled(True)
         # force attributes to always be defined, even if None, at construction.
-        self.wallet = self.parent.wallet
 
     def filter(self, p):
         ''' Reimplementation from superclass filter.  Chops off the
@@ -152,7 +151,7 @@ class AddressList(MyTreeWidget):
                 address_text = address.to_ui_string()
                 label = self.wallet.labels.get(address.to_storage_string(), '')
                 balance_text = self.parent.format_amount(balance, whitespaces=True)
-                columns = [address_text, str(n), label, balance_text, str(num)]
+                columns = [ address_text, str(n), label, balance_text, str(num) ]
                 if fx:
                     rate = fx.exchange_rate()
                     fiat_balance = fx.value_str(balance, rate)
@@ -182,7 +181,7 @@ class AddressList(MyTreeWidget):
                     items_to_re_select.append(address_item)
 
         for item in items_to_re_select:
-            # NB: Need to select the item at the end becasue internally Qt does some index magic
+            # NB: Need to select the item at the end because internally Qt does some index magic
             # to pick out the selected item and the above code mutates the TreeList, invalidating indices
             # and other craziness, which might produce UI glitches. See #1042
             item.setSelected(True)
@@ -241,7 +240,7 @@ class AddressList(MyTreeWidget):
                 # This address cannot be used for a payment request because
                 # the receive tab will refuse to display it and will instead
                 # create a request with a new address, if we were to call
-                # self.parent.receive_at(addr). This is because the recieve tab
+                # self.parent.receive_at(addr). This is because the receive tab
                 # now strongly enforces no-address-reuse. See #1552.
                 a.setDisabled(True)
             if self.wallet.can_export():
