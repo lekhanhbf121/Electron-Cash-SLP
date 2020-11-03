@@ -182,17 +182,16 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
             self.token_fixed_supply_cb.setChecked(False)
             self.token_baton_to_e.setHidden(False)
             self.token_baton_label.setHidden(False)
+
             unused_addr = self.wallet.get_unused_address()
             script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, self.token_id_e.text(), unused_addr.hash160.hex()]
+            pin_op_return_msg = cashscript.build_pin_msg(cashscript.SLP_MINT_GUARD_ID, script_params)
+            outputs = [pin_op_return_msg, (TYPE_ADDRESS, unused_addr, 546)]
+            tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, None)
+            self.main_window.show_transaction(tx, "New script pin for: %s"%cashscript.SLP_MINT_GUARD_NAME)  # TODO: can we have a callback after successful broadcast?
+
             mint_guard_addr = cashscript.get_redeem_script_address(cashscript.SLP_MINT_GUARD_ID, script_params)
             self.set_use_mint_guard(mint_guard_addr)
-            outputs = []
-            addr = Address.from_string(self.token_baton_to_e.text().strip())
-            pin_op_return_msg = cashscript.buildCashscriptPinMsg(cashscript.SLP_MINT_GUARD_ID, script_params)
-            outputs.append(pin_op_return_msg)
-            outputs.append((TYPE_ADDRESS, unused_addr, 546))
-            tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, None, mandatory_coins=[])
-            self.main_window.show_transaction(tx, "New script pin for: Mint Guard")  # TODO: can we have a callback after successful broadcast?
         else:
             self.is_mint_guard = False
 
@@ -231,7 +230,7 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
             slp_op_return_msg = buildMintOpReturnOutput_V1(token_id_hex, mint_baton_vout, init_mint_qty, token_type)
             outputs.append(slp_op_return_msg)
         except OPReturnTooLarge:
-            self.show_message(_("Optional string text causiing OP_RETURN greater than 223 bytes."))
+            self.show_message(_("Optional string text causing OP_RETURN greater than 223 bytes."))
             return
         except Exception as e:
             traceback.print_exc(file=sys.stdout)

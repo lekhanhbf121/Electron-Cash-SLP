@@ -37,8 +37,7 @@ SLP_VAULT_REVOKE = SLP_VAULT_NAME + '_revoke'
 SLP_MINT_GUARD_ID = "cf7ced1c3e2ff3d6620a9cc5d3cb000a5109fd09ce6b0ba86051424a3ede980d"
 SLP_MINT_GUARD_NAME = net.SCRIPT_ARTIFACTS[SLP_MINT_GUARD_ID]['artifact']['contractName']
 SLP_MINT_GUARD_MINT = SLP_MINT_GUARD_NAME + '_Mint'
-# SLP_MINT_GUARD_LOCK = ...
-# SLP_MINT_GUARD_TRANS = ...
+SLP_MINT_GUARD_TRANSFER = SLP_MINT_GUARD_NAME + '_Transfer'
 
 # The front part of an SLP Mint Message (i.e., mint = SLP_MINT_FRONT + tokenID + 0x08 + mint_amount)
 SLP_MINT_FRONT = "0000000000000000396a04534c50000101044d494e5420"
@@ -69,7 +68,7 @@ def is_mine(wallet, address) -> (bool, object):
     if _contact:
         p2pkh_addr = get_p2pkh_owner_address(_contact.sha256, _contact.params)
         if p2pkh_addr:
-            return (wallet.is_mine(p2pkh_addr), _contact)
+            return (wallet.is_mine(p2pkh_addr, check_cashscript=False), _contact)
     return (False, None)
 
 def is_known(wallet, address) -> (bool, object):
@@ -173,18 +172,17 @@ def from_asm(asm: str, *, for_preimage=False, code_separator_pos=0) -> str:
     bin_chunks = []
     code_separator_idx = []
     for i, val in enumerate(asm_chunks):
-        if for_preimage and val == "OP_CODESEPARATOR":
-            code_separator_idx.append(i-len(code_separator_idx))
-            continue
+        if val == "OP_CODESEPARATOR":
+            code_separator_idx.append(i)
         if val.startswith('OP_'):
             bin_chunks.append(OpCodes[val].value)
         else:
             bin_chunks.append(val)
     _hex = ''
-    if for_preimage and code_separator_pos > 0:
+    if code_separator_pos > 0:
         if code_separator_pos > len(code_separator_idx):
             raise Exception('selected op_code_separator count is larger than the number of available code separators.')
-        bin_chunks = bin_chunks[code_separator_idx[code_separator_pos-1]:]
+        bin_chunks = bin_chunks[code_separator_idx[code_separator_pos-1]+1:]
     for chunk in bin_chunks:
         if isinstance(chunk, int):
             _hex += int_to_hex(chunk)
@@ -196,11 +194,11 @@ def get_contact_label(wallet, artifact_sha256, params):
     name = get_contract_name_string(artifact_sha256)
     if artifact_sha256 in _valid_scripts:
         script_addr = get_redeem_script_address(artifact_sha256, params)
-        p2pkh_addr = get_p2pkh_owner_address(artifact_sha256, params).to_full_string(Address.FMT_CASHADDR)
-        if is_mine(wallet, script_addr):
-            return name + " for me (" + p2pkh_addr + ")"
+        p2pkh_addr = get_p2pkh_owner_address(artifact_sha256, params)
+        if wallet.is_mine(p2pkh_addr, check_cashscript=False):
+            return name + " for me (" + p2pkh_addr.to_full_string(Address.FMT_CASHADDR) + ")"
         else:
-            return name + " for " + p2pkh_addr
+            return name + " for " + p2pkh_addr.to_full_string(Address.FMT_CASHADDR)
     else:
         return "get_contact_label unimplemented for this contract"
 
@@ -224,7 +222,7 @@ def get_script_sig_type(decoded: list) -> (str, str):
             return (script_id, net.SCRIPT_ARTIFACTS[script_id]['artifact']['contractName'] + '_' + abi_name)
     return (None, None)
 
-def buildCashscriptPinMsg(artifact_sha256_hex: str, constructorInputs: [str]) -> tuple:
+def build_pin_msg(artifact_sha256_hex: str, constructorInputs: [str]) -> tuple:
     chunks = []
     # lokad id
     chunks.append(pin_protocol_id)

@@ -26,12 +26,13 @@
 from electroncash.i18n import _, ngettext
 import electroncash.web as web
 import electroncash.cashscript as cashscript
-from electroncash.address import Address
+from electroncash.address import Address, PublicKey, hash160
+from electroncash.bitcoin import TYPE_ADDRESS, push_script
 from electroncash.contacts import Contact, contact_types
 from electroncash.plugins import run_hook
 from electroncash.transaction import Transaction
 from electroncash.util import FileImportFailed, PrintError, finalization_print_error
-from electroncash.slp import SlpNoMintingBatonFound
+from electroncash.slp import SlpNoMintingBatonFound, buildMintOpReturnOutput_V1
 # TODO: whittle down these * imports to what we actually use when done with
 # our changes to this class -Calin
 from PyQt5.QtGui import *
@@ -45,7 +46,8 @@ from enum import IntEnum
 from collections import defaultdict
 from typing import List, Set, Dict, Tuple
 import itertools
-#from . import cashacctqt
+
+from .slp_create_token_mint_dialog import SlpCreateTokenMintDialog
 
 class ContactList(PrintError, MyTreeWidget):
     filter_columns = [1, 2, 3]  # Name, Label, Address
@@ -64,6 +66,7 @@ class ContactList(PrintError, MyTreeWidget):
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setSortingEnabled(True)
         self.wallet = parent.wallet
+        self.main_window = parent
         self.setIndentation(0)
         self._edited_item_cur_sel = (None,) * 3
         self.monospace_font = QFont(MONOSPACE_FONT)
@@ -203,11 +206,15 @@ class ContactList(PrintError, MyTreeWidget):
                                     baton = self.wallet.get_slp_token_baton(token_id)
                                     for txo in self.addr_txos.get(addr):
                                         if baton['prevout_hash'] == txo['tx_hash'] and baton['prevout_n'] == txo['tx_pos']:
-                                            menu.addAction(_("Mint"), lambda: self.slp_mint_guard_mint(sel))
+                                            menu.addAction(_("Mint Tool..."), lambda: SlpCreateTokenMintDialog(self.parent, token_id)) # lambda: self.slp_mint_guard_mint(baton))
+                                            menu.addAction(_("Create New Contact for Mint Baton Transfer..."), lambda: self.create_slp_mint_guard_pin(token_id))
+                                            transfer_candidates = self.get_related_mint_guards(sel)
+                                            action = menu.addAction(_("Transfer Mint Baton..."), lambda: self.transfer_slp_mint_guard(baton, sel, transfer_candidates))
+                                            if len(transfer_candidates) == 0:
+                                                action.setDisabled(True)
                                             break
                                 except SlpNoMintingBatonFound:
                                     pass
-
                     menu.addSeparator()
             menu.addAction(_("Copy {}").format(column_title), lambda: self.parent.app.clipboard().setText(column_data))
             if item and column in self.editable_columns and self.on_permit_edit(item, column):
@@ -257,8 +264,83 @@ class ContactList(PrintError, MyTreeWidget):
             coin['address'] = Address.from_string(item.address)
         self.parent.revoke_slp_vault(coins)
 
-    def slp_mint_guard_mint(self, baton):
-        pass
+    def create_slp_mint_guard_pin(self, token_id):
+        pubkey = None
+        dlg = QInputDialog(self)
+        dlg.setInputMode(QInputDialog.TextInput)
+        dlg.setLabelText('Public Key Hex:')
+        dlg.setWindowTitle('Enter the Public Key of the new mint baton owner')
+        dlg.resize(600,100)
+        ok = dlg.exec_()
+        text = dlg.textValue()
+        if not ok:
+            return
+        try:
+            PublicKey.from_string(text)
+            pubkey = bytes.fromhex(text)
+        except Exception as e:
+            self.main_window.show_message(str(e))
+            return
+
+        # TODO: check for an already existing pin for this pubkey
+
+        user_addr = Address.from_pubkey(pubkey)
+        script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, token_id, user_addr.hash160.hex()]
+        pin_op_return_msg = cashscript.build_pin_msg(cashscript.SLP_MINT_GUARD_ID, script_params)
+        outputs = [pin_op_return_msg, (TYPE_ADDRESS, user_addr, 546), (TYPE_ADDRESS, self.wallet.get_unused_address(), 546)]
+        tx = self.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config)
+        self.main_window.show_transaction(tx, "New script pin for: %s"%cashscript.SLP_MINT_GUARD_NAME)  # TODO: can we have a callback after successful broadcast?
+
+    def transfer_slp_mint_guard(self, baton, current_owner, candidates):
+        pubkey_str = None
+        pkh_str = None
+        dlg = QInputDialog(self)
+        dlg.setInputMode(QInputDialog.TextInput)
+        dlg.setLabelText('Public Key Hex:')
+        dlg.setWindowTitle('Enter the Public Key of the new mint baton owner')
+        dlg.resize(600,100)
+        ok = dlg.exec_()
+        pubkey_str = dlg.textValue()
+        if not ok:
+            return
+        try:
+            PublicKey.from_string(pubkey_str)
+            pkh_str = hash160(bytes.fromhex(pubkey_str)).hex()
+        except Exception as e:
+            self.main_window.show_message(str(e))
+            return
+
+        # try to find the pinned contract associated with this pubkey
+        contact = [c for c in self.parent.contacts.data if c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params[3] == pkh_str][0]
+
+        # add info to baton for Mint Guard Transfer signing
+        baton['type'] = cashscript.SLP_MINT_GUARD_TRANSFER
+        baton['slp_mint_guard_transfer_pk'] = pubkey_str
+        owner_p2pkh = cashscript.get_p2pkh_owner_address(cashscript.SLP_MINT_GUARD_ID, contact.params)
+        baton['slp_mint_guard_pkh'] = current_owner.params[3]
+        token_id_hex = contact.params[2]
+        baton['slp_token_id'] = token_id_hex
+        baton['slp_mint_amt'] = int(0).to_bytes(8, 'big').hex()
+        token_rec_script = self.wallet.get_unused_address().to_script_hex()
+        baton['token_receiver_out'] = int(546).to_bytes(8, 'little').hex() + push_script(token_rec_script)
+        current_baton_owner_addr = cashscript.get_p2pkh_owner_address(cashscript.SLP_MINT_GUARD_ID, current_owner.params)
+        self.wallet.add_input_sig_info(baton, current_baton_owner_addr)
+
+        # set outputs
+        outputs = []
+        slp_op_return_msg = buildMintOpReturnOutput_V1(token_id_hex, 2, 0, 'SLP1')
+        outputs.append(slp_op_return_msg)
+        outputs.append((TYPE_ADDRESS, self.wallet.get_unused_address(), 546))
+        new_baton_address = Address.from_string(contact.address)
+        outputs.append((TYPE_ADDRESS, new_baton_address, 546))
+
+        tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, mandatory_coins=[baton])
+        self.main_window.show_transaction(tx, "Mint guard transfer")
+
+    def get_related_mint_guards(self, contact):
+        token_id = contact.params[2]
+        transfer_candidates = [ c for c in self.parent.contacts.data if c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params[2] == token_id and c is not contact ]
+        return transfer_candidates
 
     def fetch_script_coins(self, addresses):
         for addr in addresses:
