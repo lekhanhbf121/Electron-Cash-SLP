@@ -114,12 +114,14 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         cb.clicked.connect(self.show_mint_baton_address)
         row += 1
 
-        if networks.net.TESTNET:
-            self.use_mint_guard_cb = cb = QCheckBox(_("Protect baton with Mint Guard contract"))
-            self.use_mint_guard_cb.setChecked(False)
-            grid.addWidget(self.use_mint_guard_cb, row, 0)
+        self.use_mint_guard_cb = cb = QCheckBox(_("Protect baton with Mint Guard contract"))
+        self.use_mint_guard_cb.setChecked(False)
+        self.use_mint_guard_cb.setDisabled(False)
+        grid.addWidget(self.use_mint_guard_cb, row, 0)
+        if not networks.net.TESTNET:
             cb.clicked.connect(self.get_mint_guard_address)
-            row += 1
+            self.use_mint_guard_cb.setDisabled(True)
+        row += 1
 
         hbox = QHBoxLayout()
         vbox.addLayout(hbox)
@@ -146,16 +148,15 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.token_baton_to_e.setText(slp_addr.to_full_string(Address.FMT_SLPADDR))
 
         self.baton_input = None
-        if networks.net.TESTNET:
-            try:
-                baton_input = self.main_window.wallet.get_slp_token_baton(self.token_id_e.text())
-            except SlpNoMintingBatonFound as e:
-                pass
-            else:
-                if baton_input['address'].kind == Address.ADDR_P2SH and cashscript.is_mine(self.wallet, baton_input['address'])[0]:
-                    self.baton_input = baton_input
-                    vault_addr = self.baton_input['address']
-                    self.set_use_mint_guard(vault_addr)
+        try:
+            baton_input = self.main_window.wallet.get_slp_token_baton(self.token_id_e.text())
+        except SlpNoMintingBatonFound as e:
+            pass
+        else:
+            if baton_input['address'].kind == Address.ADDR_P2SH and cashscript.is_mine(self.wallet, baton_input['address'])[0]:
+                self.baton_input = baton_input
+                vault_addr = self.baton_input['address']
+                self.set_use_mint_guard(vault_addr)
 
         dialogs.append(self)
         self.show()
