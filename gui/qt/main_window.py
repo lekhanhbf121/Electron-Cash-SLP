@@ -2491,7 +2491,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     if networks.net.SLPADDR_PREFIX not in self.payto_e.address_string_for_slp_check and not is_paytomany_slp:
                         self.show_error(_("Address provided is not in SLP Address format.\n\nThe address should be encoded using 'simpleledger:' or 'slptest:' URI prefix."))
                         if not networks.net.TESTNET and networks.net.SCRIPTADDR_PREFIX not in self.payto_e.address_string_for_slp_check:
-                        return
+                            return
                     if slp_op_return_msg:
                         bch_outputs = [ slp_op_return_msg ]
             except OPReturnTooLarge as e:
