@@ -117,9 +117,9 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
         self.use_mint_guard_cb = cb = QCheckBox(_("Protect baton with Mint Guard contract"))
         self.use_mint_guard_cb.setChecked(False)
         self.use_mint_guard_cb.setDisabled(False)
+        cb.clicked.connect(self.get_mint_guard_address)
         grid.addWidget(self.use_mint_guard_cb, row, 0)
         if not networks.net.TESTNET:
-            cb.clicked.connect(self.get_mint_guard_address)
             self.use_mint_guard_cb.setDisabled(True)
         row += 1
 
