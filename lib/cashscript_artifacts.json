@@ -7,5 +7,10 @@
     "cf7ced1c3e2ff3d6620a9cc5d3cb000a5109fd09ce6b0ba86051424a3ede980d": {
         "location": "cashscript/slp_mint_guard.artifact",
         "mainnet": false
+    },
+    "abc": {
+        "location": "cashscript/slp_dollar.artifact",
+        "mainnet": false,
+        "issuerContract": true
     }
 }

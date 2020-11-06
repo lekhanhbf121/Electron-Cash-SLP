@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+// Not necessary for Python, should still be declared to avoid name collisions 
+// in the Protocol Buffers namespace and non-Python languages
+package electroncashslp;
+
+message IssuerTemplateParams {
+    string template_name = 1;
+    bytes artifact_sha256 = 2;
+    repeated bytes params = 3;
+}

@@ -39,6 +39,16 @@ SLP_MINT_GUARD_NAME = net.SCRIPT_ARTIFACTS[SLP_MINT_GUARD_ID]['artifact']['contr
 SLP_MINT_GUARD_MINT = SLP_MINT_GUARD_NAME + '_Mint'
 SLP_MINT_GUARD_TRANSFER = SLP_MINT_GUARD_NAME + '_Transfer'
 
+# Slp Dollar contract constants
+SLP_DOLLAR_ID = "abc"
+SLP_DOLLAR_NAME = net.SCRIPT_ARTIFACTS[SLP_MINT_GUARD_ID]['artifact']['contractName']
+SLP_DOLLAR_SEND = SLP_DOLLAR_NAME + "_Send"
+SLP_DOLLAR_FREEZE = SLP_DOLLAR_NAME + "_Freeze"
+
+# The front part of an SLP Sed Message (i.e., send = SLP_SEND_FRONT_1_OUT + tokenID + 0x08 + send_amount)
+SLP_SEND_FRONT_1_OUT = "0000000000000000406a04534c500001010453454e4420"
+SLP_SEND_FRONT_2_OUT = "0000000000000000496a04534c500001010453454e4420"
+
 # The front part of an SLP Mint Message (i.e., mint = SLP_MINT_FRONT + tokenID + 0x08 + mint_amount)
 SLP_MINT_FRONT = "0000000000000000396a04534c50000101044d494e5420"
 
@@ -51,6 +61,10 @@ valid_script_sig_types = [
     SLP_VAULT_SWEEP,
     SLP_VAULT_REVOKE,
     SLP_MINT_GUARD_MINT
+]
+
+valid_issuer_contract_ids = [
+    SLP_DOLLAR_ID
 ]
 
 _allow_pay_to = [

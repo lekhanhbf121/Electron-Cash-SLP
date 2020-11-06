@@ -1,0 +1,156 @@
+// Copyright (C) 2020 Simple Ledger, Inc.
+//
+// Permission is hereby granted, free of charge, to any person
+// obtaining a copy of this software and associated documentation files
+// (the "Software"), to deal in the Software without restriction,
+// including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software,
+// and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+// BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+// ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+pragma cashscript 0.5.3;
+
+// ****************************************************************************************************
+// SlpDollar v0.1
+// ****************************************************************************************************
+// 
+// This contract demonstrates how to implement a digital dollar using the Simple Ledger Protocol (SLP).
+// Extremely low transaction fees and fast confirmation times make SLP an effective and efficient
+// platform for building a globally accessible Central Bank Digital Currency (CBDC).
+//
+// CBDC issuers are provided the ability to freeze or unfreeze a user's coins, at will, using the 
+// "freeze" contract method.
+//
+// Send transactions are required to have two (2) digital dollar outputs, one payment receiver, and
+// one change back to the sender. The payment receiver's p2pkh address will receive a small BCH
+// amount (i.e., "payNotifier") to serve as a notification about the newly received dollar.
+//
+// Contract Methods include:
+//      - Send()   : allows the digital dollar owner to spend,
+//      - Freeze() : allows CBDC issuer to freeze or unfreeze a coin
+//
+// Constructor Inputs include:
+//      - scriptBaseSha256 : the sha256 of the base script required to be enforced
+//      - slpSendFront     : the front of the required send op_return message, less amount
+//      - issuerPk         : the CBDC issuer's public key used for freeze/unfreeze
+//      - pkh              : a 20-byte state variable representing the current coin owner's public key
+//                           hash
+//      - isFrozen         : a state variable indicating the freeze status for a coin (2 bytes is used
+//                           to avoid typing issues associated with minimal push requirements)
+//
+// ****************************************************************************************************
+//
+contract SlpDollar(bytes32 scriptBaseSha256, pubkey issuerPk, bytes56 slpSendFront, bytes20 pkh, bytes2 isFrozen) {
+
+    // ******************************************************************
+    // Send
+    // ******************************************************************
+    //
+    // Send coin in a transaction in a payment with change sent back
+    // to pkh owner.  A notification is included to the payment
+    // receiver's p2pkh wallet.
+    //
+    // Method parameters:
+    //      - payAmt       : payment digital dollar amount for txn output 1
+    //      - payPk        : payment public key for txn output 1
+    //      - changeAmt    : change digital dollar amount sent back to pkh
+    //      - changeOutput : any p2pkh output to facilitate blockchain fees
+    //      - scriptBase   : 
+    //      - pk           : the pubkey of the pkh for this coin
+    //      - s            : a signature from above pubkey for this coin
+    //
+    // ******************************************************************
+    //
+    function Send(bytes8 payAmt, pubkey payPk, bytes8 changeAmt, bytes changeOutput, bytes scriptBase, pubkey pk, sig s) {
+
+        // verify coin is not frozen
+        require(isFrozen == 0x0000);
+
+        // check scriptSig variable lengths
+        require(payAmt.length == 8);
+        require(payPk.length == 33);
+        require(changeAmt.length == 8);
+
+        // create outputs
+        bytes code = 0x02 + isFrozen + 0x14 + pkh + 0x21 + bytes(issuerPk) + 0x38 + slpSendFront + 0x20 + scriptBaseSha256 + scriptBase;
+        bytes8 dust = 0x2202000000000000;
+        bytes p2shPay = new OutputP2SH(dust, hash160(code));
+        bytes p2shChange = new OutputP2SH(dust, hash160(code));
+        bytes payNotifier = new OutputP2PKH(dust, hash160(payPk)); // this dust provides a notification to the payment receiver's standard HD wallet
+
+        // check output format
+        bytes baseOuts = slpSendFront +  payAmt + 0x08 + changeAmt + p2shPay + p2shChange + payNotifier;
+        if (changeOutput != 0x00000000) {
+            require(hash256(baseOuts + changeOutput) == tx.hashOutputs);
+        } else {
+            require(hash256(baseOuts) == tx.hashOutputs);
+        }
+
+        // require script base hash
+        require(sha256(scriptBase) == scriptBaseSha256);
+        // manually place OP_CODESEPARATOR here
+
+        // check p2pkh
+        require(hash160(pk) == pkh);
+        require(checkSig(s, pk));
+    }
+
+    // ******************************************************************
+    // Freeze/Unfreeze
+    // ******************************************************************
+    //
+    // Freeze or unfreeze coin for the pkh owner, with a notification
+    // sent to the pkh owner's p2pkh wallet.
+    //
+    // Method parameters:
+    //      - newFreezeState : either 0x01 (freeze) or 0x00 (unfreeze)
+    //      - slpAmt         : slp amount
+    //      - changeOutput   : any p2pkh output to facilitate
+    //                         blockchain fees
+    //      - scriptBase     : script base to be used for receiver to
+    //                         match scriptBaseSha256
+    //      - issuerSig      : issuer's txn signature
+    //
+    // ******************************************************************
+    //
+    function Freeze(bytes2 newFreezeState, bytes8 slpAmt, bytes changeOutput, bytes scriptBase, sig issuerSig) {
+
+        // update byte code to frozen or unfrozen
+        if (newFreezeState == 0x0001) {
+            require(isFrozen == 0x0000);
+        } else {
+            require(isFrozen == 0x0001);
+            require(newFreezeState == 0x0000);
+        }
+
+        // create outputs
+        bytes slpOut = new OutputP2SH(0x2202000000000000, hash160(0x02 + isFrozen + 0x14 + pkh + 0x21 + bytes(issuerPk) + 0x38 + slpSendFront + 0x20 + scriptBaseSha256 + scriptBase));
+        bytes ownerNotifier = new OutputP2PKH(tx.value, pkh);
+
+        // check output format
+        bytes baseOuts = slpSendFront + slpAmt + slpOut + ownerNotifier;
+        if (changeOutput != 0x00000000) {
+            require(hash256(baseOuts + changeOutput) == tx.hashOutputs);
+        } else {
+            require(hash256(baseOuts) == tx.hashOutputs);
+        }
+
+        // require script base hash
+        require(sha256(scriptBase) == scriptBaseSha256);
+        // manually place OP_CODESEPARATOR here
+
+        // check issuer's sig
+        require(checkSig(issuerSig, issuerPk));
+    }
+}
