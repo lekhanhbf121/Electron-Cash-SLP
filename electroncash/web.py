@@ -56,9 +56,31 @@ testnet_block_explorers = {
                        {'tx': 'tx', 'addr': 'address', 'block' : 'block'}),
 }
 
+DEFAULT_EXPLORER_TESTNET4 = 'Loping.net'
+
+testnet4_block_explorers = {
+    # FIXME: Testnet4 SLP explorer
+    'Loping.net': ('https://tbch4.loping.net',
+                   Address.FMT_CASHADDR,
+                   {'tx': 'tx', 'addr': 'address', 'block': 'block-height'}),
+}
+
+DEFAULT_EXPLORER_SCALENET = 'Loping.net'
+
+scalenet_block_explorers = {
+    # FIXME: Scalenet SLP explorer
+    'Loping.net': ('https://sbch.loping.net',
+                   Address.FMT_CASHADDR,
+                   {'tx': 'tx', 'addr': 'address', 'block': 'block-height'}),
+}
+
 def BE_info():
-    if networks.net.TESTNET:
+    if networks.net is networks.TestNet:
         return testnet_block_explorers
+    elif networks.net is networks.TestNet4:
+        return testnet4_block_explorers
+    elif networks.net is networks.ScaleNet:
+        return scalenet_block_explorers
     return mainnet_block_explorers
 
 def BE_tuple(config):
@@ -68,9 +90,13 @@ def BE_tuple(config):
            )
 
 def BE_default_explorer():
-    return (DEFAULT_EXPLORER
-            if not networks.net.TESTNET
-            else DEFAULT_EXPLORER_TESTNET)
+    if networks.net is networks.TestNet:
+        return DEFAULT_EXPLORER_TESTNET
+    elif networks.net is networks.TestNet4:
+        return DEFAULT_EXPLORER_TESTNET4
+    elif networks.net is networks.ScaleNet:
+        return DEFAULT_EXPLORER_SCALENET
+    return DEFAULT_EXPLORER
 
 def BE_from_config(config):
     return config.get('block_explorer', BE_default_explorer())
