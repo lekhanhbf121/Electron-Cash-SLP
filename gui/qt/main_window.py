@@ -2488,10 +2488,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                         self.show_error(_("Receiver SLP address is missing or is not formatted properly."))
                         return
                     """ Require SLPADDR prefix in 'Pay To' field. """
-                    if networks.net.SLPADDR_PREFIX not in self.payto_e.address_string_for_slp_check and not is_paytomany_slp:
+                    if not is_paytomany_slp and not \
+                        (networks.net.SLPADDR_PREFIX in self.payto_e.address_string_for_slp_check or \
+                        networks.net.SCRIPTADDR_PREFIX in self.payto_e.address_string_for_slp_check):
                         self.show_error(_("Address provided is not in SLP Address format.\n\nThe address should be encoded using 'simpleledger:' or 'slptest:' URI prefix."))
-                        if not networks.net.TESTNET and networks.net.SCRIPTADDR_PREFIX not in self.payto_e.address_string_for_slp_check:
-                            return
+                        return
                     if slp_op_return_msg:
                         bch_outputs = [ slp_op_return_msg ]
             except OPReturnTooLarge as e:
@@ -2713,6 +2714,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         #if fee < self.wallet.relayfee() * tx.estimated_size() / 1000 and tx.requires_fee(self.wallet):
             #self.show_error(_("This transaction requires a higher fee, or it will not be propagated by the network"))
             #return
+
+        # check cashscript payTo restrictions
+        ok, err_str = cashscript.check_payto_restrictions(self, tx, self.payto_e.address_string_for_slp_check)
+        if not ok:
+            self.show_message(err_str)
+            return
 
         if preview:
             self.show_transaction(tx, tx_desc)

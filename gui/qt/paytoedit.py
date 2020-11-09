@@ -154,7 +154,8 @@ class PayToEdit(PrintError, ScanQRTextEdit):
         # filter out empty lines
         lines = [i for i in self.lines() if i]
 
-        # don't allow unknown "script:" addresses
+        # don't allow SCRIPTADDR_PREFIX formatted addresses in pay-to-many
+        if len(lines) > 1:
         for i, line in enumerate(lines):
             if networks.net.SCRIPTADDR_PREFIX in line:
                 try:
@@ -162,14 +163,6 @@ class PayToEdit(PrintError, ScanQRTextEdit):
                 except:
                     self.errors.append((0, 'could not parse "%s:" formatted address, cannot use with pay-to-many.'%networks.net.SCRIPTADDR_PREFIX))
                     return
-                else:
-                    allowed, contact = cashscript.allow_pay_to(self.win.wallet, addr)
-                    if not allowed and not contact:
-                        self.errors.append((0, 'cannot send to "%s:" formatted address, because it is unknown to this wallet'%networks.net.SCRIPTADDR_PREFIX))
-                        return
-                    elif not allowed:
-                        self.errors.append((0, 'cannot send to "%s:" formatted address, because it is associated with a "%s" contract type and is not allowed to be used in "Pay To"'%(networks.net.SCRIPTADDR_PREFIX, contact.name)))
-                        return
 
         outputs = []
         total = 0

@@ -43,7 +43,7 @@ SLP_MINT_GUARD_MINT = SLP_MINT_GUARD_NAME + '_Mint'
 SLP_MINT_GUARD_TRANSFER = SLP_MINT_GUARD_NAME + '_Transfer'
 
 # Slp Dollar contract constants
-SLP_DOLLAR_ID = "abc"
+SLP_DOLLAR_ID = "f911f6ab925fa2d183aa3f89a6e65550546072cc4619d3a818b958239011d43c"
 SLP_DOLLAR_NAME = net.SCRIPT_ARTIFACTS[SLP_MINT_GUARD_ID]['artifact']['contractName']
 SLP_DOLLAR_SEND = SLP_DOLLAR_NAME + "_Send"
 SLP_DOLLAR_FREEZE = SLP_DOLLAR_NAME + "_Freeze"
@@ -432,3 +432,18 @@ def parseChunkToInt(intBytes: bytes, minByteLen: int, maxByteLen: int, raise_on_
     if len(intBytes) == 0 and not raise_on_Null:
         return None
     raise Exception('File is not stored on the blockchain, or field has wrong length in BFP message.')
+
+def check_payto_restrictions(parent : object, tx : object, address_str : str) -> (bool, str):
+    if net.SCRIPTADDR_PREFIX in address_str:
+        known, contact = is_known(parent.wallet, address_str)
+        if not known:
+            return (False, "Script address is not known")
+        restrictions = net.SCRIPT_ARTIFACTS[contact.sha256]['payToRestrictions']
+        if not restrictions.get('allowBch', False):
+            return (False, "This type of smart contract cannot be used in the Send tab with BCH sends.")
+        if parent.slp_token_id and not restrictions.get('allowSlp', False):
+            return (False, "This type of smart contract cannot be used in the Send tab with SLP sends.")
+        maxSize = restrictions.get('txSizeMax', -1)
+        if maxSize > 0 and len(tx.serialize())/2 > maxSize:
+            return (False, "This transaction is too large for the output addres provided.\n\nTxn cannot be larger than than %s bytes."%(str(maxSize)))
+    return (True, None)
