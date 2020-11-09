@@ -1033,7 +1033,7 @@ class Transaction:
         if cashscript.SLP_VAULT_NAME in txin['type']:
             # for fee estimation we assume 3 outputs (1 SLP send msg, 1 SLP dust, 1 BCH output)
             txin['hashoutputs_preimage'] = '0000000000000000376a04534c500001010453454e44203c346636ec989568854d4d74e6352a756702962c5facaec75cb51f32fb5dde9108000000000000000122020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac22020000000000001976a91412b60afc04b42a6837bc590ec007eaf78b8e73cf88ac'
-            txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, ['00'])) + '00' * 8 + '00' * 4 + '00'*32 + '00' * 8
+            txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(cashscript.get_redeem_script_dummy(cashscript.SLP_VAULT_ID)) + '00' * 8 + '00' * 4 + '00'*32 + '00' * 8
         elif txin['type'] == cashscript.SLP_MINT_GUARD_MINT:
             txin['change_output_preimage'] = '00'*8 + '1976a914000000000000000000000000000000000000000088ac'  # should be p2pkh
             txin['tx_preimage'] = '00' * 4 + '00' * 100 + push_script(cashscript.get_redeem_script_dummy(cashscript.SLP_MINT_GUARD_ID, for_preimage=True, code_separator_pos=2)) + '00' * 8 + '00' * 4 + '00'*32 + '00' * 8
