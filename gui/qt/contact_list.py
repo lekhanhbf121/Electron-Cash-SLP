@@ -28,7 +28,7 @@ import electroncash.web as web
 import electroncash.cashscript as cashscript
 from electroncash.address import Address, PublicKey, hash160
 from electroncash.bitcoin import TYPE_ADDRESS, push_script
-from electroncash.contacts import Contact, contact_types
+from electroncash.contacts import Contact, ScriptContact, contact_types
 from electroncash.plugins import run_hook
 from electroncash.transaction import Transaction
 from electroncash.util import FileImportFailed, PrintError, finalization_print_error
@@ -345,7 +345,7 @@ class ContactList(PrintError, MyTreeWidget):
 
     def get_related_mint_guards(self, contact):
         token_id = contact.params['tokenId']
-        transfer_candidates = [ c for c in self.parent.contacts.data if c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params['tokenId'] == token_id and c is not contact ]
+        transfer_candidates = [ c for c in self.parent.contacts.data if isinstance(c, ScriptContact) and c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params['tokenId'] == token_id and c is not contact ]
         return transfer_candidates
 
     def fetch_script_coins(self, addresses):
