@@ -185,8 +185,13 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
             self.token_baton_label.setHidden(False)
 
             unused_addr = self.wallet.get_unused_address()
-            script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, self.token_id_e.text(), unused_addr.hash160.hex()]
-            pin_op_return_msg = cashscript.build_pin_msg(cashscript.SLP_MINT_GUARD_ID, script_params)
+            script_params = {
+                'scriptBaseSha256': cashscript.SLP_MINT_GUARD_ID,
+                'slpMintFront': cashscript.SLP_MINT_FRONT,
+                'tokenId': self.token_id_e.text(),
+                'pkh': unused_addr.hash160.hex()
+            }
+            pin_op_return_msg = cashscript.build_script_pin_output(cashscript.SLP_MINT_GUARD_ID, script_params)
             outputs = [pin_op_return_msg, (TYPE_ADDRESS, unused_addr, 546)]
             tx = self.main_window.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config, None)
             self.main_window.show_transaction(tx, "New script pin for: %s"%cashscript.SLP_MINT_GUARD_NAME)  # TODO: can we have a callback after successful broadcast?

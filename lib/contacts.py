@@ -40,8 +40,14 @@ from .cashscript import ScriptPin, from_asm, check_constructor_params, get_contr
 class Contact(namedtuple("Contact", "name address type")):
     ''' Your basic contacts entry. '''
 
-class ScriptContact(namedtuple("Contact", "name address type sha256 params")):
-    ''' Your basic contacts entry. '''
+class ScriptContact(namedtuple("ScriptContact", "name address type sha256 params_str")):
+    ''' Contacts entry for specific address associated with a redeemScript. '''
+    @property
+    def params(self):
+        return json.loads(self.params_str)
+
+class IssuerContact(namedtuple("IssuerContact", "name type sha256 params variables")):
+    ''' Contacts entry for issuer smart contracts requiring the wallet to self determine the proper redeemScript. '''
 
 contact_types = { 'address', 'script' }  # {'address', 'cashacct', 'openalias'}
 
@@ -103,16 +109,15 @@ class Contacts(util.PrintError):
                 if artifact_sha256 not in scripts_contracts:
                     continue
 
-                script_params = tuple(d.get('params'))
+                script = ScriptContact(name, address, typ, artifact_sha256, d.get('params_str'))
 
-                # check params length matches artifact lengths
                 try:
-                    check_constructor_params(artifact_sha256, script_params)
+                    check_constructor_params(script.sha256, script.params)
                 except Exception as e:
                     util.print_error(str(e))
                     continue
 
-                out.append( ScriptContact(name, address, typ, artifact_sha256, script_params) )
+                out.append( script )
             else:
                 out.append( Contact(name, address, typ) )
         return out
@@ -178,7 +183,7 @@ class Contacts(util.PrintError):
                     'address': contact.address,
                     'type': contact.type,
                     'sha256': contact.sha256,
-                    'params': contact.params
+                    'params_str': contact.params_str
                 })
             else:
                 out_v2.append({
@@ -353,15 +358,15 @@ class Contacts(util.PrintError):
         artifacts = networks.net.SCRIPT_ARTIFACTS
 
         # try to get artifact from pin sha256
-        if pin.artifact_sha256.hex() not in artifacts:
+        if pin.artifact_sha256 not in artifacts:
             return False
 
         contract = ScriptContact(
-            name=get_contract_name_string(pin.artifact_sha256.hex()),
+            name=get_contract_name_string(pin.artifact_sha256),
             address=pin.address.to_full_string(Address.FMT_SCRIPTADDR),
             type='script',
-            sha256=pin.artifact_sha256.hex(),
-            params=tuple([ inp.hex() for inp in pin.constructor_inputs ])
+            sha256=pin.artifact_sha256,
+            params_str=json.dumps(pin.constructor_inputs)
         )
 
         if contract in self.data:

@@ -23,9 +23,12 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import io, json
 from .networks import net
 from .address import OpCodes, Address, hash160, sha256
 from .bitcoin import TYPE_SCRIPT, var_int, int_to_hex, push_script
+
+from .cashscript_pb2 import ScriptPinPayload, NamedParam
 
 # Slp Vault contract constants
 SLP_VAULT_ID = "32b14aa93b0d0cd360a3e0204ac6ac2087564d2aa7cd7462db073358b6a55c62"
@@ -102,11 +105,9 @@ def allow_pay_to(wallet, address) -> (bool, object):
         return (True, contact)
     return (False, contact)
 
-def get_p2pkh_owner_address(artifact_sha256: str, params: [str]) -> Address:
-    if artifact_sha256 == SLP_VAULT_ID:
-        return Address.from_P2PKH_hash(bytes.fromhex(params[0]))
-    elif artifact_sha256 == SLP_MINT_GUARD_ID:
-        return Address.from_P2PKH_hash(bytes.fromhex(params[3]))
+def get_p2pkh_owner_address(artifact_sha256: str, params: dict) -> Address:
+    if artifact_sha256 in [SLP_VAULT_ID, SLP_MINT_GUARD_ID]:
+        return Address.from_P2PKH_hash(bytes.fromhex(params['pkh']))
     else:
         return None
 
@@ -120,11 +121,20 @@ def get_base_script(artifact_sha256: str, *, for_preimage=False, code_separator_
         raise Exception('sha256 mismatch')
     return script
 
-def get_redeem_script(artifact_sha256: str, params: [str], *, for_preimage=False, code_separator_pos=0) -> str:
+def get_redeem_script(artifact_sha256: str, params: dict, *, for_preimage=False, code_separator_pos=0) -> str:
     artifact = net.SCRIPT_ARTIFACTS[artifact_sha256]['artifact']
     script = get_base_script(artifact_sha256, for_preimage=for_preimage, code_separator_pos=code_separator_pos)
     if for_preimage and script != get_base_script(artifact_sha256):
         return script
+
+    # allow params to be passed in as a dict
+    if isinstance(params, dict):
+        _params = []
+        for p in artifact["constructorInputs"]:
+            # TODO: check p.type against params[p.name]
+            _params.append(params[p['name']])
+        params = _params
+
     for param in params:
         if not isinstance(param, str):
             raise Exception('params must be provide as string')
@@ -175,10 +185,10 @@ def get_script_sig_dummies(artifact_sha256: str):
         script_sigs.append( (artifact_sha256, abi['name'], script_sig) )
     return script_sigs
 
-def get_redeem_script_address(artifact_sha256: str, params: [str]) -> Address:
+def get_redeem_script_address(artifact_sha256: str, params: dict) -> Address:
     return Address.from_P2SH_hash(hash160(bytes.fromhex(get_redeem_script(artifact_sha256, params))))
 
-def get_redeem_script_address_string(artifact_sha256: str, params: [str]) -> str:
+def get_redeem_script_address_string(artifact_sha256: str, params: dict) -> str:
     return get_redeem_script_address(artifact_sha256, params).to_full_string(Address.FMT_SCRIPTADDR)
 
 def from_asm(asm: str, *, for_preimage=False, code_separator_pos=0) -> str:
@@ -236,31 +246,31 @@ def get_script_sig_type(decoded: list) -> (str, str):
             return (script_id, net.SCRIPT_ARTIFACTS[script_id]['artifact']['contractName'] + '_' + abi_name)
     return (None, None)
 
-def build_pin_msg(artifact_sha256_hex: str, constructorInputs: [str]) -> tuple:
+def build_script_pin_output(artifact_sha256_hex: str, constructorInputs: dict) -> tuple:
     chunks = []
-    # lokad id
+
+    # push PIN protocol magic
     chunks.append(pin_protocol_id)
+
     # token version/type
     chunks.append(b'\x01')
-    # artifact sha256
-    sha = bytes.fromhex(artifact_sha256_hex)
-    if len(sha) != 32:
-        raise Exception('sha256 must be 32 bytes')
 
-    if artifact_sha256_hex not in net.SCRIPT_ARTIFACTS:
-        raise Exception("cashscript sha256 doesn't exist")
+    payload = ScriptPinPayload()
+    payload.artifact_sha256 = bytes.fromhex(artifact_sha256_hex)
+    for item in constructorInputs:
+        param = payload.params.add()
+        param.name = item
+        param.value = bytes.fromhex(constructorInputs[item])
+    
+    # try to do as version 1, without needing a BFP upload/download handling (via cashscript_mgr.py)
+    chunks.append(payload.SerializeToString())
+    pin_output = chunksToOpreturnOutput(chunks)
+    if len(pin_output[1][0]) <= 223:
+        return pin_output
 
-    chunks.append(sha)
-    # output quantities
-    ci = b''
-    for constInp in constructorInputs:
-        ci += bytes.fromhex(var_int(len(bytes.fromhex(constInp)))) + bytes.fromhex(constInp)
+    raise Exception('not implemented, script will need to be uploaded using BFP')
 
-    chunks.append(ci)
-
-    return chunksToOpreturnOutput(chunks)
-
-def check_constructor_params(artifact_sha256: str, params: [str]) -> bool:
+def check_constructor_params(artifact_sha256: str, params: dict) -> bool:
 
     artifact = net.SCRIPT_ARTIFACTS[artifact_sha256]['artifact']
     script = from_asm(artifact['bytecode'])
@@ -270,22 +280,23 @@ def check_constructor_params(artifact_sha256: str, params: [str]) -> bool:
 
     if len(artifact['constructorInputs']) != len(params):
         raise Exception('params length does not match required length of constructorInputs')
-    for i, val in enumerate(artifact['constructorInputs']):
+    for val in artifact['constructorInputs']:
+        _actual_size = int(len(bytes.fromhex(params[val['name']])))
         if val['type'] == 'bytes':
-            if len(bytes.fromhex(params[i])) < 1:
-                raise Exception('expected at least 1 byte for ' + val['name'] + ' but got ' + str(len(params[i])))
+            if _actual_size < 1:
+                raise Exception('expected at least 1 byte for ' + val['name'] + ' but got ' + str(_actual_size))
                 continue
-            if len(bytes.fromhex(params[i])) > 520:
-                raise Exception('cannot push more than 520 bytes for ' + val['name'] + ' but got ' + str(len(params[i])))
+            if _actual_size > 520:
+                raise Exception('cannot push more than 520 bytes for ' + val['name'] + ' but got ' + str(_actual_size))
                 continue
         elif val['type'].startswith('bytes'):
             size = int(val['type'].split('bytes')[1])
-            if len(bytes.fromhex(params[i])) != size:
-                raise Exception('expected ' + str(size) + ' bytes for ' + val['name'] + ' but got ' + str(len(params[i])))
+            if _actual_size != size:
+                raise Exception('expected ' + str(size) + ' bytes for ' + val['name'] + ' but got ' + str(_actual_size))
             continue
-        elif val['type'] == "pubkey" and len(bytes.fromhex(params[i])) != 33:
-            if len(bytes.fromhex(params[i])) != 33:
-                raise Exception('expected ' + str(33) + ' bytes for ' + val['name'] + ' but got ' + str(len(params[i])))         
+        elif val['type'] == "pubkey" and len(bytes.fromhex(params[val['name']]))/2 != 33:
+            if _actual_size != 33:
+                raise Exception('expected ' + str(33) + ' bytes for ' + val['name'] + ' but got ' + str(_actual_size))
             continue
         else:
             raise Exception('unimplemented type "' + val['type'] + '" for ' + val['name'])
@@ -301,7 +312,7 @@ class ScriptPin:
         self.pin_version = None
         self.artifact_sha256 = None
         self.artifact = None
-        self.constructor_inputs = []
+        self.constructor_inputs = {}
         self.address = None
 
     @staticmethod
@@ -321,47 +332,30 @@ class ScriptPin:
         if len(chunks) == 1:
             raise Exception('missing pin version')
         pinMsg.pin_version = parseChunkToInt(chunks[1], 1, 1, True)
-        if pinMsg.pin_version != 1:
-            raise UnsupportedPinMsgType(pinMsg.pin_version)
+        if pinMsg.pin_version == 1:
 
-        if len(chunks) == 2:
-            raise Exception('missing pin artifact sha256')
-        pinMsg.artifact_sha256 = chunks[2]
-        if len(chunks[2]) != 32:
-            raise Exception('invalid sha256')
-        if pinMsg.artifact_sha256.hex() not in net.SCRIPT_ARTIFACTS:
-            raise Exception('not an available script')
+            if len(chunks) == 2:
+                raise Exception('missing pin payload')
 
-        pinMsg.artifact = net.SCRIPT_ARTIFACTS[pinMsg.artifact_sha256.hex()]['artifact']
+            script_pin_payload = ScriptPinPayload()
+            f = io.BytesIO(chunks[2])
+            script_pin_payload.ParseFromString(f.read())
 
-        if len(chunks) == 3:
-            raise Exception('missing script constructor inputs')
-        try:
-            if chunks[3] is not None:
-                pinMsg.constructor_inputs = deserialize(chunks[3])
-            if len(pinMsg.constructor_inputs) != len(pinMsg.artifact['constructorInputs']):
-                raise Exception('cannot have empty script constructor inputs')
-        except:
-            raise Exception('could not parse constructor inputs')
+            pinMsg.artifact_sha256 = script_pin_payload.artifact_sha256.hex()
+            if len(pinMsg.artifact_sha256)/2 != 32:
+                raise Exception('invalid sha256')
+            if pinMsg.artifact_sha256 not in net.SCRIPT_ARTIFACTS:
+                raise Exception('not an available script')
+            pinMsg.artifact = net.SCRIPT_ARTIFACTS[pinMsg.artifact_sha256]['artifact']
 
-        pinMsg.address = get_redeem_script_address(pinMsg.artifact_sha256.hex(), [p.hex() for p in pinMsg.constructor_inputs])
-
+            for p in script_pin_payload.params:
+                pinMsg.constructor_inputs[p.name] = p.value.hex()
+            
+            pinMsg.address = get_redeem_script_address(pinMsg.artifact_sha256, pinMsg.constructor_inputs)
+        else:
+            raise Exception('pin version not implemented')
+    
         return pinMsg
-
-def deserialize(raw):
-    from .transaction import BCDataStream
-    vds = BCDataStream()
-    vds.write(raw)
-    d = []
-    start = vds.read_cursor
-    while True:
-        try:
-            n_len = vds.read_compact_size()
-            _d = vds.read_bytes(n_len)
-            d.append(_d)
-        except:
-            break
-    return d
 
 def chunksToOpreturnOutput(chunks: [bytes]) -> tuple:
     script = bytearray([0x6a,]) # start with OP_RETURN

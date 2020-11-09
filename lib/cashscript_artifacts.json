@@ -2,15 +2,29 @@
     "32b14aa93b0d0cd360a3e0204ac6ac2087564d2aa7cd7462db073358b6a55c62": {
         "location": "cashscript/slp_vault.artifact",
         "mainnet": false,
-        "maxSendTxSize": 520
+        "issuerTemplate": false,
+        "restrictions": {
+            "txSizeMax": 520
+        }
     },
     "cf7ced1c3e2ff3d6620a9cc5d3cb000a5109fd09ce6b0ba86051424a3ede980d": {
         "location": "cashscript/slp_mint_guard.artifact",
-        "mainnet": false
+        "mainnet": false,
+        "issuerTemplate": false,
+        "fixedInputs": {
+            "scriptBaseSha256": "cf7ced1c3e2ff3d6620a9cc5d3cb000a5109fd09ce6b0ba86051424a3ede980d",
+            "slpMintFront": "0000000000000000396a04534c50000101044d494e5420"
+        },
+        "issuerParams": [ "tokenId" ]
     },
-    "abc": {
+    "f911f6ab925fa2d183aa3f89a6e65550546072cc4619d3a818b958239011d43c": {
         "location": "cashscript/slp_dollar.artifact",
         "mainnet": false,
-        "issuerContract": true
+        "issuerTemplate": true,
+        "constructorInputs": {
+            "fixedParams": { "scriptBaseSha256": "f911f6ab925fa2d183aa3f89a6e65550546072cc4619d3a818b958239011d43c" },
+            "variableParams": { "isFrozen": [ "0000", "0001" ] },
+            "issuerParams": [ "issuerPk", "slpSendFront" ]
+        }
     }
 }

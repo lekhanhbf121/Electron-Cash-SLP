@@ -1482,14 +1482,14 @@ class Abstract_Wallet(PrintError):
                 if _type == TYPE_SCRIPT and cashscript.pin_protocol_id in addr.script:
                     try:
                         pin = cashscript.ScriptPin.parsePinScriptOutput(addr)
-                    except:
-                        pass
+                    except Exception as e:
+                        print_error(str(e))
                     else:
                         if self.contacts.handle_script_pin(pin):
-                            self.set_label(tx_hash, 'New script pin for: ' + cashscript.get_contract_name_string(pin.artifact_sha256.hex()))
-                        if pin.artifact_sha256.hex() in networks.net.SCRIPT_ARTIFACTS:
-                            artifact_entry = networks.net.SCRIPT_ARTIFACTS.get(pin.artifact_sha256.hex())
-                            label_string = cashscript.get_contact_label(self, pin.artifact_sha256.hex(), [p.hex() for p in pin.constructor_inputs])
+                            self.set_label(tx_hash, 'New script pin for: ' + cashscript.get_contract_name_string(pin.artifact_sha256))
+                        if pin.artifact_sha256 in networks.net.SCRIPT_ARTIFACTS:
+                            artifact_entry = networks.net.SCRIPT_ARTIFACTS.get(pin.artifact_sha256)
+                            label_string = cashscript.get_contact_label(self, pin.artifact_sha256, pin.constructor_inputs)
                             key = pin.address.to_full_string(Address.FMT_SCRIPTADDR)
                             if not self.labels.get(key):
                                 self.set_label(key, label_string)

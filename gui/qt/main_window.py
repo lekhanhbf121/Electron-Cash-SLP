@@ -3208,8 +3208,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 outputs = []
                 artifact_sha256 = cashscript.SLP_VAULT_ID
                 addr = Address.from_string(source_address.text().strip())
-                script_params = [addr.hash160.hex()]
-                pin_op_return_msg = cashscript.build_pin_msg(artifact_sha256, script_params)
+                script_params = {
+                    'pkh': addr.hash160.hex()
+                }
+                pin_op_return_msg = cashscript.build_script_pin_output(artifact_sha256, script_params)
                 outputs.append(pin_op_return_msg)
                 outputs.append((TYPE_ADDRESS, addr, 546))
                 if not self.wallet.is_mine(addr):

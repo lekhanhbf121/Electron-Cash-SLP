@@ -201,7 +201,7 @@ class ContactList(PrintError, MyTreeWidget):
                                 menu.addAction(_("Revoke"), lambda: self.slp_vault_revoke(sel))
                         elif sel.sha256 == cashscript.SLP_MINT_GUARD_ID:
                             if cashscript.is_mine(self.wallet, sel.address)[0]:
-                                token_id = sel.params[2]
+                                token_id = sel.params['tokenId']
                                 try:
                                     baton = self.wallet.get_slp_token_baton(token_id)
                                     for txo in self.addr_txos.get(addr):
@@ -243,6 +243,7 @@ class ContactList(PrintError, MyTreeWidget):
             menu.addSeparator()
 
         menu.addAction(self.icon_contacts, _("Add Contact") + " - " + _("Address"), self.parent.new_contact_dialog)
+        #menu.addAction(self.icon_contacts, _("Add Issuer Contract"), self.connect_to_issuer)
         run_hook('create_contact_menu', menu, selected)
         menu.exec_(self.viewport().mapToGlobal(position))
 
@@ -251,7 +252,7 @@ class ContactList(PrintError, MyTreeWidget):
         for coin in coins:
             coin['prevout_hash'] = coin['tx_hash']
             coin['prevout_n'] = coin['tx_pos']
-            coin['slp_vault_pkh'] = item.params[0]
+            coin['slp_vault_pkh'] = item.params['pkh']
             coin['address'] = Address.from_string(item.address)
         self.parent.sweep_slp_vault(coins)
 
@@ -260,7 +261,7 @@ class ContactList(PrintError, MyTreeWidget):
         for coin in coins:
             coin['prevout_hash'] = coin['tx_hash']
             coin['prevout_n'] = coin['tx_pos']
-            coin['slp_vault_pkh'] = item.params[0]
+            coin['slp_vault_pkh'] = item.params['pkh']
             coin['address'] = Address.from_string(item.address)
         self.parent.revoke_slp_vault(coins)
 
@@ -285,8 +286,13 @@ class ContactList(PrintError, MyTreeWidget):
         # TODO: check for an already existing pin for this pubkey
 
         user_addr = Address.from_pubkey(pubkey)
-        script_params = [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, token_id, user_addr.hash160.hex()]
-        pin_op_return_msg = cashscript.build_pin_msg(cashscript.SLP_MINT_GUARD_ID, script_params)
+        script_params = {
+            'scriptBaseSha256': cashscript.SLP_MINT_GUARD_ID,
+            'slpMintFront': cashscript.SLP_MINT_FRONT,
+            'tokenId': token_id,
+            'pkh': user_addr.hash160.hex()
+        }
+        pin_op_return_msg = cashscript.build_script_pin_output(cashscript.SLP_MINT_GUARD_ID, script_params)
         outputs = [pin_op_return_msg, (TYPE_ADDRESS, user_addr, 546), (TYPE_ADDRESS, self.wallet.get_unused_address(), 546)]
         tx = self.wallet.make_unsigned_transaction(self.main_window.get_coins(), outputs, self.main_window.config)
         self.main_window.show_transaction(tx, "New script pin for: %s"%cashscript.SLP_MINT_GUARD_NAME)  # TODO: can we have a callback after successful broadcast?
@@ -338,8 +344,8 @@ class ContactList(PrintError, MyTreeWidget):
         self.main_window.show_transaction(tx, "Mint guard transfer")
 
     def get_related_mint_guards(self, contact):
-        token_id = contact.params[2]
-        transfer_candidates = [ c for c in self.parent.contacts.data if c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params[2] == token_id and c is not contact ]
+        token_id = contact.params['tokenId']
+        transfer_candidates = [ c for c in self.parent.contacts.data if c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params['tokenId'] == token_id and c is not contact ]
         return transfer_candidates
 
     def fetch_script_coins(self, addresses):

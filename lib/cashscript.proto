@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+// Not necessary for Python, should still be declared to avoid name collisions 
+// in the Protocol Buffers namespace and non-Python languages
+package electroncashslp;
+
+// NamedParam is a primative used by ScriptPinPayload and IssuerTemplateParams
+message NamedParam {
+    string name = 1;
+    bytes value = 2;
+}
+
+// ScriptPinPayload is used to store ALL of the named constructor input parameters for a specific
+// script artifact.  For example, both the SLP Vault and SLP Mint Guard use this.
+//
+// For security purposes, before the wallet uses a custom P2SH address a special OP_RETURN transaction
+// must be created and unmarshaled from the wallet's transaction history.  Once the ScriptPinPayload is 
+// deserialized and storaed as a 'script' contact type, the wallet will allow use of the script in 
+// its respective associated GUI.  For example, a MINT Guard contract will be available for use via the
+// "Mint Tool" dialog. 
+//
+// The PIN OP_RETURN uses the same push data rules as SLP, and has the following data pushes:
+//      protocol:   OP_RETURN b"PIN\x00" <1-2_byte_version_type> <type_specific_payload(s)>
+//
+// More specifically, the PIN protocol
+//      version 1:  OP_RETURN b"PIN\x00" 0x01 <ScriptPinPayload>
+//      version 2:  OP_RETURN b"PIN\x00" 0x02 <BitcoinFilesTxid_to_Marshalled_ScriptPinPayload>
+//
+message ScriptPinPayload {
+    bytes artifact_sha256 = 1;
+    repeated NamedParam params = 2;
+}
+
+// IssuerTemplateParams is used to allow issuers to specify and share issuer specific parameters
+// associated with an artifact's named constructor inputs.  This protocol is used by the Electron Cash SLP
+// wallet to match the redeemScript of an unknown received p2sh address.
+//
+// The "params" property does not include ALL of the redeemScript's constructor input parameters,
+// only the issuer specific ones. The Electron Cash SLP wallet will be responsible for matching the
+// remaining named constructor input parameters.  Only contracts designed to work with this protocol will work.
+//
+// P2SH matching requires that a transaction with p2sh outputs must also include dust payment(s)
+// to the associated p2pkh addresses immediately following the unknown p2sh address.
+//
+message IssuerTemplateParams {
+    string issuer_defined_name = 1;
+    bytes artifact_sha256 = 2;
+    repeated NamedParam params = 3;
+
+    // this is an optional parameter that would allow a wallet 
+    // to more quickly determine a p2sh match in some cases.
+    bytes slp_token_id = 4;
+}
