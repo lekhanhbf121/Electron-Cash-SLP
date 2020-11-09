@@ -71,6 +71,8 @@ from . import slp_validator_0x01, slp_validator_0x01_nft1
 
 from . import cashscript
 
+from .cashscript_mgr import CashScriptManager
+
 def _(message): return message
 
 TX_STATUS = [
@@ -3430,9 +3432,24 @@ class Slp_Standard_Wallet(Standard_Wallet):
     This type of wallet has a default coin type of 245 instead of 145.
     '''
     wallet_type = 'slp_standard'
+    cashscript_mgr = None
+
     def __init__(self, storage):
         storage.put('wallet_type', self.wallet_type)
         super().__init__(storage)
+
+        if networks.net.TESTNET:
+            try:
+                self.cashscript_mgr = CashScriptManager(self, storage)
+            except Exception as e:
+                print(str(e))
+
+    def add_transaction(self, tx_hash, tx):
+        super().add_transaction(tx_hash, tx)
+
+        # check transactions for p2sh smart contracts
+        if self.cashscript_mgr:
+            self.cashscript_mgr.process_transaction(tx_hash, tx)
 
 
 class Slp_Vault_Wallet(Deterministic_Wallet):
