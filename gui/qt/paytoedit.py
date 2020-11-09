@@ -156,13 +156,13 @@ class PayToEdit(PrintError, ScanQRTextEdit):
 
         # don't allow SCRIPTADDR_PREFIX formatted addresses in pay-to-many
         if len(lines) > 1:
-        for i, line in enumerate(lines):
-            if networks.net.SCRIPTADDR_PREFIX in line:
-                try:
-                    addr = Address.from_string(line).to_full_string(Address.FMT_SCRIPTADDR)
-                except:
-                    self.errors.append((0, 'could not parse "%s:" formatted address, cannot use with pay-to-many.'%networks.net.SCRIPTADDR_PREFIX))
-                    return
+            for i, line in enumerate(lines):
+                if networks.net.SCRIPTADDR_PREFIX in line:
+                    try:
+                        addr = Address.from_string(line).to_full_string(Address.FMT_SCRIPTADDR)
+                    except:
+                        self.errors.append((0, 'could not parse "%s:" formatted address, cannot use with pay-to-many.'%networks.net.SCRIPTADDR_PREFIX))
+                        return
 
         outputs = []
         total = 0
