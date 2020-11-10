@@ -54,7 +54,7 @@ class ContactList(PrintError, MyTreeWidget):
     default_sort = MyTreeWidget.SortSpec(1, Qt.AscendingOrder)
 
     do_update_signal = pyqtSignal()
-    unspent_coins_dl_signal = pyqtSignal(dict)
+    unspent_coins_dl_signal = pyqtSignal(dict, bool)
 
     class DataRoles(IntEnum):
         Contact     = Qt.UserRole + 0
@@ -75,12 +75,12 @@ class ContactList(PrintError, MyTreeWidget):
         self.icon_contacts = QIcon(":icons/tab_contacts.png")
         self.icon_unverif = QIcon(":icons/unconfirmed.svg")
 
-        self.unspent_coins_dl_signal.connect(self.got_unspent_coins_response_slot, Qt.QueuedConnection)
+        self.unspent_coins_dl_signal.connect(self.got_unspent_coins_response_slot)
         self.addr_txos = {}
 
         # fetch unspent script coins
         script_addrs = [c.address for c in self.parent.contacts.data if c.type == 'script' ]
-        self.fetch_script_coins(script_addrs)
+        self.fetch_script_coins(script_addrs, display_error=False)
 
     def clean_up(self):
         self.cleaned_up = True
@@ -348,18 +348,21 @@ class ContactList(PrintError, MyTreeWidget):
         transfer_candidates = [ c for c in self.parent.contacts.data if isinstance(c, ScriptContact) and c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params['tokenId'] == token_id and c is not contact ]
         return transfer_candidates
 
-    def fetch_script_coins(self, addresses):
+    def fetch_script_coins(self, addresses, *, display_error=True):
         for addr in addresses:
             cashaddr = Address.from_string(addr).to_full_string(Address.FMT_CASHADDR)
             def callback(response):
-                self.unspent_coins_dl_signal.emit(response)
+                self.unspent_coins_dl_signal.emit(response, display_error)
             requests = [ ('blockchain.address.listunspent', [cashaddr]) ]
             self.parent.network.send(requests, callback)
 
-    @pyqtSlot(dict)
-    def got_unspent_coins_response_slot(self, response):
+    @pyqtSlot(dict, bool)
+    def got_unspent_coins_response_slot(self, response, display_error):
         if response.get('error'):
-            return print("Download error!\n%r"%(response['error'].get('message')))
+            if not display_error:
+                return
+            self.main_window.show_error("The server you're connected to cannot be used fetch unspent coins.\n\nConnect to a different server and try again.")
+            return
         raw = response.get('result')
         self.addr_txos[Address.from_string(response.get('params')[0])] = raw
         self.update()
