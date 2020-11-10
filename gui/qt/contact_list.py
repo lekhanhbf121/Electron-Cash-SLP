@@ -317,14 +317,14 @@ class ContactList(PrintError, MyTreeWidget):
             return
 
         # try to find the pinned contract associated with this pubkey
-        contact = [c for c in self.parent.contacts.data if c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params[3] == pkh_str][0]
+        contact = [c for c in self.parent.contacts.data if isinstance(c, ScriptContact) and c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params['pkh'] == pkh_str][0]
 
         # add info to baton for Mint Guard Transfer signing
         baton['type'] = cashscript.SLP_MINT_GUARD_TRANSFER
         baton['slp_mint_guard_transfer_pk'] = pubkey_str
         owner_p2pkh = cashscript.get_p2pkh_owner_address(cashscript.SLP_MINT_GUARD_ID, contact.params)
-        baton['slp_mint_guard_pkh'] = current_owner.params[3]
-        token_id_hex = contact.params[2]
+        baton['slp_mint_guard_pkh'] = current_owner.params['pkh']
+        token_id_hex = contact.params['tokenId']
         baton['slp_token_id'] = token_id_hex
         baton['slp_mint_amt'] = int(0).to_bytes(8, 'big').hex()
         token_rec_script = self.wallet.get_unused_address().to_script_hex()
