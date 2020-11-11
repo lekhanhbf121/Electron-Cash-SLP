@@ -3050,6 +3050,24 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         slp_address = ButtonsLineEdit()
         slp_address.setReadOnly(True)
         slp_address.addCopyButton()
+        view_slp_btn = QPushButton(_("Enable SLP Address Conversion"))
+
+        def slp_addr_toggle():
+            res = self.question(
+                _(
+                    "Please read this carefully.\n\n"
+                    "The purpose for SLP address format is to provide a signal to others that the wallet is SLP compatible.\n\n"
+                    "Never send SLP tokens to any address unless the recipient has informed you that their wallet is SLP compatible. "
+                    "If you send SLP tokens to a wallet that is not compatible with SLP the tokens can easily be destroyed.\n\n"
+                    "Does this make sense?"
+                ),
+                title=_("Information about SLP Address Format"))
+            if res:
+                view_slp_btn.setHidden(True)
+                slp_address.setHidden(False)
+
+        view_slp_btn.clicked.connect(slp_addr_toggle)
+
         widgets = [
             (cash_address, Address.FMT_CASHADDR),
             (legacy_address, Address.FMT_LEGACY),
@@ -3089,8 +3107,15 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         label.setBuddy(legacy_address)
         grid.addWidget(label, 2, 0)
         grid.addWidget(legacy_address, 2, 1)
-        grid.addWidget(QLabel(_('SLP address')), 3, 0)
-        grid.addWidget(slp_address, 3, 1)
+
+        if self.is_slp_wallet:
+            label = QLabel(_('SLP address'))
+            label.setBuddy(slp_address)
+            grid.addWidget(label, 3, 0)
+            grid.addWidget(slp_address, 3, 1)
+            slp_address.setHidden(True)
+            grid.addWidget(view_slp_btn, 3, 1)
+            view_slp_btn.setHidden(False)
         w.setLayout(grid)
 
         label = WWLabel(_(
