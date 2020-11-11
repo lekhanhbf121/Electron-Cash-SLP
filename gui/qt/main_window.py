@@ -269,6 +269,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def is_slp_wallet(self):
         return self.wallet.is_slp
 
+    @property
+    def is_dark_theme(self):
+        return self.config.get('qt_gui_color_theme') == 'dark'
+
     _first_shown = True
     def showEvent(self, event):
         super().showEvent(event)
@@ -1996,9 +2000,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if isinstance(extra, str) and extra:
                     text += " ({})".format(extra)
 
-            elif self.fee_e.isModified():
+            elif self.fee_e.isModified() and not self.is_dark_theme:
                 amt_color, fee_color = ColorScheme.DEFAULT, ColorScheme.DEFAULT
-            elif self.amount_e.isModified():
+            elif self.amount_e.isModified() and not self.is_dark_theme:
                 amt_color, fee_color = ColorScheme.DEFAULT, ColorScheme.BLUE
             else:
                 amt_color, fee_color = ColorScheme.BLUE, ColorScheme.BLUE
@@ -2049,7 +2053,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                         text = "Not enough unfrozen " + name + " tokens (" + \
                                 format_satoshis_plain_nofloat(bal_avail, decimals) + " valid, " + \
                                 format_satoshis_plain_nofloat(frozen_amt, decimals) + " frozen)"
-                elif self.slp_amount_e.isModified():
+                elif self.slp_amount_e.isModified() and not self.is_dark_theme:
                     amt_color = ColorScheme.DEFAULT
                 else:
                     amt_color = ColorScheme.BLUE
