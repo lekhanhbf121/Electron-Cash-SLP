@@ -15,7 +15,7 @@ from . import slp
 from .slp import SlpMessage, SlpParsingError, SlpUnsupportedSlpTokenType, SlpInvalidOutputMessage
 from .slp_dagging import TokenGraph, ValidationJob, ValidationJobManager, ValidatorGeneric
 from .bitcoin import TYPE_SCRIPT
-from .util import print_error, PrintError
+from .util import PrintError
 
 from . import slp_proxying # loading this module starts a thread.
 from .slp_graph_search import SlpGraphSearchManager # thread is started upon instantiation
@@ -48,7 +48,7 @@ class GraphContext(PrintError):
 
     def _new_job_mgr(self, suffix='') -> ValidationJobManager:
         ret = ValidationJobManager(threadname=f'{self.name}/ValidationJobManager{suffix}', exit_when_done=self.is_parallel)
-        weakref.finalize(ret, print_error, f'[{ret.threadname}] finalized')  # track object lifecycle
+        weakref.finalize(ret, self.print_error, f'[{ret.threadname}] finalized')  # track object lifecycle
         return ret
 
     def _get_or_make_mgr(self, token_id_hex: str) -> ValidationJobManager:
