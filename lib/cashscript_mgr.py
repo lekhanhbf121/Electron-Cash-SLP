@@ -11,19 +11,19 @@ from .cashscript_pb2 import IssuerTemplateParams, ScriptPinPayload, NamedParam
 from .networks import net
 
 _valid_contract_statuses = [ 'unprocessed', 'matched', 'unmatched' ]
-class ScriptMatch(namedtuple("ScriptMatch", "bfp_txid p2sh_address p2pkh_address params status")):
+class ScriptMatch(namedtuple("ScriptMatch", "bfp_txid p2sh_address p2pkh_address token_id params status")):
     ''' 
-    ScriptMatch item for storage 
+    ScriptMatch item for use in queue/storage 
 
-        bfp_txid      : this is the bitcoin files txid associated with the issuer's script
+        p2sh_address  : p2sh string with script address formatted in the received transaction
+        p2pkh_address : p2pkh string with script address formatted in the received transaction
+        token_id      : token id in the received transaction
+        bfp_txid      : this is the matched bitcoin files txid associated with the issuer's script
                         constructor input parameters, hex string format
-        p2sh_address  : p2sh string with cash address formatted
-        p2pkh_address : p2pkh string with cash address formatted
         params        : dict of hexadecimal strings
-        status        : match status
+        status        : match status (i.e., matching the p2sh with known issuer defined parameters)
 
     '''
-
     def match_to_issuer(self, mgr):
         for issuer_params in mgr.issuer_templates:
             artifact_entry = net.SCRIPT_ARTIFACTS[issuer_params.artifact_sha256]
@@ -39,9 +39,18 @@ class ScriptMatch(namedtuple("ScriptMatch", "bfp_txid p2sh_address p2pkh_address
         return None
 
 _valid_template_statuses = [ 'unprocessed', 'downloaded', 'failed' ]
-class IssuerParams(namedtuple("IssuerParams", "name bfp_txid artifact_sha256 params status")):
-    ''' Issuer's Template params for storage '''
+class IssuerParams(namedtuple("IssuerParams", "name bfp_txid token_id artifact_sha256 params status")):
+    ''' 
+    Issuer's Template params for use in queue/storage 
+    
+        name            : the name given to this contract from the issue
+        bfp_txid        : the unique id (bfp txid) containing the the issuer's params
+        token_id        : the token id which these parameters are to be used for
+        artifact_sha256 : the sha256 of the CashScript artifact file associated with 
+        params          : dict of named parameters associated with a CashScript artifact file
+        status          : download status of the Bitcoin File
 
+    '''
     def try_download(self, mgr):
         # TODO: download and attempt to unmarshal the Bitcoin File
         # ignore any downloads
@@ -50,12 +59,25 @@ class IssuerParams(namedtuple("IssuerParams", "name bfp_txid artifact_sha256 par
         template = None
         return template
 
+class ScriptPinUpload(namedtuple("ScriptPinUpload", "TODO")):
+    ''' Used for uploading new script pins as a BFP and making subsequent pinning transaction '''
+
+class ScriptPinDownload(namedtuple("ScriptPinDownload", "TODO")):
+    ''' Used for downloading new script pins as a BFP and making subsequent pinning transaction '''
+
 ''' 
 list of valid scripts which issuers are partially dependent on issuer defined parameters
 '''
 _valid_cashscript_templates = [ cashscript.SLP_DOLLAR_ID ]
 _built_in_issuer_params = [
-    IssuerParams(name='usd_test_dollar', bfp_txid='0', artifact_sha256=cashscript.SLP_DOLLAR_ID, params={'issuerPk': '...', 'slpSendFront': '...' }, status='downloaded')
+    IssuerParams(
+        name='usd_test_issuer',
+        bfp_txid='0',
+        token_id='0df9a7b3c8d62f4a5dacd5acb9db28cb842f19109fe2cfa3b4a35078b39bc038',
+        artifact_sha256=cashscript.SLP_DOLLAR_ID,
+        params={'issuerPk': '...', 'slpSendFront': '...' },
+        status='downloaded'
+    )
 ]
 
 class CashScriptManager(util.PrintError):
@@ -64,8 +86,6 @@ class CashScriptManager(util.PrintError):
     in p2sh smart contracts associated with specific token issuer.
 
     Types of items in this manager's processing queue include:
-
-        1) ScriptPin BFP upload/download
 
         1) IssuerParams:
                     An item with potential Bitcoin File Protocol file containing an
@@ -81,6 +101,10 @@ class CashScriptManager(util.PrintError):
                     notifiers to the p2pkh wallet.  The notifier also indicates
                     which of the wallet's keys can be used to derive the
                     redeemScript.
+
+        3) ScriptPinUpload / ScriptPinDownload:
+                    Any script pins items needing upload or download processing in
+                    the background.
 
     This manager performs a number of actions, including:
         - Persists a global store of known issuer template parameters
@@ -114,14 +138,14 @@ class CashScriptManager(util.PrintError):
                 item = self._queue.get(block=True)
 
                 if isinstance(item, ScriptMatch):
-                    p2sh = item.p2sh_addr.to_full_string(Address.FMT_CASHADDR)
+                    p2sh = item.p2sh_addr.to_full_string(Address.FMT_SCRIPTADDR)
                     if p2sh in self.script_matches:
                         continue
 
                     # most time spent here trying to match the p2sh address with a known issuer's template parameters
                     match = item.match_to_issuer(self)
                     if match:
-                        addr = match.p2sh_addr.to_full_string(Address.FMT_CASHADDR)
+                        addr = match.p2sh_addr.to_full_string(Address.FMT_SCRIPTADDR)
                         self.script_matches[addr] = match
                         # TODO: save
                     else:
@@ -161,8 +185,8 @@ class CashScriptManager(util.PrintError):
                     p2sh_indices.append(n)
             elif addr.kind == Address.ADDR_P2PKH and n-1 in p2sh_indices and self.wallet.is_mine(addr, check_cashscript=False):
                 _, p2sh_addr, _ = tx.outputs()[n-1]
-                p2sh_address = p2sh_addr.to_full_string(Address.FMT_CASHADDR)
-                p2pkh_address = addr.to_full_string(Address.FMT_CASHADDR)
+                p2sh_address = p2sh_addr.to_full_string(Address.FMT_SCRIPTADDR)
+                p2pkh_address = addr.to_full_string(Address.FMT_SCRIPTADDR)
                 self._queue.put(ScriptMatch(p2sh_address, p2pkh_address, bfp_txid=None, params=None, status='unmatched'))
 
     def is_mine(self):
@@ -251,4 +275,3 @@ class ScriptMatcherQueueItem:
         self.status = 'unprocessed'
         self.artifact_sha256 = None
         self.params = None
-

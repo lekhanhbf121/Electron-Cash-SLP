@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x10\x63\x61shscript.proto\x12\x0f\x65lectroncashslp\")\n\nNamedParam\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x0c\"X\n\x10ScriptPinPayload\x12\x17\n\x0f\x61rtifact_sha256\x18\x01 \x01(\x0c\x12+\n\x06params\x18\x02 \x03(\x0b\x32\x1b.electroncashslp.NamedParam\"\x8f\x01\n\x14IssuerTemplateParams\x12\x1b\n\x13issuer_defined_name\x18\x01 \x01(\t\x12\x17\n\x0f\x61rtifact_sha256\x18\x02 \x01(\x0c\x12+\n\x06params\x18\x03 \x03(\x0b\x32\x1b.electroncashslp.NamedParam\x12\x14\n\x0cslp_token_id\x18\x04 \x01(\x0c\x62\x06proto3'
+  serialized_pb=b'\n\x10\x63\x61shscript.proto\x12\x0f\x65lectroncashslp\")\n\nNamedParam\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x0c\"X\n\x10ScriptPinPayload\x12\x17\n\x0f\x61rtifact_sha256\x18\x01 \x01(\x0c\x12+\n\x06params\x18\x02 \x03(\x0b\x32\x1b.electroncashslp.NamedParam\"\x8f\x01\n\x14IssuerTemplateParams\x12\x1b\n\x13issuer_defined_name\x18\x01 \x01(\t\x12\x17\n\x0f\x61rtifact_sha256\x18\x02 \x01(\x0c\x12\x14\n\x0cslp_token_id\x18\x03 \x01(\x0c\x12+\n\x06params\x18\x04 \x03(\x0b\x32\x1b.electroncashslp.NamedParamb\x06proto3'
 )
 
 
@@ -126,16 +126,16 @@ _ISSUERTEMPLATEPARAMS = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='params', full_name='electroncashslp.IssuerTemplateParams.params', index=2,
-      number=3, type=11, cpp_type=10, label=3,
-      has_default_value=False, default_value=[],
+      name='slp_token_id', full_name='electroncashslp.IssuerTemplateParams.slp_token_id', index=2,
+      number=3, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"",
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
     _descriptor.FieldDescriptor(
-      name='slp_token_id', full_name='electroncashslp.IssuerTemplateParams.slp_token_id', index=3,
-      number=4, type=12, cpp_type=9, label=1,
-      has_default_value=False, default_value=b"",
+      name='params', full_name='electroncashslp.IssuerTemplateParams.params', index=3,
+      number=4, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),

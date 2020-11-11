@@ -45,9 +45,6 @@ message ScriptPinPayload {
 message IssuerTemplateParams {
     string issuer_defined_name = 1;
     bytes artifact_sha256 = 2;
-    repeated NamedParam params = 3;
-
-    // this is an optional parameter that would allow a wallet 
-    // to more quickly determine a p2sh match in some cases.
-    bytes slp_token_id = 4;
+    bytes slp_token_id = 3;
+    repeated NamedParam params = 4;
 }
