@@ -14,6 +14,7 @@ from electroncash.transaction import Transaction
 from ..hw_wallet import HW_PluginBase
 from ..hw_wallet.plugin import is_any_tx_output_on_change_branch, validate_op_return_output_and_get_data
 from electroncash.util import print_error, is_verbose, bfh, bh2u, versiontuple
+from electroncash.cashscript import valid_script_sig_types
 
 try:
     import hid
@@ -369,7 +370,7 @@ class Ledger_KeyStore(Hardware_KeyStore):
             if txin['type'] == 'coinbase':
                 self.give_error(_('Coinbase not supported')) # should never happen
 
-            if txin['type'] in ['p2sh']:
+            if txin['type'] in (['p2sh'] + valid_script_sig_types):
                 p2shTransaction = True
 
             pubkeys, x_pubkeys = tx.get_sorted_pubkeys(txin)
@@ -387,11 +388,11 @@ class Ledger_KeyStore(Hardware_KeyStore):
             inputsPaths.append(hwAddress)
             pubKeys.append(pubkeys)
 
-        # Sanity check
-        if p2shTransaction:
-            for txin in tx.inputs():
-                if txin['type'] != 'p2sh':
-                    self.give_error(_('P2SH / regular input mixed in same transaction not supported')) # should never happen
+        # Sanity check -- comment out for slp edition due to cashscript smart contracts
+        # if p2shTransaction:
+        #     for txin in tx.inputs():
+        #         if txin['type'] != 'p2sh':
+        #             self.give_error(_('P2SH / regular input mixed in same transaction not supported')) # should never happen
 
         txOutput = var_int(len(tx.outputs()))
         for txout in tx.outputs():
