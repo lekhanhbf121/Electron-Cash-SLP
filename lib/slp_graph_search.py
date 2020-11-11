@@ -163,7 +163,7 @@ class SlpGraphSearchManager:
                     job.set_failed('validation finished')
                     continue
                 try:
-                    # search_query is a recursive call, most time will be spent here
+                    # search_query is a network call, most time will be spent here
                     self.search_query(job)
                 except Exception as e:
                     print("error in graph search query", e, file=sys.stderr)
