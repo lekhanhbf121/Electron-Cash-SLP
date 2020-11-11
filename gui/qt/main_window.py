@@ -2235,7 +2235,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if slp_op_return_msg:
                     bch_outputs = [ slp_op_return_msg ]
                     token_output_amts = slp.SlpMessage.parseSlpOutputScript(bch_outputs[0][1]).op_return_fields['token_output']
-                    for _amt in token_output_amts:
+                    for _amt in token_output_amts[1:]:
                         # just grab a dummy address for this fee calculation - safe for imported_privkey wallets
                         bch_outputs.append((TYPE_ADDRESS, self.wallet.get_addresses()[0], 546))
 
