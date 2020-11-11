@@ -405,17 +405,24 @@ class Commands(PrintError):
     def getbalance_slp(self, token_id):
         """Return the token balance of your wallet. """
         if not self.wallet.is_slp:
-            raise RuntimeError('Not an SLP wallet')
+            raise RuntimeError("not an slp wallet")
+
         token_id = token_id.lower()
-        if len(token_id) != 64 or bytes.fromhex(token_id).hex() != token_id:
-            raise RuntimeError('Invalid token_id; must be a 32-byte hex-encoded string (64 characters)')
+        try:
+            assert len(token_id) == 64
+            assert bytes.fromhex(token_id).hex() == token_id
+        except:
+            raise RuntimeError("invalid token_id; must be a 32-byte hex-encoded string (64 characters)")
+
         tok = self.wallet.token_types.get(token_id, None)
         if not tok:
-            raise RuntimeError('Unknown token id')
+            raise RuntimeError("unknown token id, use 'slp_add_token' to start tracking slp balance for this token")
+
         decimals = tok['decimals']
-        if not isinstance(decimals, int):
-            # token is unverified or other funny business -- has decimals field as '?'
-            raise RuntimeError("Unverified token-id; please verify this token before proceeding")
+        try:
+            assert isinstance(decimals, int)
+        except:
+            raise RuntimeError("use 'slp_add_token' to start tracking slp balance for this token")
 
         valid_balance = self.wallet.get_slp_token_balance(token_id, self.config)[0]
         out = {"valid":str(PyDecimal(valid_balance)/10**decimals)}
@@ -897,12 +904,12 @@ class Commands(PrintError):
     @command('w')
     def addrequest(self, amount, memo='', expiration=None, force=False, payment_url=None, index_url=None):
         """Create a payment request, using the first unused address of the wallet.
-        The address will be condidered as used after this operation.
+        The address will be considered as used after this operation.
         If no payment is received, the address will be considered as unused if the payment request is deleted from the wallet."""
         addr = self.wallet.get_unused_address()
         if addr is None:
             if not self.wallet.is_deterministic():
-                self.wallet.print_error("Unable to find an unused address. Please use a deteministic wallet to proceed, then run with the --force option to create new addresses.")
+                self.wallet.print_error("Unable to find an unused address. Please use a deterministic wallet to proceed, then run with the --force option to create new addresses.")
                 return False
             if force:
                 addr = self.wallet.create_new_address(False)
