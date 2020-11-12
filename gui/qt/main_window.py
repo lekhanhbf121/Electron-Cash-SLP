@@ -655,22 +655,21 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.non_slp_wallet_warning_shown = True
 
     def _check_eula_acceptance(self):
-        key = 'slp_eula_accepted'
+        key = 'slp_license_accepted'
         is_accepted = self.config.get(key, False)
         if not is_accepted:
             res = self.question(
-                _("Disclaimer\n\n"
-                    "Please read this disclaimer carefully.\n\n"
-                    "Except when otherwise stated in writing, this software or third-party plugin software is provided 'As is' without warranty of any kind.  The entire risk as to the quality and performance of Electron Cash SLP Edition software is with you.\n\n"
-                    "Unless required by applicable law or agreed to in writing, in no event will any developer or distributor of this software be liable for damages, including any general, special, incidental, or consequential damages arising out of the use or inability to use the software, or third-party plugin software.\n\n"
-                    "Do you agree?"
+                _(
+                    "Copyright (C) 2017-2020 The Electron Cash Developers\n\n"
+                    "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\n"
+                    "The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\n"
+                    "THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n"
+                    "Do you understand the terms of this license?"
                 ),
-                title=_("EULA"))
+                title=_("Free Software License"))
             if res:
                 self.config.set_key(key, True)
             else:
-                # set to actual False rather than None to indicate user has not accepted EULA
-                self.config.set_key(key, False)
                 self.close()
 
     def open_wallet(self):

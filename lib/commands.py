@@ -93,16 +93,19 @@ def command(s):
         @wraps(func)
         def func_wrapper(*args, **kwargs):
             c = known_commands[func.__name__]
+            config = args[0].config.user_config
             wallet = args[0].wallet
             network = args[0].network
             password = kwargs.get('password')
+            if not config.get('slp_license_accepted') and name != 'read_license':
+                raise BaseException("Please read and accept the terms of the MIT Software License associated with this free and open-source software, use 'electron-cash read_license'")
             if c.requires_network and network is None:
                 raise BaseException("Daemon offline")  # Same wording as in daemon.py.
             if c.requires_wallet and wallet is None:
                 raise BaseException("Wallet not loaded. Use 'electron-cash daemon load_wallet'")
             if c.requires_password and password is None and wallet.storage.get('use_encryption') \
                and not kwargs.get("unsigned"):
-                return {'error': 'Password required' }
+                return {'error': 'Password required'}
             return func(*args, **kwargs)
         return func_wrapper
     return decorator
@@ -178,13 +181,18 @@ class Commands(PrintError):
         return ' '.join(sorted(known_commands.keys()))
 
     @command('')
+    def read_license(self):
+        """Read and accept the terms of the latest eula"""
+        raise BaseException('Not a JSON-RPC command')
+
+    @command('')
     def create(self):
         """Create a new standard (non-SLP) wallet"""
         raise BaseException('Not a JSON-RPC command')
 
     @command('')
     def create_slp(self):
-        '''Create a new SLP wallet'''
+        """Create a new SLP wallet"""
         raise RuntimeError('Not a JSON-RPC command')
 
     @command('wn')
@@ -549,8 +557,8 @@ class Commands(PrintError):
         return tx.as_dict()
 
     def _mktx_slp(self, token_id, outputs, fee, change_addr, domain, unsigned, password, locktime):
-        ''' This code is basically lifted from main_window.py 'do_update_fee'
-        and 'read_send_tab' and modified to fit here. '''
+        """ This code is basically lifted from main_window.py 'do_update_fee'
+        and 'read_send_tab' and modified to fit here. """
         selected_slp_coins, slp_op_return_msg = SlpCoinChooser.select_coins(self.wallet, token_id, [o[1] for o in outputs], self.config, domain=domain)
         DUST = self.wallet.dust_threshold()  # 546 satoshis
         if not slp_op_return_msg:
@@ -629,7 +637,6 @@ class Commands(PrintError):
         if len(token_id) != 64 or bytes.fromhex(token_id).hex() != token_id:
             raise RuntimeError('Invalid token_id; must be a 32-byte hex-encoded string (64 characters)')
         tok = self.wallet.token_types.get(token_id, None)
-        print(token_id)
         if not tok:
             raise RuntimeError('Unknown token id')
         decimals = tok['decimals']
@@ -649,8 +656,8 @@ class Commands(PrintError):
 
     @command('wp')
     def slp_add_token(self, token_id, password=None):
-        ''' Add an SLP token to this wallet, kicking off validation if appropriate.
-        Returns True on success. '''
+        """ Add an SLP token to this wallet, kicking off validation if appropriate.
+        Returns True on success. """
         if not self.wallet.is_slp:
             raise RuntimeError('Not an SLP wallet')
         token_id = token_id.strip().lower()
