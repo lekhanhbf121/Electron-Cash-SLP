@@ -172,7 +172,6 @@ class Commands(PrintError):
         return {
             'cashaddr' : addr.to_full_string(Address.FMT_CASHADDR),
             'legacy'   : addr.to_full_string(Address.FMT_LEGACY),
-            'simpleledger' : addr.to_full_string(Address.FMT_SLPADDR),
         }
 
     @command('')
@@ -341,23 +340,31 @@ class Commands(PrintError):
         address = bitcoin.hash160_to_p2sh(hash_160(bfh(redeem_script)))
         return {'address':address, 'redeemScript':redeem_script}
 
+    def address_from_string_check_slp(address, wallet):
+        address = Address.from_string(address)
+        assert not isinstance(address, str)
+        slp_addr_str = address.to_full_string(Address.FMT_SLPADDR)
+        if address in slp_addr_str and not wallet.is_slp:
+            raise BaseException('Cannot check SLP addresses with a non-SLP type wallet.')
+        return address
+
     @command('w')
     def freeze(self, address):
         """Freeze address. Freeze the funds at one of your wallet\'s addresses"""
-        address = Address.from_string(address)
+        address = address_from_string_check_slp(address, self.wallet)
         return self.wallet.set_frozen_state([address], True)
 
     @command('w')
     def unfreeze(self, address):
         """Unfreeze address. Unfreeze the funds at one of your wallet\'s address"""
-        address = Address.from_string(address)
+        address = address_from_string_check_slp(address, self.wallet)
         return self.wallet.set_frozen_state([address], False)
 
     @command('wp')
     def getprivatekeys(self, address, password=None):
         """Get private keys of addresses. You may pass a single wallet address, or a list of wallet addresses."""
         def get_pk(address):
-            address = Address.from_string(address)
+            address = address_from_string_check_slp(address, self.wallet)
             return self.wallet.export_private_key(address, password)
 
         if isinstance(address, str):
@@ -368,7 +375,7 @@ class Commands(PrintError):
     @command('w')
     def ismine(self, address):
         """Check if address is in wallet. Return true if and only address is in wallet"""
-        address = Address.from_string(address)
+        address = address_from_string_check_slp(address, self.wallet)
         return self.wallet.is_mine(address)
 
     @command('')
@@ -384,7 +391,7 @@ class Commands(PrintError):
     @command('w')
     def getpubkeys(self, address):
         """Return the public keys for a wallet address. """
-        address = Address.from_string(address)
+        address = address_from_string_check_slp(address, self.wallet)
         return self.wallet.get_public_keys(address)
 
     @command('w')
@@ -506,7 +513,7 @@ class Commands(PrintError):
     def signmessage(self, address, message, password=None):
         """Sign a message with a key. Use quotes if your message contains
         whitespaces"""
-        address = Address.from_string(address)
+        address = address_from_string_check_slp(address, self.wallet)
         sig = self.wallet.sign_message(address, message, password)
         return base64.b64encode(sig).decode('ascii')
 
@@ -899,14 +906,23 @@ class Commands(PrintError):
 
     @command('w')
     def createnewaddress(self):
-        """Create a new receiving address, beyond the gap limit of the wallet"""
-        return self.wallet.create_new_address(False).to_ui_string()
+        """Create a new receiving address, BEYOND the gap limit of the wallet"""
+        fmt = Address.FMT_CASHADDR
+        if self.wallet.is_slp:
+            fmt = Address.FMT_SLPADDR
+        return self.wallet.create_new_address(False).to_full_string(fmt)
 
     @command('w')
     def getunusedaddress(self):
         """Returns the first unused address of the wallet, or None if all addresses are used.
         An address is considered as used if it has received a transaction, or if it is used in a payment request."""
-        return self.wallet.get_unused_address().to_ui_string()
+        fmt = Address.FMT_CASHADDR
+        if self.wallet.is_slp:
+            fmt = Address.FMT_SLPADDR
+        addr = self.wallet.get_unused_address()
+        if addr:
+            return addr.to_full_string(fmt)
+        return None
 
     @command('w')
     def addrequest(self, amount, memo='', expiration=None, force=False, payment_url=None, index_url=None):
@@ -932,16 +948,18 @@ class Commands(PrintError):
 
     @command('wp')
     def signrequest(self, address, password=None):
-        "Sign payment request with an OpenAlias"
+        """Sign payment request with an OpenAlias"""
         alias = self.config.get('alias')
         if not alias:
             raise BaseException('No alias in your configuration')
         alias_addr = self.wallet.contacts.resolve(alias)['address']
+        address_from_string_check_slp(address, self.wallet)  # throws with slp address format in non-slp wallets
         self.wallet.sign_payment_request(address, alias, alias_addr, password)
 
     @command('w')
     def rmrequest(self, address):
         """Remove a payment request"""
+        address_from_string_check_slp(address, self.wallet)  # throws with slp address format in non-slp wallets
         return self.wallet.remove_payment_request(address, self.config)
 
     @command('w')
