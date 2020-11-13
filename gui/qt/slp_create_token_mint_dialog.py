@@ -185,9 +185,27 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
             self.token_baton_label.setHidden(False)
 
             unused_addr = self.wallet.get_unused_address()
+
+            # get token type
+            token_type = self.wallet.token_types.get(self.token_id_e.text())
+            mint_front = None
+            if not token_type:
+                self.main_window.show_message("wallet is missing (token id: %s)"%self.token_id_e.text())
+                return
+            elif token_type['decimals'] == '?':
+                self.main_window.show_message("token id not added (token id: %s)"%self.token_id_e.text())
+                return
+            elif token_type['class'] == "SLP1":
+                mint_front = cashscript.SLP_MINT_FRONT_TYPE1
+            elif token_type['class'] == "SLP129":
+                mint_front = cashscript.SLP_MINT_FRONT_NFTGROUP
+            else:
+                self.main_window.show_message("mint guard contract is not supported for token type %s"%token_type)
+                return
+
             script_params = {
                 'scriptBaseSha256': cashscript.SLP_MINT_GUARD_ID,
-                'slpMintFront': cashscript.SLP_MINT_FRONT,
+                'slpMintFront': mint_front,
                 'tokenId': self.token_id_e.text(),
                 'pkh': unused_addr.hash160.hex()
             }
@@ -276,10 +294,9 @@ class SlpCreateTokenMintDialog(QDialog, MessageBoxMixin, PrintError):
                 return
         else:
             self.baton_input['type'] = cashscript.SLP_MINT_GUARD_MINT
-            params = [ c.params for c in self.wallet.contacts.data if c.type == 'script' and c.address == self.baton_input['address'].to_full_string(Address.FMT_SCRIPTADDR)][0]
-            owner_p2pkh = cashscript.get_p2pkh_owner_address(cashscript.SLP_MINT_GUARD_ID, params)
-            self.baton_input['slp_mint_guard_pkh'] = owner_p2pkh.hash160.hex()
-            self.baton_input['slp_token_id'] = self.token_id_e.text()
+            self.baton_input['redeem_script_params'] = [ c.params for c in self.wallet.contacts.data if c.type == 'script' and c.address == self.baton_input['address'].to_full_string(Address.FMT_SCRIPTADDR)][0]
+            owner_p2pkh = cashscript.get_p2pkh_owner_address(cashscript.SLP_MINT_GUARD_ID, self.baton_input['redeem_script_params'])
+            self.baton_input['redeem_script'] = cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, self.baton_input['redeem_script_params'])
             self.baton_input['slp_mint_amt'] = int(self.token_qty_e.text()).to_bytes(8, 'big').hex()
             token_rec_script = Address.from_string(self.token_pay_to_e.text()).to_script_hex()
             self.baton_input['token_receiver_out'] = int(546).to_bytes(8, 'little').hex() + push_script(token_rec_script)

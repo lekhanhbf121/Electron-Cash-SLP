@@ -760,24 +760,22 @@ class Transaction:
                 txn_3 = txn.split(pubkeys[0], 1)[1]
             script += push_script(txn_3) + push_script(txn_2_pubkey) + push_script(txn_1) + push_script(outputs) + push_script(preimage) + int_to_hex(opcodes.OP_1) + push_script(redeem_script)
         elif _type == cashscript.SLP_MINT_GUARD_MINT:
-            redeem_script = cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']])
             #print(Address.from_P2SH_script(bytes.fromhex(redeem_script)).to_script().hex())
             changeOutputs = txin['change_output_preimage']
             tokenReceiverOut = txin['token_receiver_out']
             slpAmt = txin['slp_mint_amt']
             preimage = txin['tx_preimage']
             scriptBase = cashscript.get_base_script(cashscript.SLP_MINT_GUARD_ID)
-            script += push_script(pubkeys[0]) + push_script(scriptBase) + push_script(changeOutputs) + push_script(tokenReceiverOut) + push_script(slpAmt) + push_script(preimage) + int_to_hex(opcodes.OP_1) + push_script(redeem_script)
+            script += push_script(pubkeys[0]) + push_script(scriptBase) + push_script(changeOutputs) + push_script(tokenReceiverOut) + push_script(slpAmt) + push_script(preimage) + int_to_hex(opcodes.OP_1) + push_script(txin['redeem_script'])
         elif _type == cashscript.SLP_MINT_GUARD_TRANSFER:
-            redeem_script = cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']])
-            #print(Address.from_P2SH_script(bytes.fromhex(redeem_script)).to_script().hex())
+            print(Address.from_P2SH_script(bytes.fromhex(txin['redeem_script'])).to_script().hex())
             newPk = txin['slp_mint_guard_transfer_pk']
             changeOutputs = txin['change_output_preimage']
             tokenReceiverOut = txin['token_receiver_out']
             slpAmt = txin['slp_mint_amt']
             preimage = txin['tx_preimage']
             scriptBase = cashscript.get_base_script(cashscript.SLP_MINT_GUARD_ID)
-            script += push_script(pubkeys[0]) + push_script(scriptBase) + push_script(changeOutputs) + push_script(tokenReceiverOut) + push_script(newPk) + push_script(preimage) + int_to_hex(opcodes.OP_0) + push_script(redeem_script)
+            script += push_script(pubkeys[0]) + push_script(scriptBase) + push_script(changeOutputs) + push_script(tokenReceiverOut) + push_script(newPk) + push_script(preimage) + int_to_hex(opcodes.OP_0) + push_script(txin['redeem_script'])
         elif _type == 'p2pkh':
             script += push_script(pubkeys[0])
         elif _type == 'unknown':
@@ -806,9 +804,9 @@ class Transaction:
         elif cashscript.SLP_VAULT_NAME in _type:
             return cashscript.get_redeem_script(cashscript.SLP_VAULT_ID, [txin['slp_vault_pkh']])
         elif _type == cashscript.SLP_MINT_GUARD_MINT:
-            return cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']], for_preimage=True, code_separator_pos=2)
+            return cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, txin['redeem_script_params'], for_preimage=True, code_separator_pos=2)
         elif _type == cashscript.SLP_MINT_GUARD_TRANSFER:
-            return cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, [cashscript.SLP_MINT_GUARD_ID, cashscript.SLP_MINT_FRONT, txin['slp_token_id'], txin['slp_mint_guard_pkh']], for_preimage=True, code_separator_pos=1)
+            return cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, txin['redeem_script_params'], for_preimage=True, code_separator_pos=1)
         elif _type == 'p2pk':
             pubkey = txin['pubkeys'][0]
             return public_key_to_p2pk_script(pubkey)

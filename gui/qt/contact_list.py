@@ -204,6 +204,7 @@ class ContactList(PrintError, MyTreeWidget):
                                 token_id = sel.params['tokenId']
                                 try:
                                     baton = self.wallet.get_slp_token_baton(token_id)
+                                    baton['token_id'] = token_id
                                     for txo in self.addr_txos.get(addr):
                                         if baton['prevout_hash'] == txo['tx_hash'] and baton['prevout_n'] == txo['tx_pos']:
                                             menu.addAction(_("Mint Tool..."), lambda: SlpCreateTokenMintDialog(self.parent, token_id)) # lambda: self.slp_mint_guard_mint(baton))
@@ -285,10 +286,27 @@ class ContactList(PrintError, MyTreeWidget):
 
         # TODO: check for an already existing pin for this pubkey
 
+        # get token type
+        token_type = self.wallet.token_types.get(token_id)
+        mint_front = None
+        if not token_type:
+            self.main_window.show_message("wallet is missing token (token id: %s)"%token_id)
+            return
+        elif token_type['decimals'] == '?':
+            self.main_window.show_message("token id not added (token id: %s)"%self.token_id_e.text())
+            return
+        elif token_type['class'] == "SLP1":
+            mint_front = cashscript.SLP_MINT_FRONT_TYPE1
+        elif token_type['class'] == "SLP129":
+            mint_front = cashscript.SLP_MINT_FRONT_NFTGROUP
+        else:
+            self.main_window.show_message("mint guard contract is not supported for token type %s"%token_type)
+            return
+
         user_addr = Address.from_pubkey(pubkey)
         script_params = {
             'scriptBaseSha256': cashscript.SLP_MINT_GUARD_ID,
-            'slpMintFront': cashscript.SLP_MINT_FRONT,
+            'slpMintFront': mint_front,
             'tokenId': token_id,
             'pkh': user_addr.hash160.hex()
         }
@@ -317,15 +335,19 @@ class ContactList(PrintError, MyTreeWidget):
             return
 
         # try to find the pinned contract associated with this pubkey
-        contact = [c for c in self.parent.contacts.data if isinstance(c, ScriptContact) and c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params['pkh'] == pkh_str][0]
+        contact = [c for c in self.parent.contacts.data if isinstance(c, ScriptContact) and c.sha256 == cashscript.SLP_MINT_GUARD_ID and c.params['pkh'] == pkh_str and c.params['tokenId'] == baton['token_id']][0]
 
         # add info to baton for Mint Guard Transfer signing
         baton['type'] = cashscript.SLP_MINT_GUARD_TRANSFER
         baton['slp_mint_guard_transfer_pk'] = pubkey_str
-        owner_p2pkh = cashscript.get_p2pkh_owner_address(cashscript.SLP_MINT_GUARD_ID, contact.params)
-        baton['slp_mint_guard_pkh'] = current_owner.params['pkh']
+        baton['redeem_script_params'] = {
+            'scriptBaseSha256': contact.params['scriptBaseSha256'],
+            'slpMintFront': contact.params['slpMintFront'],
+            'tokenId': contact.params['tokenId'],
+            'pkh': current_owner.params['pkh']
+        }
+        baton['redeem_script'] = cashscript.get_redeem_script(cashscript.SLP_MINT_GUARD_ID, baton['redeem_script_params'])
         token_id_hex = contact.params['tokenId']
-        baton['slp_token_id'] = token_id_hex
         baton['slp_mint_amt'] = int(0).to_bytes(8, 'big').hex()
         token_rec_script = self.wallet.get_unused_address().to_script_hex()
         baton['token_receiver_out'] = int(546).to_bytes(8, 'little').hex() + push_script(token_rec_script)
@@ -334,7 +356,8 @@ class ContactList(PrintError, MyTreeWidget):
 
         # set outputs
         outputs = []
-        slp_op_return_msg = buildMintOpReturnOutput_V1(token_id_hex, 2, 0, 'SLP1')
+        token_type = self.wallet.token_types.get(token_id_hex)['class']
+        slp_op_return_msg = buildMintOpReturnOutput_V1(token_id_hex, 2, 0, token_type)
         outputs.append(slp_op_return_msg)
         outputs.append((TYPE_ADDRESS, self.wallet.get_unused_address(), 546))
         new_baton_address = Address.from_string(contact.address)
