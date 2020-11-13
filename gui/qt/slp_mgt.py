@@ -134,7 +134,7 @@ class SlpMgt(MyTreeWidget):
         bal=self.parent.wallet.get_slp_token_balance(slpTokenId, self.parent.config)[0]
         return bal
 
-    @rate_limited(.333, classlevel=True, ts_after=True) # We rate limit the slp mgt refresh no more than 3 times every second, app-wide
+    @rate_limited(1.0, classlevel=True, ts_after=True) # We rate limit the slp mgt refresh no more than 3 times every second, app-wide
     def update(self):
         if self.parent and self.parent.cleaned_up:
             # short-cut return if window was closed and wallet is stopped

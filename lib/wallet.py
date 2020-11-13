@@ -904,19 +904,23 @@ class Abstract_Wallet(PrintError):
         with self.lock:
             return self.tx_tokinfo[tokenid]
 
-    def get_slp_token_baton(self, slpTokenId):
-        # look for our minting baton
+    def get_slp_token_baton(self, slpTokenId, cache=True):
         with self.lock:
-            for addr, addrdict in self._slp_txo.copy().items():
-                for txid, txdict in addrdict.copy().items():
-                    for idx, txo in txdict.copy().items():
-                        if txo['qty'] == 'MINT_BATON' and txo['token_id'] == slpTokenId:
-                            try:
-                                coins = self.get_slp_utxos(slpTokenId, domain = None, exclude_frozen = False, confirmed_only = False, slp_include_baton=True)
-                                baton_utxo = [ utxo for utxo in coins if utxo['prevout_hash'] == txid and utxo['prevout_n'] == idx and self.tx_tokinfo[txid]['validity'] == 1][0]
-                            except IndexError:
-                                continue
-                            return baton_utxo
+            slp_txos = copy.deepcopy(self._slp_txo)
+
+        # look for a minting baton
+        for addr, addrdict in slp_txos.items():
+            for txid, txdict in addrdict.items():
+                for idx, txo in txdict.items():
+                    if txo['qty'] == 'MINT_BATON' and txo['token_id'] == slpTokenId:
+                        try:
+                            coins = self.get_slp_utxos(slpTokenId, domain = [addr], exclude_frozen = False, confirmed_only = False, slp_include_baton=True)
+                            with self.lock:
+                                val = self.tx_tokinfo[txid]['validity']
+                                baton_utxo = [ utxo for utxo in coins if utxo['prevout_hash'] == txid and utxo['prevout_n'] == idx and val == 1][0]
+                        except IndexError:
+                            continue
+                        return baton_utxo
         raise SlpNoMintingBatonFound()
 
     # This method is updated for SLP to prevent tokens from being spent
@@ -959,53 +963,59 @@ class Abstract_Wallet(PrintError):
     def get_slp_addr_utxo(self, address, slpTokenId, slp_include_invalid=False, slp_include_baton=False, ):
         with self.lock:
             coins, spent = self.get_addr_io(address)
-            # removes spent coins
-            for txi in spent:
-                coins.pop(txi)
-                # cleanup/detect if the 'frozen coin' was spent and remove it from the frozen coin set
-                self.frozen_coins.discard(txi)
+            addrdict = copy.deepcopy(self._slp_txo.get(address,{}))
 
-            addrdict = self._slp_txo.get(address,{})
-            for coin in coins.copy().items():
-                if coin != None:
-                    txid = coin[0].split(":")[0]
-                    idx = coin[0].split(":")[1]
-                    try:
-                        slp_txo = addrdict[txid][int(idx)]
+        # removes spent coins
+        for txi in spent:
+            coins.pop(txi)
+            # cleanup/detect if the 'frozen coin' was spent and remove it from the frozen coin set
+            self.frozen_coins.discard(txi)
+
+        coins_to_pop = []
+        for coin in coins.items():
+            if coin != None:
+                txid = coin[0].split(":")[0]
+                idx = coin[0].split(":")[1]
+                try:
+                    slp_txo = addrdict[txid][int(idx)]
+                    with self.lock:
                         slp_tx_info = self.tx_tokinfo[txid]
-                        # handle special burning modes
-                        if slp_txo['token_id'] == slpTokenId:
-                            # allow inclusion and possible burning of a valid minting baton
-                            if slp_include_baton and slp_txo['qty'] == "MINT_BATON" and slp_tx_info['validity'] == 1:
-                                #coin.burn = True
-                                continue
-                            # allow inclusion and possible burning of invalid SLP txos
-                            if slp_include_invalid and slp_tx_info['validity'] != 0:
-                                #coin.burn = True
-                                continue
-                        # normal remove any txos that are not valid for this token ID
-                        if slp_txo['token_id'] != slpTokenId or slp_tx_info['validity'] != 1 or slp_txo['qty'] == "MINT_BATON":
-                            coins.pop(coin[0], None)
-                    except KeyError:
-                        coins.pop(coin[0], None)
+                    # handle special burning modes
+                    if slp_txo['token_id'] == slpTokenId:
+                        # allow inclusion and possible burning of a valid minting baton
+                        if slp_include_baton and slp_txo['qty'] == "MINT_BATON" and slp_tx_info['validity'] == 1:
+                            continue
+                        # allow inclusion and possible burning of invalid SLP txos
+                        if slp_include_invalid and slp_tx_info['validity'] != 0:
+                            continue
+                    # normal remove any txos that are not valid for this token ID
+                    if slp_txo['token_id'] != slpTokenId or slp_tx_info['validity'] != 1 or slp_txo['qty'] == "MINT_BATON":
+                        coins_to_pop.append(coin[0])
+                except KeyError:
+                    coins_to_pop.append(coin[0])
 
-            out = {}
-            for txo, v in coins.items():
-                tx_height, value, is_cb = v
-                prevout_hash, prevout_n = txo.split(':')
-                x = {
-                    'address': address,
-                    'value': value,
-                    'prevout_n': int(prevout_n),
-                    'prevout_hash': prevout_hash,
-                    'height': tx_height,
-                    'coinbase': is_cb,
-                    'is_frozen_coin': txo in self.frozen_coins,
-                    'token_value': self._slp_txo[address][prevout_hash][int(prevout_n)]['qty'],
-                    'token_validation_state': self.tx_tokinfo[prevout_hash]['validity']
-                }
-                out[txo] = x
-            return out
+        for c in coins_to_pop:
+            coins.pop(c, None)
+
+        out = {}
+        for txo, v in coins.items():
+            tx_height, value, is_cb = v
+            prevout_hash, prevout_n = txo.split(':')
+            with self.lock:
+                val = self.tx_tokinfo[prevout_hash]['validity']
+            x = {
+                'address': address,
+                'value': value,
+                'prevout_n': int(prevout_n),
+                'prevout_hash': prevout_hash,
+                'height': tx_height,
+                'coinbase': is_cb,
+                'is_frozen_coin': txo in self.frozen_coins,
+                'token_value': addrdict[prevout_hash][int(prevout_n)]['qty'],
+                'token_validation_state': val
+            }
+            out[txo] = x
+        return out
 
     # return the total amount ever received by an address
     def get_addr_received(self, address):
