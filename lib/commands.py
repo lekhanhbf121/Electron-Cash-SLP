@@ -905,6 +905,12 @@ class Commands(PrintError):
         return list(map(self._format_request, out))
 
     @command('w')
+    def maintainaddressgap(self, enable):
+        """Enable or disable the automatic address gap maintenance for receiving addresses."""
+        self.wallet.storage.put('auto_maintain_gap', enable)
+        return self.wallet.storage.get('auto_maintain_gap')
+
+    @command('w')
     def createnewaddress(self):
         """Create a new receiving address, BEYOND the gap limit of the wallet"""
         fmt = Address.FMT_CASHADDR

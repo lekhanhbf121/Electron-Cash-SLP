@@ -5039,6 +5039,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             multiple_cb.stateChanged.connect(on_multiple)
         per_wallet_tx_widgets.append((multiple_cb, None))
 
+        auto_maintain_gap_cb = QCheckBox(_('Automatically maintain address gap'))
+        auto_maintain_gap_cb.setToolTip(_('If enabled, addresses will be automatically be created to maintain a constant address gap.'))
+        auto_maintain_gap_cb.setChecked(bool(self.wallet.storage.get('auto_maintain_gap', True)))
+        def on_auto_maintain_gap(b):
+            self.wallet.storage.put('auto_maintain_gap', bool(b))
+        auto_maintain_gap_cb.stateChanged.connect(on_auto_maintain_gap)
+        per_wallet_tx_widgets.append((auto_maintain_gap_cb, None))
+
         def fmt_docs(key, klass):
             lines = [ln.lstrip(" ") for ln in klass.__doc__.split("\n")]
             return '\n'.join([key, "", " ".join(lines)])

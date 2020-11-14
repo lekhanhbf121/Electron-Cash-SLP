@@ -3296,6 +3296,7 @@ class Deterministic_Wallet(Abstract_Wallet):
             return address
 
     def synchronize_sequence(self, for_change):
+
         limit = self.gap_limit_for_change if for_change else self.gap_limit
         while True:
             addresses = self.get_change_addresses() if for_change else self.get_receiving_addresses()
@@ -3309,7 +3310,8 @@ class Deterministic_Wallet(Abstract_Wallet):
 
     def synchronize(self):
         with self.lock:
-            self.synchronize_sequence(False)
+            if self.storage.get('auto_maintain_gap', True):
+                self.synchronize_sequence(False)
             self.synchronize_sequence(True)
 
     def is_beyond_limit(self, address, is_change):
