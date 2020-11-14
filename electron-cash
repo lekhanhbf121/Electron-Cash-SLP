@@ -490,7 +490,7 @@ if __name__ == '__main__':
         else:
             cmd = known_commands[cmdname]
             if cmd.requires_network:
-                print_msg("Daemon not running; try 'electron-cash daemon start'")
+                print_msg("Daemon not running; run 'electron-cash daemon'")
                 sys.exit(1)
             else:
                 init_plugins(config, 'cmdline')
