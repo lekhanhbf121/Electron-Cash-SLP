@@ -100,13 +100,47 @@ class StatusBarButton(QPushButton):
         self.setIconSize(QSize(25,25))
         self.setCursor(Qt.PointingHandCursor)
 
+        self.flash_icon = icon
+        self.flash_alt_icon = QIcon()
+        self.flash_state = False
+        self.flash_count = 0
+        self.flash_count_max = 0
+        self.flash_stop_on_clicked = False
+        self.flash_timer = QTimer(self)
+        self.flash_timer.timeout.connect(self._flash)
+
     def onPress(self, checked=False):
         '''Drops the unwanted PyQt5 "checked" argument'''
+        if self.flash_stop_on_clicked:
+            self.stopFlashing()
         self.func()
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Return:
             self.func()
+
+    def _flash(self):
+        if self.flash_state:
+            self.setIcon(self.flash_icon)
+        else:
+            self.setIcon(self.flash_alt_icon)
+        self.flash_state = not self.flash_state
+        if self.flash_count > self.flash_count_max:
+            self.stopFlashing()
+        elif self.flash_count_max > 0:
+            self.flash_count += 1
+
+    def startFlashing(self, *, ms_interval=500, n_flashes=20, alt_icon=None, stop_on_clicked=False):
+        self.flash_timer.start(ms_interval)
+        if n_flashes > 0:
+            self.flash_count_max = n_flashes
+        if alt_icon:
+            self.flash_alt_icon = alt_icon
+        self.flash_stop_on_clicked = stop_on_clicked
+
+    def stopFlashing(self):
+        self.flash_timer.stop()
+        self.setIcon(self.flash_icon)
 
 from electroncash.paymentrequest import PR_PAID
 
@@ -1150,6 +1184,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.seed_button.setIcon(icon_dict["seed_warning"])
                 self.seed_button.setToolTip(_("Seed Requires Backup!"))
                 self.seed_button.setStatusTip(self.seed_button.toolTip())
+                self.seed_button.startFlashing(alt_icon=icon_dict["seed_ok"], stop_on_clicked=True)
             else:
                 self.seed_button.setIcon(icon_dict["seed_ok"])
                 self.seed_button.setToolTip(_("Seed"))
@@ -3447,7 +3482,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         sb.addPermanentWidget(self.addr_converter_button)
 
         sb.addPermanentWidget(StatusBarButton(QIcon(":icons/preferences.svg"), _("Preferences"), self.settings_dialog ) )
-        self.seed_button = StatusBarButton(QIcon(":icons/seed.png"), _("Seed"), self.show_seed_dialog )
+        self.seed_button = StatusBarButton(QIcon(":icons/seed_warning.png"), _("Seed"), self.show_seed_dialog )
         sb.addPermanentWidget(self.seed_button)
         weakSelf = Weak(self)
         gui_object = self.gui_object
