@@ -164,6 +164,8 @@ class ScaleNet(TestNet):
     DEFAULT_UNIT = "tBCH"
 
 
+    asert_daa = ASERTDaa(is_testnet=False)  # Despite being a "testnet", ScaleNet uses 2d half-life
+
     HEADERS_URL = "http://bitcoincash.com/files/scalenet_headers"  # Unused
 
     DEFAULT_SERVERS = _read_json_dict('servers_scalenet.json')  # DO NOT MODIFY IN CLIENT CODE
