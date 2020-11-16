@@ -47,6 +47,7 @@ from .slp_coinchooser import SlpCoinChooser
 from .slp_checker import SlpTransactionChecker
 from .transaction import Transaction, multisig_script
 from .util import bfh, bh2u, format_satoshis, json_decode, print_error, to_bytes, get_satoshis_nofloat, PrintError
+from .wallet import Deterministic_Wallet
 
 known_commands = {}
 
@@ -907,6 +908,8 @@ class Commands(PrintError):
     @command('w')
     def maintainaddressgap(self, enable):
         """Enable or disable the automatic address gap maintenance for receiving addresses."""
+        if not isinstance(self.wallet, Deterministic_Wallet):
+            raise BaseException("This command is only for deterministic wallets")
         self.wallet.storage.put('auto_maintain_gap', enable)
         return self.wallet.storage.get('auto_maintain_gap')
 

@@ -52,7 +52,7 @@ import electroncash.web as web
 from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
-from electroncash.wallet import Multisig_Wallet, sweep_preparations
+from electroncash.wallet import Multisig_Wallet, Deterministic_Wallet, sweep_preparations
 try:
     from electroncash.plot import plot_history
 except:
@@ -5039,13 +5039,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             multiple_cb.stateChanged.connect(on_multiple)
         per_wallet_tx_widgets.append((multiple_cb, None))
 
-        auto_maintain_gap_cb = QCheckBox(_('Automatically maintain address gap'))
-        auto_maintain_gap_cb.setToolTip(_('If enabled, addresses will be automatically be created to maintain a constant address gap.'))
-        auto_maintain_gap_cb.setChecked(bool(self.wallet.storage.get('auto_maintain_gap', True)))
-        def on_auto_maintain_gap(b):
-            self.wallet.storage.put('auto_maintain_gap', bool(b))
-        auto_maintain_gap_cb.stateChanged.connect(on_auto_maintain_gap)
-        per_wallet_tx_widgets.append((auto_maintain_gap_cb, None))
+        if isinstance(self.wallet, Deterministic_Wallet):
+            auto_maintain_gap_cb = QCheckBox(_('Automatically maintain address gap'))
+            auto_maintain_gap_cb.setToolTip(_('If enabled, addresses will be automatically be created to maintain a constant address gap.'))
+            auto_maintain_gap_cb.setChecked(bool(self.wallet.storage.get('auto_maintain_gap', True)))
+            def on_auto_maintain_gap(b):
+                self.wallet.storage.put('auto_maintain_gap', bool(b))
+            auto_maintain_gap_cb.stateChanged.connect(on_auto_maintain_gap)
+            per_wallet_tx_widgets.append((auto_maintain_gap_cb, None))
 
         def fmt_docs(key, klass):
             lines = [ln.lstrip(" ") for ln in klass.__doc__.split("\n")]
