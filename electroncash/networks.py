@@ -41,6 +41,8 @@ class AbstractNet:
     LEGACY_POW_TARGET_TIMESPAN = 14 * 24 * 60 * 60   # 2 weeks
     LEGACY_POW_TARGET_INTERVAL = 10 * 60  # 10 minutes
     LEGACY_POW_RETARGET_BLOCKS = LEGACY_POW_TARGET_TIMESPAN // LEGACY_POW_TARGET_INTERVAL  # 2016 blocks
+    BASE_UNITS = {'BCH': 8, 'mBCH': 5, 'bits': 2}
+    DEFAULT_UNIT = "BCH"
 
 
 class MainNet(AbstractNet):
@@ -110,6 +112,8 @@ class TestNet(AbstractNet):
     SLPDB_SERVERS = _read_json_dict('servers_slpdb_testnet.json')
     POST_OFFICE_SERVERS = _read_json_dict('servers_post_office_testnet.json')
     TITLE = 'Electron Cash SLP Testnet'
+    BASE_UNITS = {'tBCH': 8, 'mtBCH': 5, 'tbits': 2}
+    DEFAULT_UNIT = "tBCH"
 
     # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
     CW144_HEIGHT = 1155875
@@ -142,7 +146,7 @@ class TestNet4(TestNet):
 
     DEFAULT_SERVERS = _read_json_dict('servers_testnet4.json')  # DO NOT MODIFY IN CLIENT CODE
     SLPDB_SERVERS = _read_json_dict('servers_slpdb_testnet4.json')  # Does not yet exist
-    DEFAULT_PORTS = {'t':'62001', 's':'62002'}
+    DEFAULT_PORTS = {'t': '62001', 's': '62002'}
 
     BITCOIN_CASH_FORK_BLOCK_HEIGHT = 6
     BITCOIN_CASH_FORK_BLOCK_HASH = "00000000d71b9b1f7e13b0c9b218a12df6526c1bcd1b667764b8693ae9a413cb"
@@ -163,14 +167,13 @@ class ScaleNet(TestNet):
     BASE_UNITS = {'sBCH': 8, 'msBCH': 5, 'sbits': 2}
     DEFAULT_UNIT = "tBCH"
 
-
     asert_daa = ASERTDaa(is_testnet=False)  # Despite being a "testnet", ScaleNet uses 2d half-life
 
     HEADERS_URL = "http://bitcoincash.com/files/scalenet_headers"  # Unused
 
     DEFAULT_SERVERS = _read_json_dict('servers_scalenet.json')  # DO NOT MODIFY IN CLIENT CODE
     SLPDB_SERVERS = _read_json_dict('servers_slpdb_scalenet.json')  # Does not yet exist
-    DEFAULT_PORTS = {'t':'63001', 's':'63002'}
+    DEFAULT_PORTS = {'t': '63001', 's': '63002'}
 
     BITCOIN_CASH_FORK_BLOCK_HEIGHT = 6
     BITCOIN_CASH_FORK_BLOCK_HASH = "000000000e16730d293050fc5fe5b0978b858f5d9d91192a5ca2793902493597"
@@ -184,30 +187,51 @@ class ScaleNet(TestNet):
     asert_daa.anchor = None  # Intentionally not specified because it's after checkpoint; blockchain.py will calculate
 
 
-
 # All new code should access this to get the current network config.
 net = MainNet
+
+
+def _set_units():
+    from . import util
+    util.base_units = net.BASE_UNITS.copy()
+    util.DEFAULT_BASE_UNIT = net.DEFAULT_UNIT
+    util.recalc_base_units()
+
 
 def set_mainnet():
     global net
     net = MainNet
+    _set_units()
+
 
 def set_testnet():
     global net
     net = TestNet
+    _set_units()
+
 
 def set_testnet4():
     global net
     net = TestNet4
+    _set_units()
+
 
 def set_scalenet():
     global net
     net = ScaleNet
+    _set_units()
+
+
+def set_taxcoin():
+    global net
+    net = TaxCoinNet
+    _set_units()
 
 
 # Compatibility
 def _instancer(cls):
     return cls()
+
 
 @_instancer
 class NetworkConstants:
