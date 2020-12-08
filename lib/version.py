@@ -1,4 +1,5 @@
 PACKAGE_VERSION = '3.6.5'  # version of the client package
+VERSION_NAME = 'WARNING: THIS EXPERIMENTAL VERSION COULD DESTROY YOUR TOKENS'
 PROTOCOL_VERSION = '1.4'     # protocol version requested
 EXTENSIONS = { 'SLP': "1" }
 

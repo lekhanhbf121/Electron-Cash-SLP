@@ -9,13 +9,14 @@ response: "true, false, false, true, ..."
 This is used by slp_validator_0x01.py.
 """
 
-import sys
+import sys, json
 import threading
 import queue
 import traceback
 import weakref
 import collections
 import requests
+import codecs
 
 from .slp_dagging import INF_DEPTH
 
@@ -43,10 +44,7 @@ class ProxyQuerier:
     def mainloop(self,):
         try:
             while True:
-                try:
-                    job = self.queue.get(timeout=60)
-                except queue.Empty:
-                    continue
+                job = self.queue.get(block=True) #timeout=60)
                 txids, callback = job
 
                 # query just the keys we don't yet know
@@ -77,28 +75,35 @@ class ProxyQuerier:
         finally:
             print("Proxy thread died!", file=sys.stderr)
 
-    def add_job(self,txids, callback):
+    def add_job(self, txids, callback):
         """ Callback called as `callback(txids, results)`
         where txids is set and results is txid-keyed dict. """
         txids = frozenset(txids)
         self.queue.put((txids, callback))
         return txids
 
-    def query(self,txids):
-        requrl = 'https://tokengraph.network/verify/' + ','.join(sorted(txids))
-#        print(requrl, file=sys.stderr)
-        reqresult = requests.get(requrl, timeout=3)
-        resp = reqresult.json()['response']
-        # response from tokengraph will be a list of records:
-        # - Record with errors = null : SLP-VALID
-        # - Record with errors = [stuff] : SLP-INVALID
-        # - Missing record : txid not found
+    def query(self, txids):
         ret = {}
-        for d in resp:
-            isvalid = (not d['errors'])
-            txid = d['tx']
-            ret[txid] = isvalid
+        for txid in txids:
+            print('Requesting txid validity from gs.fountainhead.cash: ' + txid)
+            _hash = codecs.encode(codecs.decode(txid,'hex')[::-1], 'hex').decode()
+            print('Requesting txid validity from gs.fountainhead.cash (reversed): ' + _hash)
+
+            query_json = { "txid": _hash }
+            requrl = 'https://gs.fountainhead.cash/v1/graphsearch/trustedvalidation'
+    #        print(requrl, file=sys.stderr)
+            reqresult = requests.post(requrl, json=query_json, timeout=3)
+
+            try:
+                dat = json.loads(reqresult.content.decode('utf-8'))
+                resp = dat['valid']
+            except:
+                m = json.loads(dat)
+                if m["error"]:
+                    raise Exception(m["error"])
+                raise Exception(m)
+            if resp:
+                ret[txid] = resp
         return ret
 
 tokengraph_proxy = ProxyQuerier()
-

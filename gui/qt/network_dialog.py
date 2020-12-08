@@ -433,9 +433,10 @@ class SlpGsServeListWidget(QTreeWidget):
         menu.addAction(_("Use as server"), lambda: self.select_slp_gs_server(server))
         menu.exec_(self.viewport().mapToGlobal(position))
 
-    def select_slp_gs_server(self, server):
-        self.parent.set_slp_server(server)
-        self.update()
+    def select_slp_gs_server(self, server, do_update=True):
+        self.parent.set_slp_server(server, do_update)
+        if do_update:
+            self.update()
 
     def keyPressEvent(self, event):
         if event.key() in [ Qt.Key_F2, Qt.Key_Return ]:
@@ -454,15 +455,28 @@ class SlpGsServeListWidget(QTreeWidget):
     def update(self):
         self.clear()
         self.addChild = self.addTopLevelItem
-        slp_gs_list = networks.net.SLPDB_SERVERS
-        slp_gs_count = len(slp_gs_list)
-        for k, items in slp_gs_list.items():
-            if slp_gs_count > 0:
+        slpdb_list = []
+
+        for k, item in networks.net.SLPDB_SERVERS.items():
+            if self.parent.slp_tv_enable_cb.isChecked() and not item["useTv"]:
+                continue
+            elif self.parent.slp_gs_enable_cb.isChecked() and not item["useGs"]:
+                continue
+            slpdb_list.append(k)
+
+        if len(slpdb_list) > 1:
+            for k in slpdb_list:
                 star = ' ◀' if k == self.network.slp_gs_host else ''
-                x = QTreeWidgetItem([k+star]) #, 'NA'])
+                x = QTreeWidgetItem([k+star])
                 x.setData(0, Qt.UserRole, k)
-                # x.setData(1, Qt.UserRole, k)
                 self.addTopLevelItem(x)
+        elif len(slpdb_list) == 1:
+            self.select_slp_gs_server(slpdb_list[0], False)
+            star = ' ◀' if slpdb_list[0] == self.network.slp_gs_host else ''
+            x = QTreeWidgetItem([slpdb_list[0]+star])
+            x.setData(0, Qt.UserRole, slpdb_list[0])
+            self.addTopLevelItem(x)
+        
         h = self.header()
         h.setStretchLastSection(False)
         h.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -622,11 +636,19 @@ class NetworkChoiceLayout(QObject, PrintError):
         grid.setRowStretch(7, 1)
 
         # SLP Validation Tab
+        row = 0
         grid = QGridLayout(slp_tab)
-        self.slp_gs_enable_cb = QCheckBox(_('Use Graph Search server (gs++) to speed up validation'))
+        self.slp_gs_enable_cb = QCheckBox(_('Use Graph Search (speeds up local validation)'))
         self.slp_gs_enable_cb.clicked.connect(self.use_slp_gs)
         self.slp_gs_enable_cb.setChecked(self.config.get('slp_validator_graphsearch_enabled', False))
-        grid.addWidget(self.slp_gs_enable_cb, 0, 0, 1, 3)
+        grid.addWidget(self.slp_gs_enable_cb, row, 0, 1, 3)
+        row += 1
+
+        self.slp_tv_enable_cb = QCheckBox(_("Use Trusted Validation (ask a server for SLP validity)\n(WARNING: The server you connect to can destroy your tokens!!)"))
+        self.slp_tv_enable_cb.clicked.connect(self.use_slp_tv)
+        self.slp_tv_enable_cb.setChecked(self.config.get('slp_validator_proxy_enabled', False))
+        grid.addWidget(self.slp_tv_enable_cb, row, 0, 1, 3)
+        row += 1
 
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel(_('Server') + ':'))
@@ -635,20 +657,26 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.slp_gs_server_host.editingFinished.connect(lambda: weakSelf() and weakSelf().set_slp_server())
         hbox.addWidget(self.slp_gs_server_host)
         hbox.addStretch(1)
-        grid.addLayout(hbox, 1, 0)
+        grid.addLayout(hbox, row, 0)
+        row += 1
 
         self.slp_gs_list_widget = SlpGsServeListWidget(self)
-        grid.addWidget(self.slp_gs_list_widget, 2, 0, 1, 5)
-        grid.addWidget(QLabel(_("Current Graph Search Jobs:")), 3, 0)
-        self.slp_search_job_list_widget = SlpSearchJobListWidget(self)
-        grid.addWidget(self.slp_search_job_list_widget, 4, 0, 1, 5)
+        grid.addWidget(self.slp_gs_list_widget, row, 0, 1, 5)
+        row += 1
+        
+        grid.addWidget(QLabel(_("Current Graph Search Jobs:")), row, 0)
+        row += 1
 
+        self.slp_search_job_list_widget = SlpSearchJobListWidget(self)
+        grid.addWidget(self.slp_search_job_list_widget, row, 0, 1, 5)
+        row += 1
+        
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel(_('GS Data Downloaded') + ':'))
         self.data_label = QLabel('?')
         hbox.addWidget(self.data_label)
         hbox.addStretch(1)
-        grid.addLayout(hbox, 5, 0)
+        grid.addLayout(hbox, row, 0)
 
         # Blockchain Tab
         grid = QGridLayout(blockchain_tab)
@@ -693,9 +721,30 @@ class NetworkChoiceLayout(QObject, PrintError):
     def use_slp_gs(self):
         if self.slp_gs_enable_cb.isChecked():
             self.config.set_key('slp_validator_graphsearch_enabled', True)
+            # make sure tv is disabled
+            self.slp_tv_enable_cb.setChecked(False)
+            self.config.set_key('slp_validator_proxy_enabled', False)
         else:
             self.config.set_key('slp_validator_graphsearch_enabled', False)
+
+        # sanity check, don't allow both to be enabled
+        if self.slp_gs_enable_cb.isChecked() and self.slp_tv_enable_cb.isChecked():
+            self.slp_gs_enable_cb.setChecked(False)
+            self.config.set_key('slp_validator_graphsearch_enabled', False)
+            self.slp_tv_enable_cb.setChecked(False)
+            self.config.set_key('slp_validator_proxy_enabled', False)
+
         self.slp_gs_list_widget.update()
+
+    def use_slp_tv(self):
+        if self.slp_tv_enable_cb.isChecked():
+            self.config.set_key('slp_validator_proxy_enabled', True)
+            # make sure gs is disabled
+            self.slp_gs_enable_cb.setChecked(False)
+            self.config.set_key('slp_validator_graphsearch_enabled', False)
+        else:
+            self.config.set_key('slp_validator_proxy_enabled', False)
+        self.use_slp_gs()
 
     def check_disable_proxy(self, b):
         if not self.config.is_modifiable('proxy'):
@@ -872,14 +921,15 @@ class NetworkChoiceLayout(QObject, PrintError):
         auto_connect = self.autoconnect_cb.isChecked()
         self.network.set_parameters(host, port, protocol, proxy, auto_connect)
 
-    def set_slp_server(self, server=None):
+    def set_slp_server(self, server=None, do_update=True):
         if not server:
             server = str(self.slp_gs_server_host.text())
         else:
             self.slp_gs_server_host.setText(server)
         self.network.slp_gs_host = server
         self.config.set_key('slp_gs_host', self.network.slp_gs_host)
-        self.slp_gs_list_widget.update()
+        if do_update:
+            self.slp_gs_list_widget.update()
 
     def set_proxy(self):
         host, port, protocol, proxy, auto_connect = self.network.get_parameters()

@@ -19,6 +19,7 @@ from .util import PrintError
 
 from . import slp_proxying # loading this module starts a thread.
 from .slp_graph_search import SlpGraphSearchManager # thread is started upon instantiation
+from .slp_proxying import tokengraph_proxy
 
 class GraphContext(PrintError):
     ''' Instance of the DAG cache. Uses a single per-instance
@@ -142,25 +143,16 @@ class GraphContext(PrintError):
             limit_dls   = config.get('slp_validator_download_limit', None)
             limit_depth = config.get('slp_validator_depth_limit', None)
             proxy_enable = config.get('slp_validator_proxy_enabled', False)
+            gs_enable = config.get('slp_validator_graphsearch_enabled', False)
+            gs_host = config.get('slp_gs_host', None)
         except NameError: # in daemon mode (no GUI) 'config' is not defined
             limit_dls = None
             limit_depth = None
             proxy_enable = False
-
-        return limit_dls, limit_depth, proxy_enable
-
-    @staticmethod
-    def get_gs_config():
-        config = get_config()
-        try:
-            gs_enable = config.get('slp_validator_graphsearch_enabled', False)
-            gs_host = config.get('slp_gs_host', None)
-        except NameError: # in daemon mode (no GUI) 'config' is not defined
             gs_enable = False
             gs_host = None
 
-        return gs_enable, gs_host
-
+        return limit_dls, limit_depth, proxy_enable, gs_enable, gs_host
 
     def make_job(self, tx, wallet, network, *, debug=False, reset=False, callback_done=None, **kwargs) -> ValidationJob:
         """
@@ -168,10 +160,10 @@ class GraphContext(PrintError):
         Creates job and starts it running in the background thread.
         Returns job, or None if it was not a validatable type.
 
-        Note that the app-global 'config' object from simpe_config should be
+        Note that the app-global 'config' object from simple_config should be
         defined before this is called.
         """
-        limit_dls, limit_depth, proxy_enable = self.get_validation_config()
+        limit_dls, limit_depth, proxy_enable, gs_enable, gs_host = self.get_validation_config()
 
         try:
             graph, job_mgr = self.setup_job(tx, reset=reset)
@@ -197,8 +189,7 @@ class GraphContext(PrintError):
 
         def fetch_hook(txids, val_job):
             l = []
-
-            gs_enable, gs_host = self.get_gs_config()
+            _, _, _, gs_enable, gs_host = self.get_validation_config()
             network.slp_gs_host = gs_host
 
             nonlocal first_fetch_complete
@@ -231,6 +222,13 @@ class GraphContext(PrintError):
                         l.append(wallet.transactions[txid])
                     except KeyError:
                         pass
+            
+            _, _, proxy_enable, _, _ = self.get_validation_config()
+            if proxy_enable:
+                tokengraph_proxy.add_job(txids, proxy_cb)
+                nonlocal num_proxy_requests
+                num_proxy_requests += 1
+
             return l
 
         def done_callback(job):
@@ -243,6 +241,7 @@ class GraphContext(PrintError):
             except queue.Empty:
                 pass
 
+            _, _, proxy_enable, _, _ = self.get_validation_config()
             if proxy_enable:
                 graph.finalize_from_proxy(results)
 
@@ -255,6 +254,8 @@ class GraphContext(PrintError):
                 if val != 0:
                     wallet.slpv1_validity[t] = val
 
+        if proxy_enable:
+            limit_depth = 5
 
         job = ValidationJob(graph, txid, network,
                             fetch_hook=fetch_hook,

@@ -20,6 +20,7 @@ from .slp_validator_0x01 import Validator_SLP1, GraphContext
 
 from . import slp_proxying # loading this module starts a thread.
 from . import slp_graph_search # thread doesn't start until instantiation, one thread per search job, w/ shared txn cache
+from .slp_proxying import tokengraph_proxy
 
 class GraphContext_NFT1(GraphContext):
     ''' Instance of the NFT1 DAG cache.  Uses a single per-instance
@@ -86,7 +87,7 @@ class GraphContext_NFT1(GraphContext):
         Note that the app-global 'config' object from simpe_config should be
         defined before this is called.
         """
-        limit_dls, limit_depth, proxy_enable = self.get_validation_config()
+        limit_dls, limit_depth, proxy_enable, gs_enable, gs_host = self.get_validation_config()
 
         # try:
         graph, job_mgr = self.setup_job(tx, reset=reset)
@@ -120,10 +121,13 @@ class GraphContext_NFT1(GraphContext):
                     l.append(wallet.transactions[txid])
                 except KeyError:
                     pass
-            if proxy_enable:
-                proxy.add_job(txids, proxy_cb)
-                nonlocal num_proxy_requests
-                num_proxy_requests += 1
+
+# _, _, _, gs_enable, gs_host = self.get_validation_config()
+# if proxy_enable:
+#     tokengraph_proxy.add_job(txids, proxy_cb)
+#     nonlocal num_proxy_requests
+#     num_proxy_requests += 1
+
             return l
 
         def done_callback(job):
@@ -136,8 +140,9 @@ class GraphContext_NFT1(GraphContext):
             except queue.Empty:
                 pass
 
-            if proxy_enable:
-                graph.finalize_from_proxy(results)
+# _, _, proxy_enable, _, _ = self.get_validation_config()
+# if proxy_enable:
+#     graph.finalize_from_proxy(results)
 
             # Do consistency check here
             # XXXXXXX
@@ -147,6 +152,9 @@ class GraphContext_NFT1(GraphContext):
                 val = n.validity
                 if val != 0:
                     wallet.slpv1_validity[t] = val
+
+# if proxy_enable:
+#     limit_depth = None
 
         if nft_type == 'SLP65':
             job = ValidationJobNFT1Child(graph, txid, network,
