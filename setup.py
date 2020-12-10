@@ -122,6 +122,8 @@ setup(
             'servers_scalenet.json',
             'servers_slpdb.json',
             'servers_slpdb_testnet.json',
+            'servers_post_office.json',
+            'servers_post_office_testnet.json',
             'currencies.json',
             'www/index.html',
             'wordlist/*.txt',

@@ -57,6 +57,7 @@ class MainNet(AbstractNet):
     DEFAULT_PORTS = {'t': '50001', 's': '50002'}
     DEFAULT_SERVERS = _read_json_dict('servers.json')  # DO NOT MODIFY IN CLIENT CODE
     SLPDB_SERVERS = _read_json_dict('servers_slpdb.json')
+    POST_OFFICE_SERVERS = _read_json_dict('servers_post_office.json')
     TITLE = 'Electron Cash SLP'
 
     # Bitcoin Cash fork block specification
@@ -103,6 +104,7 @@ class TestNet(AbstractNet):
     DEFAULT_PORTS = {'t':'51001', 's':'51002'}
     DEFAULT_SERVERS = _read_json_dict('servers_testnet.json')  # DO NOT MODIFY IN CLIENT CODE
     SLPDB_SERVERS = _read_json_dict('servers_slpdb_testnet.json')
+    POST_OFFICE_SERVERS = _read_json_dict('servers_post_office_testnet.json')
     TITLE = 'Electron Cash SLP Testnet'
 
     # Nov 13. 2017 HF to CW144 DAA height (height of last block mined on old DAA)
