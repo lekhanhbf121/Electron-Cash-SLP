@@ -58,8 +58,8 @@ else:
     # On Linux & macOS it looks fine so we go with the more fancy unicode
     SCHNORR_SIGIL = "ⓢ"
 
-def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
-    d = TxDialog(tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn)
+def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None, slp_needs_postage=False):
+    d = TxDialog(tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn, slp_needs_postage=slp_needs_postage)
     dialogs.append(d)
     d.show()
     return d
@@ -71,7 +71,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
 
     BROADCAST_COOLDOWN_SECS = 5.0
 
-    def __init__(self, tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
+    def __init__(self, tx, parent, desc, prompt_if_unsaved, window_to_close_on_broadcast=None, *, slp_coins_to_burn=None, slp_amt_to_burn=None, slp_needs_postage=False):
         '''Transactions in the wallet will show their description.
         Pass desc to give a description for txs not yet in the wallet.
         '''
@@ -96,6 +96,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         self.tx_height = None
         self.slp_coins_to_burn = slp_coins_to_burn
         self.slp_amt_to_burn = slp_amt_to_burn
+        self.slp_needs_postage = slp_needs_postage
         
         # Parse SLP output data
         self.slp_outputs = []
@@ -385,7 +386,10 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
 
         self.main_window.push_top_level_window(self)
         self.main_window.sign_tx(self.tx, sign_done, on_pw_cancel=cleanup,
-                                    slp_coins_to_burn=self.slp_coins_to_burn, slp_amt_to_burn=self.slp_amt_to_burn)
+                                slp_coins_to_burn=self.slp_coins_to_burn, 
+                                slp_amt_to_burn=self.slp_amt_to_burn, 
+                                slp_needs_postage=self.slp_needs_postage
+                                )
 
     def save(self):
         name = 'signed_%s.txn' % (self.tx.txid()[0:8]) if self.tx.is_complete() else 'unsigned.txn'
@@ -421,6 +425,8 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         base_unit = self.main_window.base_unit()
         format_amount = self.main_window.format_amount
         tx_hash, status, label, can_broadcast, amount, fee, height, conf, timestamp, exp_n = self.wallet.get_tx_info(self.tx)
+        if self.slp_needs_postage:
+            tx_hash = None
         self.tx_height = height
         desc = label or desc
         size = self.tx.estimated_size()
@@ -722,6 +728,9 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
                 if self.slp_outputs and i > 0 and len(self.slp_outputs) > i:
                     cursor.insertText(' '*(6), ext)
                     cursor.insertText(self.slp_outputs[i], slp)
+                    if self.slp_needs_postage and i == 2:
+                        cursor.insertText(' ', ext)
+                        cursor.insertText("POSTAGE", slp)
                     self.slp_legend.setHidden(False)
                 if self.slp_mint_baton_vout == i:
                     cursor.insertText(' '*(6), ext)
