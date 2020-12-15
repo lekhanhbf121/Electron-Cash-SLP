@@ -25,6 +25,7 @@ import requests
 import codecs
 from .transaction import Transaction
 from .caches import ExpiringCache
+from electroncash import networks
 
 class SlpdbErrorNoSearchData(Exception):
     pass
@@ -189,10 +190,27 @@ class SlpGraphSearchManager:
         txid = codecs.encode(codecs.decode(job.root_txid,'hex')[::-1], 'hex').decode()
         print('Requesting txid from gs++ (reversed): ' + txid)
 
-        query_json = { "txid": txid } # TODO: handle 'validity_cache' exclusion from graph search (NOTE: this will impact total dl count)
         dat = b''
         time_last_updated = time.clock()
-        with requests.post(job.valjob.network.slp_gs_host + "/v1/graphsearch/graphsearch", json=query_json, stream=True, timeout=60) as r:
+
+        # setup post url/query based on gs server kind
+        kind = 'bchd'
+        host = job.valjob.network.slp_gs_host
+        if networks.net.SLPDB_SERVERS.get(host):
+            kind = networks.net.SLPDB_SERVERS.get(host)["kind"]
+        if kind == 'gs++':
+            url = host + "/v1/graphsearch/graphsearch"
+            query_json = { "txid": txid } # TODO: handle 'validity_cache' exclusion from graph search (NOTE: this will impact total dl count)
+            res_txns_key = 'txdata'
+        elif kind == 'bchd':
+            txid_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
+            url = host + "/v1/GetSlpGraphSearch"
+            query_json = { "hash": txid_b64 } # , "valid_txids": [] }
+            res_txns_key = 'txdata'
+        else:
+            raise Exception("unknown server kind")
+
+        with requests.post(url, json=query_json, stream=True, timeout=60) as r:
             for chunk in r.iter_content(chunk_size=None):
                 job.gs_response_size += len(chunk)
                 self.data_totalizer += len(chunk)
@@ -209,12 +227,13 @@ class SlpGraphSearchManager:
                     return
         try:
             dat = json.loads(dat.decode('utf-8'))
-            txns = dat['txdata']
+            txns = dat[res_txns_key]
         except:
             m = json.loads(dat)
             if m["error"]:
                 raise Exception(m["error"])
             raise Exception(m)
+
         for txn in txns:
             job.txn_count_progress += 1
             tx = Transaction(base64.b64decode(txn).hex())

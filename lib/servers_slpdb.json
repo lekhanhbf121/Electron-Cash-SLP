@@ -1,5 +1,5 @@
 {
-    "https://gs.fountainhead.cash": {},
-    "https://gs.ny1.simpleledger.io": {},
-    "https://gs.nl1.simpleledger.io": {}
+    "https://gs.fountainhead.cash": { "kind": "gs++" },
+    "https://bchd.ny1.simpleledger.io": { "kind": "bchd" },
+    "https://bchd.nl1.simpleledger.io": { "kind": "bchd" }
 }
