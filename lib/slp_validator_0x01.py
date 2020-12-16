@@ -18,7 +18,7 @@ from .bitcoin import TYPE_SCRIPT
 from .util import PrintError
 
 from . import slp_proxying # loading this module starts a thread.
-from .slp_graph_search import SlpGraphSearchManager # thread is started upon instantiation
+from .slp_graph_search import graph_search_mgr
 
 class GraphContext(PrintError):
     ''' Instance of the DAG cache. Uses a single per-instance
@@ -34,7 +34,6 @@ class GraphContext(PrintError):
         self.is_parallel = is_parallel
         self.job_mgrs = weakref.WeakValueDictionary()   # token_id_hex -> ValidationJobManager (only used if is_parallel, otherwise self.job_mgr is used)
         self.name = name
-        self.graph_search_mgr = SlpGraphSearchManager()
         self._setup_job_mgr()
 
     def diagnostic_name(self):
@@ -205,16 +204,15 @@ class GraphContext(PrintError):
 
             if gs_enable \
                 and gs_host \
-                and self.graph_search_mgr \
                 and not val_job.graph_search_job:
-                    if val_job.root_txid in self.graph_search_mgr.search_jobs.keys() \
-                        and self.graph_search_mgr.search_jobs[val_job.root_txid].job_complete \
-                        and not self.graph_search_mgr.search_jobs[val_job.root_txid].search_success:
-                            self.graph_search_mgr.search_jobs.pop(val_job.root_txid)
-                    search_job = self.graph_search_mgr.new_search(val_job)
+                    if val_job.root_txid in graph_search_mgr.search_jobs.keys() \
+                        and graph_search_mgr.search_jobs[val_job.root_txid].job_complete \
+                        and not graph_search_mgr.search_jobs[val_job.root_txid].search_success:
+                            graph_search_mgr.search_jobs.pop(val_job.root_txid)
+                    search_job = graph_search_mgr.new_search(val_job)
                     val_job.graph_search_job = search_job if search_job else None
-            elif not gs_enable and self.graph_search_mgr:
-                for job in self.graph_search_mgr.search_jobs.values():
+            elif not gs_enable and graph_search_mgr:
+                for job in graph_search_mgr.search_jobs.values():
                     job.sched_cancel()
 
             if network.slp_validation_fetch_signal and not first_fetch_complete:

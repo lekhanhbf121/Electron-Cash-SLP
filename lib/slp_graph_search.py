@@ -103,7 +103,7 @@ class GraphSearchJob:
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
 
-class SlpGraphSearchManager:
+class _SlpGraphSearchManager:
     """
     A single thread that processes graph search requests sequentially.
     """
@@ -241,3 +241,5 @@ class SlpGraphSearchManager:
             #SlpGraphSearchManager.tx_cache_put(tx)
         job.set_success()
         print("[SLP Graph Search] job success.")
+
+graph_search_mgr = _SlpGraphSearchManager()

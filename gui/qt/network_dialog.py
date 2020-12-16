@@ -34,9 +34,7 @@ from electroncash.i18n import _, pgettext
 from electroncash import networks
 from electroncash.util import print_error, Weak, PrintError
 from electroncash.network import serialize_server, deserialize_server, get_eligible_servers
-
-from electroncash.slp_validator_0x01 import shared_context
-
+from electroncash.slp_graph_search import graph_search_mgr
 from .util import *
 
 protocol_names = ['TCP', 'SSL']
@@ -307,13 +305,13 @@ class SlpSearchJobListWidget(QTreeWidget):
         qApp.clipboard().setText(txid)
 
     def restart_job(self, txid):
-        job = shared_context.graph_search_mgr.search_jobs.get(txid)
+        job = graph_search_mgr.search_jobs.get(txid)
         if job:
-            shared_context.graph_search_mgr.restart_search(job)
+            graph_search_mgr.restart_search(job)
         self.update()
 
     def cancel_job(self, txid):
-        job = shared_context.graph_search_mgr.search_jobs.get(txid)
+        job = graph_search_mgr.search_jobs.get(txid)
         if job:
             job.sched_cancel(reason='user cancelled')
 
@@ -359,7 +357,7 @@ class SlpSearchJobListWidget(QTreeWidget):
             self.slp_validation_fetch_signal = self.parent.network.slp_validation_fetch_signal
             self.slp_validation_fetch_signal.connect(self.on_validation_fetch, Qt.QueuedConnection)
         self.clear()
-        jobs = shared_context.graph_search_mgr.search_jobs.copy()
+        jobs = graph_search_mgr.search_jobs.copy()
         working_item = None
         completed_items = []
         other_items = []
