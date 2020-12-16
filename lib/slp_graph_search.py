@@ -191,7 +191,7 @@ class SlpGraphSearchManager:
         print('Requesting txid from gs++ (reversed): ' + txid)
 
         dat = b''
-        time_last_updated = time.clock()
+        time_last_updated = time.perf_counter()
 
         # setup post url/query based on gs server kind
         kind = 'bchd'
@@ -215,7 +215,7 @@ class SlpGraphSearchManager:
                 job.gs_response_size += len(chunk)
                 self.data_totalizer += len(chunk)
                 dat += chunk
-                t = time.clock()
+                t = time.perf_counter()
                 if (t - time_last_updated) > 2 and self.emit_ui_update:
                     self.emit_ui_update(self.data_totalizer)
                     time_last_updated = t
