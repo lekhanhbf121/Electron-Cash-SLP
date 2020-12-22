@@ -2,7 +2,7 @@ import requests
 import threading
 import json
 import sys
-import queue
+import time
 from .slp import SlpMessage, buildSendOpReturnOutput_V1
 from .slp_coinchooser import SlpCoinChooser
 
@@ -119,21 +119,15 @@ class SlpPostOfficeClient:
     """
     An SLP post office client to interact with a single post office server.
     """
-    def __init__(self, hosts=[]):
+    def __init__(self, hosts=[], update_data_interval=100):
         self.post_office_hosts = hosts
         self.ban_list = []
         self.postage_data = {}
         self.optimized_rates = {}
+        self.update_data_interval = update_data_interval
 
-        self.task_queue = queue.Queue()
         self.fetch_thread = threading.Thread(target=self.mainloop, name='SlpPostOfficeClient', daemon=True)
         self.fetch_thread.start()
-
-        self.update_all_postage_urls()
-
-    def update_all_postage_urls(self):
-        for url in self.post_office_hosts:
-            self.task_queue.put(url)
 
     def _set_postage(self, host, _json):
         try:
@@ -151,9 +145,16 @@ class SlpPostOfficeClient:
     def mainloop(self):
         try:
             while True:
-                url = self.task_queue.get(block=True)
-                self._fetch_postage_json(url)
-                self.optimize_rates()
+                for host in self.post_office_hosts:
+                    try:
+                        self._fetch_postage_json(host)
+                        self.optimize_rates()
+                    except:
+                        print(
+                            "[SLP Post Office Client]: Failed to retrieve postage data from %s . Will retry in %d seconds." %
+                            (host, self.update_data_interval)
+                        )
+                time.sleep(self.update_data_interval)
         finally:
             print("[SLP Post Office Client] Error: mainloop exited.", file=sys.stderr)
 
@@ -166,6 +167,8 @@ class SlpPostOfficeClient:
                 continue
             else:
                 for stamp in stamps:
+                    stamp['host'] = host
+                    stamp['rate'] = int(stamp['rate'])
                     tokenId = stamp["tokenId"]
                     if tokenId not in token_rates.keys():
                         token_rates[tokenId] = []
@@ -173,8 +176,16 @@ class SlpPostOfficeClient:
         
         for token in token_rates:
             sorted(token_rates[token], key=lambda i: i['rate'])
-        
+        for token in token_rates.keys():
+            token_rates[token] = self.postage_data[token_rates[token][0]['host']]
         self.optimized_rates = token_rates
+
+    def get_optimized_postage_data_for_token(self, token_id):
+        return self.optimized_rates.get(token_id)
+
+    def get_optimized_post_office_url_for_token(self, token_id):
+        least_priced_stamp = self.optimized_rates[token_id]['stamps'][0]
+        return least_priced_stamp['host'] + '/postage'
 
     def ban_post_office(self, url):
         if not url in self.ban_list:

@@ -76,7 +76,8 @@ from electroncash.util import format_satoshis_nofloat
 from .slp_create_token_genesis_dialog import SlpCreateTokenGenesisDialog
 from .bfp_download_file_dialog import BfpDownloadFileDialog
 from .bfp_upload_file_dialog import BitcoinFilesUploadDialog
-from electroncash.slp_post_office import SlpPostOffice
+from electroncash.slp_post_office import SlpPostOffice, SlpPostOfficeClient
+from electroncash import networks
 
 try:
     # pre-load QtMultimedia at app start, if possible
@@ -176,7 +177,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.network = gui_object.daemon.network
         self.network.slp_validity_signal = self.gui_object.slp_validity_signal
         self.network.slp_validation_fetch_signal = self.gui_object.slp_validation_fetch_signal
-        #self.network.slp_post_office_client = self.gui_object.slp_post_office_client
+        self.slp_post_office_client = SlpPostOfficeClient(hosts=networks.net.POST_OFFICE_SERVERS)
         self.fx = gui_object.daemon.fx
         self.invoices = wallet.invoices
         self.contacts = wallet.contacts
@@ -184,6 +185,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.app = gui_object.app
         self.cleaned_up = False
         self.payment_request = None
+        self.postage_payment = None
         self.checking_accounts = False
         self.qr_window = None
         self.not_enough_funds = False
@@ -1737,6 +1739,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.max_button.setDisabled(False)
             self.fiat_send_e.setDisabled(False)
             self.slp_extra_bch_cb.setHidden(True)
+            self.use_post_office.setHidden(True)
             self.slp_amount_e.setDisabled(True)
             self.slp_max_button.setDisabled(True)
             self.slp_amount_label.setDisabled(True)
@@ -1745,6 +1748,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.opreturn_label.setEnabled(True)
         else:
             self.slp_extra_bch_cb.setHidden(False)
+            self.use_post_office.setHidden(False)
             self.slp_extra_bch_cb.setChecked(False)
             self.slp_extra_bch_cb.clicked.emit()
             self.slp_amount_e.setDisabled(False)
@@ -1793,6 +1797,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.amount_label.setDisabled(True)
             self.max_button.setDisabled(True)
             self.fiat_send_e.setDisabled(True)
+
+    def set_slp_post_office_enabled(self):
+        active = self.use_post_office.isChecked()
+        self.config.set_key('slp_post_office_enabled', active)
 
     def create_send_tab(self):
         # A 4-column grid layout.  All the stretch is in the last column.
@@ -1916,6 +1924,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.slp_extra_bch_cb.clicked.connect(self.on_slp_extra_bch)
             self.slp_extra_bch_cb.setHidden(True)
             grid.addWidget(self.slp_extra_bch_cb, 6, 2)
+
+            self.use_post_office = QCheckBox(_('Enable Postage Protocol'))
+            self.use_post_office.setEnabled(self.config.is_modifiable('slp_post_office_enabled'))
+            self.use_post_office.setChecked(self.config.get('slp_post_office_enabled', False))
+            self.use_post_office.setHidden(True)
+            self.use_post_office.clicked.connect(self.set_slp_post_office_enabled)
+            grid.addWidget(self.use_post_office, 6, 3)
 
             self.slp_send_tab_widgets += [
                 self.slp_max_button, self.slp_extra_bch_cb
@@ -2614,6 +2629,22 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if not needs_postage:
                     self.show_message(_("Insufficient BCH balance.\n\nPayment request requires a balance of confirmed coins."))
                     return
+            elif self.config.get('slp_post_office_enabled', False):
+                if self.slp_token_id:
+                    postage = self.slp_post_office_client.get_optimized_postage_data_for_token(self.slp_token_id)
+                    try:
+                        send_amount = self.slp_amount_e.get_amount()  # Probably a bad idea to call this here
+                        coins, slp_msg, needs_postage = SlpPostOffice.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount)
+                        change_output = (0, self.slp_get_change_address(), 546)
+                        postoffice_output = (0, Address.from_slpaddr_string(postage["address"]), 546)
+                        tx = SlpPostOffice.build_slp_txn(coins, slp_msg, outputs[1], postoffice_output, change_output)
+                        self.postage_payment = True
+                    except:
+                        pass
+                    if not postage:
+                        self.show_message(
+                            _("Insufficient BCH balance.\n\nNo post office supporting the token was found."))
+                        return
             else:
                 self.show_message(_("Insufficient BCH balance"))
                 return
@@ -2766,6 +2797,30 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     self.invoices.set_paid(pr, tx.txid())
                     self.invoices.save()
                     self.payment_request = None
+
+            elif self.postage_payment:
+                refund_address = self.wallet.get_receiving_addresses()[0]
+                payment_url = self.slp_post_office_client.get_optimized_post_office_url_for_token(self.slp_token_id)
+                ack_status, ack_msg = paymentrequest.send_postage_payment(str(tx), payment_url, refund_address)
+                if not ack_status:
+                    if ack_msg == "no url":
+                        # "no url" hard-coded in send_payment method
+                        # it means merchant doesn't need the tx sent to him
+                        # since he didn't specify a POST url.
+                        # so we just broadcast and rely on that result status.
+                        ack_msg = None
+                    else:
+                        return False, ack_msg
+                # at this point either ack_status is True or there is "no url"
+                # and we proceed anyway with the broadcast
+                status, msg = self.network.broadcast_transaction(tx)
+
+                # figure out what to return...
+                msg = ack_msg or msg  # prefer the merchant's ack_msg over the broadcast msg, but fallback to broadcast msg if no ack_msg.
+                status = bool(ack_status or status)  # if both broadcast and merchant ACK failed -- it's a failure. if either succeeded -- it's a success
+
+                if status:
+                    self.postage_payment = None
 
             else:
                 # Not a PR, just broadcast.
