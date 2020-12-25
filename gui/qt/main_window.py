@@ -2637,8 +2637,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                         coins, slp_msg, needs_postage = SlpPostOffice.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount)
                         change_output = (0, self.slp_get_change_address(), 546)
                         postoffice_output = (0, Address.from_slpaddr_string(postage["address"]), 546)
-                        tx = SlpPostOffice.build_slp_txn(coins, slp_msg, outputs[1], postoffice_output, change_output)
-                        self.postage_payment = True
+                        if needs_postage:
+                            tx = SlpPostOffice.build_slp_txn(coins, slp_msg, outputs[1], postoffice_output, change_output)
+                            self.postage_payment = True
+                        else:
+                            tx = SlpPostOffice.build_slp_txn(coins, outputs[0], outputs[1], change_output, None)
                     except:
                         pass
                     if not postage:
