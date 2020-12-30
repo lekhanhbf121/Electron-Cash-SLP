@@ -275,8 +275,10 @@ class SlpSearchJobListWidget(QTreeWidget):
         self.setHeaderLabels([_("Job Id"), _("Txn Count"), _("Data"), _("Status")])
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
+        slp_gs_mgr.slp_validation_fetch_signal.connect(self.update_list_data, Qt.QueuedConnection)
 
-    def on_validation_fetch(self, total_data_received):
+    @rate_limited(1.0)
+    def update_list_data(self, total_data_received):
         if total_data_received > 0:
             self.parent.data_label.setText(self.humanbytes(total_data_received))
         self.update()
@@ -351,7 +353,6 @@ class SlpSearchJobListWidget(QTreeWidget):
     def update(self):
         self.parent.slp_gs_enable_cb.setChecked(self.parent.config.get('slp_validator_graphsearch_enabled', False))
         selected_item_id = self.currentItem().data(0, Qt.UserRole) if self.currentItem() else None
-        slp_gs_mgr.slp_validation_fetch_signal.connect(self.on_validation_fetch, Qt.QueuedConnection)
 
         self.clear()
         jobs = slp_gs_mgr.jobs_copy()

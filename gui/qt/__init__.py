@@ -904,6 +904,11 @@ class ElectrumGui(QObject, PrintError):
             event = QEvent(QEvent.Clipboard)
             self.app.sendEvent(self.app.clipboard(), event)
             self.tray.hide()
+
+            # clean shared pyqtSignals
+            self.slp_validity_signal = None
+            self.slp_validation_fetch_signal = None
+
         self.app.aboutToQuit.connect(clean_up)
 
         Exception_Hook(self.config) # This wouldn't work anyway unless the app event loop is active, so we must install it once here and no earlier.

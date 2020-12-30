@@ -64,7 +64,6 @@ class _GraphSearchJob:
         if not self.waiting_to_cancel:
             self.waiting_to_cancel = True
             self.cancel_callback = callback
-            return
 
     def _cancel(self):
         self.job_complete = True
@@ -128,11 +127,11 @@ class _SlpGraphSearchManager:
 
     @property
     def slp_validity_signal(self):
-        return self._gui_object().slp_validity_signal if self._gui_object else None
+        return self._gui_object().slp_validity_signal
 
     @property
     def slp_validation_fetch_signal(self):
-        return self._gui_object().slp_validation_fetch_signal if self._gui_object else None
+        return self._gui_object().slp_validation_fetch_signal
 
     def _emit_ui_update(self, data):
         if not self.slp_validation_fetch_signal:
@@ -196,25 +195,21 @@ class _SlpGraphSearchManager:
             callback(job)
 
     def mainloop(self,):
-        try:
-            while True:
-                job = self.search_queue.get(block=True)
-                job.search_started = True
-                if not job.valjob.running and not job.valjob.has_never_run:
-                    job.set_failed('validation finished')
-                    continue
-                try:
-                    # search_query is a network call, most time will be spent here
-                    self.search_query(job)
-                except Exception as e:
-                    print("error in graph search query", e, file=sys.stderr)
-                    job.set_failed(str(e))
-                finally:
-                    if job.valjob.wakeup:
-                        job.valjob.wakeup.set()
-                    self._emit_ui_update(self.bytes_downloaded)
-        finally:
-            print("[SLP Graph Search] Error: mainloop exited.", file=sys.stderr)
+        while True:
+            job = self.search_queue.get(block=True)
+            job.search_started = True
+            if not job.valjob.running and not job.valjob.has_never_run:
+                job.set_failed('validation finished')
+                continue
+            try:
+                # search_query is a network call, most time will be spent here
+                self.search_query(job)
+            except Exception as e:
+                print("error in graph search query", e, file=sys.stderr)
+                job.set_failed(str(e))
+            finally:
+                job.valjob.wakeup.set()
+                self._emit_ui_update(self.bytes_downloaded)
 
     def search_query(self, job):
         if job.waiting_to_cancel:
@@ -226,9 +221,6 @@ class _SlpGraphSearchManager:
         print('Requesting txid from gs++: ' + job.root_txid)
         txid = codecs.encode(codecs.decode(job.root_txid,'hex')[::-1], 'hex').decode()
         print('Requesting txid from gs++ (reversed): ' + txid)
-
-        dat = b''
-        time_last_updated = time.perf_counter()
 
         # setup post url/query based on gs server kind
         kind = 'bchd'
@@ -247,13 +239,15 @@ class _SlpGraphSearchManager:
         else:
             raise Exception("unknown server kind")
 
+        dat = b''
+        time_last_updated = time.perf_counter()
         with requests.post(url, json=query_json, stream=True, timeout=60) as r:
             for chunk in r.iter_content(chunk_size=None):
                 job.gs_response_size += len(chunk)
                 self.bytes_downloaded += len(chunk)
                 dat += chunk
                 t = time.perf_counter()
-                if (t - time_last_updated) > 2:
+                if (t - time_last_updated) > 10:
                     self._emit_ui_update(self.bytes_downloaded)
                     time_last_updated = t
                 if not job.valjob.running:
@@ -262,6 +256,7 @@ class _SlpGraphSearchManager:
                 elif job.waiting_to_cancel:
                     job._cancel()
                     return
+
         try:
             dat = json.loads(dat.decode('utf-8'))
             txns = dat[res_txns_key]
