@@ -2683,11 +2683,18 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 self.slp_graph_0x01_nft.kill()
                 self.slp_graph_0x01, self.slp_graph_0x01_nft = None, None
             self.storage.put('stored_height', self.get_local_height())
-        self.save_addresses()
-        self.save_transactions()
-        self.save_verified_tx()  # implicit cashacct.save
-        self.storage.put('frozen_coins', list(self.frozen_coins))
-        self.storage.write()
+        self.save_network_state()
+
+    def save_network_state(self):
+        """Save all the objects which are updated by the network thread. This is called
+        periodically by the Android app during long synchronizations.
+        """
+        with self.lock:
+            self.save_addresses()
+            self.save_transactions()
+            self.save_verified_tx()  # implicit cashacct.save
+            self.storage.put('frozen_coins', list(self.frozen_coins))
+            self.storage.write()
 
     def start_pruned_txo_cleaner_thread(self):
         self.pruned_txo_cleaner_thread = threading.Thread(target=self._clean_pruned_txo_thread, daemon=True, name='clean_pruned_txo_thread')
