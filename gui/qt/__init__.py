@@ -23,7 +23,7 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import gc, os, platform, shutil, signal, sys, traceback
+import gc, os, platform, shutil, signal, sys, traceback, weakref
 
 try:
     import PyQt5
@@ -69,6 +69,7 @@ from .network_dialog import NetworkDialog
 from .exception_window import Exception_Hook
 from .update_checker import UpdateChecker
 
+from electroncash.slp_graph_search import slp_gs_mgr
 
 class ElectrumGui(QObject, PrintError):
     new_window_signal = pyqtSignal(str, object)
@@ -80,9 +81,11 @@ class ElectrumGui(QObject, PrintError):
     # when a wallet is closed the connection will be auto-cleaned for that wallet.
     # The network object and the validator need to keep references to these
     # so we let them live here, in this singleton object.
+    #
+    # In __init__ we use "slp_gs_mgr.bind_gui(weakref.ref(self))" to allow access to
+    # these signals from anywhere the slp_gs_mgr Singleton is imported.
     slp_validity_signal = pyqtSignal(object, object)
     slp_validation_fetch_signal = pyqtSignal(int)
-
 
     instance = None
 
@@ -148,6 +151,9 @@ class ElectrumGui(QObject, PrintError):
         ColorScheme.update_from_widget(QWidget())
 
         self._check_and_warn_qt_version()
+
+        # provide graph search manager with a weak reference to access slp related pyqtSignals
+        slp_gs_mgr.bind_gui(weakref.ref(self))
 
     def __del__(self):
         stale = True

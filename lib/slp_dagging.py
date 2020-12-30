@@ -29,6 +29,8 @@ from abc import ABC, abstractmethod
 from .transaction import Transaction
 from .util import PrintError
 
+from .slp_graph_search import slp_gs_mgr
+
 INF_DEPTH=2147483646  # 'infinity' value for node depths. 2**31 - 2
 
 
@@ -200,7 +202,6 @@ class ValidationJob:
         self.txids = tuple([txid])
         self.network = network
         self.fetch_hook = fetch_hook
-        self.graph_search_job = None
         self.validitycache = {} if validitycache is None else validitycache
         self.download_limit = download_limit
         if depth_limit is None:
@@ -250,15 +251,17 @@ class ValidationJob:
                 validity = self.graph._nodes.get(self.root_txid, None).validity
             except:
                 validity = 0
-            if self.graph_search_job is not None \
+
+            gs_job = slp_gs_mgr.find(self.root_txid)
+
+            if gs_job is not None \
+                and gs_job.job_complete \
+                and gs_job.search_success \
                 and (not isinstance(retval, bool) or validity > 1) \
-                and retval != 'stopped' \
-                and self.graph_search_job.job_complete \
-                and self.graph_search_job.search_success:
+                and retval != 'stopped':
                 with self._statelock:
                     self.validitycache[self.root_txid] = 0
-                    self.graph_search_job.set_failed('invalid based on graph search data')
-                    self.graph_search_job = None
+                    gs_job.set_failed('invalid based on graph search data')
                     self.downloads = 0
                     self.currentdepth = 0
                     self.paused = None
@@ -456,10 +459,12 @@ class ValidationJob:
 
             txids_gotten = interested_txids.difference(txids_missing)
 
-            if len(txids_gotten) == 0 and self.graph_search_job and not self.graph_search_job.job_complete:
-                self.wakeup.clear()
-                self.wakeup.wait()
-                continue
+            if len(txids_gotten) == 0:
+                gs_job = slp_gs_mgr.find(self.root_txid)
+                if gs_job and not gs_job.job_complete:
+                    self.wakeup.clear()
+                    self.wakeup.wait()
+                    continue
             elif len(txids_gotten) == 0:
                 return "missing txes"
 
@@ -501,7 +506,8 @@ class ValidationJob:
         #
         #   This optimization requires all cache item source are equal to "graph_search"
         # 
-        if self.graph_search_job and self.graph_search_job.search_success:
+        gs_job = slp_gs_mgr.find(self.root_txid)
+        if gs_job and gs_job.search_success:
             for tx in cached:
                 dl_callback(tx)
             for txid in txid_set:

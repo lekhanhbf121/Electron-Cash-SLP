@@ -27,10 +27,7 @@ from .transaction import Transaction
 from .caches import ExpiringCache
 from electroncash import networks
 
-class SlpdbErrorNoSearchData(Exception):
-    pass
-
-class GraphSearchJob:
+class _GraphSearchJob:
     def __init__(self, txid, valjob_ref):
         self.root_txid = txid
         self.valjob = valjob_ref
@@ -55,7 +52,7 @@ class GraphSearchJob:
         self.cancel_callback = None
 
         # host for graph search
-        self.host = self.valjob.network.slp_gs_host
+        self.host = slp_gs_mgr.slp_gs_host
 
         # gs job results cache - clears data after 30 minutes
         self._txdata = ExpiringCache(maxlen=10000000, name="GraphSearchTxnFetchCache", timeout=1800)
@@ -108,9 +105,14 @@ class _SlpGraphSearchManager:
     A single thread that processes graph search requests sequentially.
     """
     def __init__(self, threadname="GraphSearch"):
+
         # holds the job history and status
-        self.search_jobs = dict()
+        self._search_jobs = dict()
+        self._gui_object = None
         self.lock = threading.Lock()
+
+        # graph search host url
+        self.slp_gs_host = ""
 
         # Create a single use queue on a new thread
         self.search_queue = queue.Queue()  # TODO: make this a PriorityQueue based on dag size
@@ -119,8 +121,23 @@ class _SlpGraphSearchManager:
         self.search_thread = threading.Thread(target=self.mainloop, name=self.threadname+'/search', daemon=True)
         self.search_thread.start()
         
-        self.data_totalizer = 0
-        self.emit_ui_update = None # valjob_ref.network.slp_validation_fetch_signal.emit
+        self.bytes_downloaded = 0 # this is the total number of bytes downloaded by graph search
+
+    def bind_gui(self, gui):
+        self._gui_object = gui
+
+    @property
+    def slp_validity_signal(self):
+        return self._gui_object().slp_validity_signal if self._gui_object else None
+
+    @property
+    def slp_validation_fetch_signal(self):
+        return self._gui_object().slp_validation_fetch_signal if self._gui_object else None
+
+    def _emit_ui_update(self, data):
+        if not self.slp_validation_fetch_signal:
+            return
+        self.slp_validation_fetch_signal.emit(data)
 
     def new_search(self, valjob_ref):
         """
@@ -131,23 +148,46 @@ class _SlpGraphSearchManager:
         """
         txid = valjob_ref.root_txid
 
-        if self.emit_ui_update is None and valjob_ref.network.slp_validation_fetch_signal:
-            self.emit_ui_update = valjob_ref.network.slp_validation_fetch_signal.emit
-
         with self.lock:
-            if txid not in self.search_jobs.keys():
-                job = GraphSearchJob(txid, valjob_ref)
-                self.search_jobs[txid] = job
+            if txid not in self._search_jobs.keys():
+                job = _GraphSearchJob(txid, valjob_ref)
+                self._search_jobs[txid] = job
                 self.search_queue.put(job)
             else:
-                job = self.search_jobs[txid]
+                job = self._search_jobs[txid]
             return job
         return None
 
+    def remove_search_job(self, root_txid):
+        with self.lock:
+            self._search_jobs.pop(root_txid, None)
+
+    def is_job_failed(self, root_txid):
+        with self.lock:
+            if root_txid in self._search_jobs.keys() \
+                and self._search_jobs[root_txid].job_complete \
+                and not self._search_jobs[root_txid].search_success:
+                return True
+            return False
+
+    def cancel_all_jobs(self):
+        with self.lock:
+            for job in self._search_jobs.values():
+                job.sched_cancel()
+
+    def find(self, root_txid):
+        with self.lock:
+            if root_txid in self._search_jobs.keys():
+                return self._search_jobs[root_txid]
+        return None
+
+    def jobs_copy(self):
+        with self.lock:
+            return self._search_jobs.copy()
+
     def restart_search(self, job):
         def callback(job):
-            with self.lock:
-                self.search_jobs.pop(job.root_txid, None)
+            self.remove_job(job.root_txid)
             self.new_search(job.valjob)
             job = None
         if not job.job_complete:
@@ -172,10 +212,7 @@ class _SlpGraphSearchManager:
                 finally:
                     if job.valjob.wakeup:
                         job.valjob.wakeup.set()
-                    if self.emit_ui_update is None and job.valjob.network.slp_validation_fetch_signal:
-                        self.emit_ui_update = job.valjob.network.slp_validation_fetch_signal.emit
-                    if self.emit_ui_update:
-                        self.emit_ui_update(self.data_totalizer)
+                    self._emit_ui_update(self.bytes_downloaded)
         finally:
             print("[SLP Graph Search] Error: mainloop exited.", file=sys.stderr)
 
@@ -195,7 +232,7 @@ class _SlpGraphSearchManager:
 
         # setup post url/query based on gs server kind
         kind = 'bchd'
-        host = job.valjob.network.slp_gs_host
+        host = slp_gs_mgr.slp_gs_host
         if networks.net.SLPDB_SERVERS.get(host):
             kind = networks.net.SLPDB_SERVERS.get(host)["kind"]
         if kind == 'gs++':
@@ -213,11 +250,11 @@ class _SlpGraphSearchManager:
         with requests.post(url, json=query_json, stream=True, timeout=60) as r:
             for chunk in r.iter_content(chunk_size=None):
                 job.gs_response_size += len(chunk)
-                self.data_totalizer += len(chunk)
+                self.bytes_downloaded += len(chunk)
                 dat += chunk
                 t = time.perf_counter()
-                if (t - time_last_updated) > 2 and self.emit_ui_update:
-                    self.emit_ui_update(self.data_totalizer)
+                if (t - time_last_updated) > 2:
+                    self._emit_ui_update(self.bytes_downloaded)
                     time_last_updated = t
                 if not job.valjob.running:
                     job.set_failed('validation job stopped')
@@ -238,8 +275,7 @@ class _SlpGraphSearchManager:
             job.txn_count_progress += 1
             tx = Transaction(base64.b64decode(txn).hex())
             job.put_tx(tx)
-            #SlpGraphSearchManager.tx_cache_put(tx)
         job.set_success()
         print("[SLP Graph Search] job success.")
 
-graph_search_mgr = _SlpGraphSearchManager()
+slp_gs_mgr = _SlpGraphSearchManager()

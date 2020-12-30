@@ -18,8 +18,8 @@ from .bitcoin import TYPE_SCRIPT
 from .util import print_error
 from .slp_validator_0x01 import Validator_SLP1, GraphContext
 
-from . import slp_proxying # loading this module starts a thread.
-from . import slp_graph_search # thread doesn't start until instantiation, one thread per search job, w/ shared txn cache
+from . import slp_proxying               # loading this module starts a thread.
+from .slp_graph_search import slp_gs_mgr # loading this module starts a thread.
 
 class GraphContext_NFT1(GraphContext):
     ''' Instance of the NFT1 DAG cache.  Uses a single per-instance
@@ -115,6 +115,8 @@ class GraphContext_NFT1(GraphContext):
 
         def fetch_hook(txids, val_job):
             l = []
+
+            # TODO: enable Graph Search for these types of tokens
             for txid in txids:
                 try:
                     l.append(wallet.transactions[txid])
@@ -379,11 +381,9 @@ class Validator_NFT1(ValidatorGeneric):
         network = nft_child_job.network
 
         if nft_child_job.nft_parent_validity > 1:
-            ui_cb = wallet.ui_emit_validity_updated
-            if ui_cb:
-                ui_cb(nft_child_job.nft_parent_tx.txid_fast(), nft_child_job.nft_parent_validity)
-                ui_cb(nft_child_job.genesis_tx.txid_fast(), 4)
-                ui_cb(nft_child_job.root_txid, 4)
+            slp_gs_mgr.slp_validity_signal.emit(nft_child_job.nft_parent_tx.txid_fast(), nft_child_job.nft_parent_validity)
+            slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), 4)
+            slp_gs_mgr.slp_validity_signal.emit(nft_child_job.root_txid, 4)
             if done_callback:
                 done_callback(nft_child_job.nft_parent_validity)
             else:
@@ -410,10 +410,8 @@ class Validator_NFT1(ValidatorGeneric):
                 wallet.tx_tokinfo[nft_child_job.nft_parent_tx.txid_fast()]['validity'] = val
                 #wallet.tx_tokinfo[nft_child_job.genesis_tx.txid_fast()]['validity'] = val
                 wallet.save_transactions()
-            ui_cb = wallet.ui_emit_validity_updated
-            if ui_cb:
-                ui_cb(txid, val)
-                #ui_cb(nft_child_job.genesis_tx.txid_fast(), val)
+            slp_gs_mgr.slp_validity_signal.emit(txid, val)
+            #slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), val)
             if done_callback:
                 done_callback(val)
             else:
@@ -434,9 +432,7 @@ class Validator_NFT1(ValidatorGeneric):
             with wallet.lock:
                 wallet.tx_tokinfo[nft_child_job.genesis_tx.txid_fast()]['validity'] = 4
                 wallet.save_transactions()
-            ui_cb = wallet.ui_emit_validity_updated
-            if ui_cb:
-                ui_cb(nft_child_job.genesis_tx.txid_fast(), 4)
+            slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), 4)
             if done_callback:
                 done_callback(4)
 

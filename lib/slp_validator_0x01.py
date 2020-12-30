@@ -17,8 +17,8 @@ from .slp_dagging import TokenGraph, ValidationJob, ValidationJobManager, Valida
 from .bitcoin import TYPE_SCRIPT
 from .util import PrintError
 
-from . import slp_proxying # loading this module starts a thread.
-from .slp_graph_search import graph_search_mgr
+from . import slp_proxying               # loading this module starts a thread.
+from .slp_graph_search import slp_gs_mgr # loading this module starts a thread.
 
 class GraphContext(PrintError):
     ''' Instance of the DAG cache. Uses a single per-instance
@@ -198,30 +198,24 @@ class GraphContext(PrintError):
             l = []
 
             gs_enable, gs_host = self.get_gs_config()
-            network.slp_gs_host = gs_host
+            slp_gs_mgr.slp_gs_host = gs_host
 
             nonlocal first_fetch_complete
 
-            if gs_enable \
-                and gs_host \
-                and not val_job.graph_search_job:
-                    if val_job.root_txid in graph_search_mgr.search_jobs.keys() \
-                        and graph_search_mgr.search_jobs[val_job.root_txid].job_complete \
-                        and not graph_search_mgr.search_jobs[val_job.root_txid].search_success:
-                            graph_search_mgr.search_jobs.pop(val_job.root_txid)
-                    search_job = graph_search_mgr.new_search(val_job)
-                    val_job.graph_search_job = search_job if search_job else None
-            elif not gs_enable and graph_search_mgr:
-                for job in graph_search_mgr.search_jobs.values():
-                    job.sched_cancel()
+            gs_job = slp_gs_mgr.find(val_job.root_txid)
 
-            if network.slp_validation_fetch_signal and not first_fetch_complete:
-                network.slp_validation_fetch_signal.emit(0)
+            if gs_enable and gs_host and not gs_job:
+                gs_job = slp_gs_mgr.new_search(val_job)
+            elif not gs_enable and slp_gs_mgr:
+                slp_gs_mgr.cancel_all_jobs()
+
+            if not first_fetch_complete:
+                slp_gs_mgr.slp_validation_fetch_signal.emit(0)
                 first_fetch_complete = True
 
             for txid in txids:
-                if val_job.graph_search_job:
-                    txn = val_job.graph_search_job.get_tx(txid)
+                if gs_job:
+                    txn = gs_job.get_tx(txid)
                     if txn:
                         l.append(txn)
                 else:

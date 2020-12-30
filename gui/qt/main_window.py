@@ -173,8 +173,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.wallet.use_change = True
             self.wallet.storage.put('use_change', self.wallet.use_change)
         self.network = gui_object.daemon.network
-        self.network.slp_validity_signal = self.gui_object.slp_validity_signal
-        self.network.slp_validation_fetch_signal = self.gui_object.slp_validation_fetch_signal
+
         self.fx = gui_object.daemon.fx
         self.invoices = wallet.invoices
         self.contacts = wallet.contacts
@@ -562,8 +561,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def load_wallet(self):
         self.wallet.thread = TaskThread(self, self.on_error, name = self.wallet.diagnostic_name() + '/Wallet')
-        self.wallet.ui_emit_validity_updated = self.gui_object.slp_validity_signal.emit
-        self.wallet.ui_emit_validation_fetch = self.gui_object.slp_validation_fetch_signal.emit
         self.update_recently_visited(self.wallet.storage.path)
         # address used to create a dummy transaction and estimate transaction fee
         self.history_list.update()
@@ -5316,10 +5313,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if self.wallet.thread:  # guard against window close before load_wallet was called (#1554)
             self.wallet.thread.stop()
             self.wallet.thread.wait() # Join the thread to make sure it's really dead.
-        if self.wallet.ui_emit_validity_updated:
-            self.wallet.ui_emit_validity_updated = None  # detach callback
-        if self.wallet.ui_emit_validation_fetch:
-            self.wallet.ui_emit_validation_fetch = None
 
         self.tx_update_mgr.clean_up()  # disconnects some signals
 

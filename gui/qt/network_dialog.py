@@ -34,7 +34,7 @@ from electroncash.i18n import _, pgettext
 from electroncash import networks
 from electroncash.util import print_error, Weak, PrintError
 from electroncash.network import serialize_server, deserialize_server, get_eligible_servers
-from electroncash.slp_graph_search import graph_search_mgr
+from electroncash.slp_graph_search import slp_gs_mgr
 from .util import *
 
 protocol_names = ['TCP', 'SSL']
@@ -275,8 +275,6 @@ class SlpSearchJobListWidget(QTreeWidget):
         self.setHeaderLabels([_("Job Id"), _("Txn Count"), _("Data"), _("Status")])
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
-        self.slp_validity_signal = None
-        self.slp_validation_fetch_signal = None
 
     def on_validation_fetch(self, total_data_received):
         if total_data_received > 0:
@@ -305,13 +303,13 @@ class SlpSearchJobListWidget(QTreeWidget):
         qApp.clipboard().setText(txid)
 
     def restart_job(self, txid):
-        job = graph_search_mgr.search_jobs.get(txid)
+        job = slp_gs_mgr.find(txid)
         if job:
-            graph_search_mgr.restart_search(job)
+            slp_gs_mgr.restart_search(job)
         self.update()
 
     def cancel_job(self, txid):
-        job = graph_search_mgr.search_jobs.get(txid)
+        job = slp_gs_mgr.find(txid)
         if job:
             job.sched_cancel(reason='user cancelled')
 
@@ -353,11 +351,10 @@ class SlpSearchJobListWidget(QTreeWidget):
     def update(self):
         self.parent.slp_gs_enable_cb.setChecked(self.parent.config.get('slp_validator_graphsearch_enabled', False))
         selected_item_id = self.currentItem().data(0, Qt.UserRole) if self.currentItem() else None
-        if not self.slp_validation_fetch_signal and self.parent.network.slp_validation_fetch_signal:
-            self.slp_validation_fetch_signal = self.parent.network.slp_validation_fetch_signal
-            self.slp_validation_fetch_signal.connect(self.on_validation_fetch, Qt.QueuedConnection)
+        slp_gs_mgr.slp_validation_fetch_signal.connect(self.on_validation_fetch, Qt.QueuedConnection)
+
         self.clear()
-        jobs = graph_search_mgr.search_jobs.copy()
+        jobs = slp_gs_mgr.jobs_copy()
         working_item = None
         completed_items = []
         other_items = []
@@ -420,7 +417,7 @@ class SlpGsServeListWidget(QTreeWidget):
         if not host and networks.net.SLPDB_SERVERS:  # Note: testnet4 and scalenet may have empty SLPDB_SERVERS
             host = next(iter(networks.net.SLPDB_SERVERS))
             self.parent.config.set_key('slp_gs_host', host)
-        self.network.slp_gs_host = host
+        slp_gs_mgr.slp_gs_host = host
 
     def create_menu(self, position):
         item = self.currentItem()
@@ -456,7 +453,7 @@ class SlpGsServeListWidget(QTreeWidget):
         slp_gs_count = len(slp_gs_list)
         for k, items in slp_gs_list.items():
             if slp_gs_count > 0:
-                star = ' ◀' if k == self.network.slp_gs_host else ''
+                star = ' ◀' if k == slp_gs_mgr.slp_gs_host else ''
                 x = QTreeWidgetItem([k+star]) #, 'NA'])
                 x.setData(0, Qt.UserRole, k)
                 # x.setData(1, Qt.UserRole, k)
@@ -621,7 +618,7 @@ class NetworkChoiceLayout(QObject, PrintError):
 
         # SLP Validation Tab
         grid = QGridLayout(slp_tab)
-        self.slp_gs_enable_cb = QCheckBox(_('Use Graph Search server (gs++) to speed up validation'))
+        self.slp_gs_enable_cb = QCheckBox(_('Use a Graph Search server to speed up validation'))
         self.slp_gs_enable_cb.clicked.connect(self.use_slp_gs)
         self.slp_gs_enable_cb.setChecked(self.config.get('slp_validator_graphsearch_enabled', False))
         grid.addWidget(self.slp_gs_enable_cb, 0, 0, 1, 3)
@@ -779,7 +776,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.split_label.setText(msg)
         self.nodes_list_widget.update(self.network)
         self.slp_gs_list_widget.update()
-        self.slp_gs_server_host.setText(self.network.slp_gs_host)
+        self.slp_gs_server_host.setText(slp_gs_mgr.slp_gs_host)
         self.slp_gs_enable_cb.setChecked(self.config.get('slp_validator_graphsearch_enabled', False))
         self.slp_search_job_list_widget.update()
 
@@ -875,8 +872,8 @@ class NetworkChoiceLayout(QObject, PrintError):
             server = str(self.slp_gs_server_host.text())
         else:
             self.slp_gs_server_host.setText(server)
-        self.network.slp_gs_host = server
-        self.config.set_key('slp_gs_host', self.network.slp_gs_host)
+        slp_gs_mgr.slp_gs_host = server
+        self.config.set_key('slp_gs_host', slp_gs_mgr.slp_gs_host)
         self.slp_gs_list_widget.update()
 
     def set_proxy(self):
