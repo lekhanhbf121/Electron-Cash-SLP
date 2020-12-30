@@ -124,7 +124,7 @@ class HistoryList(MyTreeWidget):
                 # know the actual balance for history items while it's
                 # downloading history, and we want to flag that situation
                 # and redraw the GUI sometime later when it finishes updating.
-                # This flag is checked in main_window.py, TxUpadteMgr class.
+                # This flag is checked in main_window.py, TxUpdateMgr class.
                 self.has_unknown_balances = True
             status, status_str = self.wallet.get_tx_status(tx_hash, height, conf, timestamp)
             has_invoice = self.wallet.invoices.paid.get(tx_hash)

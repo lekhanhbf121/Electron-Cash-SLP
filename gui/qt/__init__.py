@@ -220,7 +220,7 @@ class ElectrumGui(QObject, PrintError):
             #
             # qt_disable_highdpi will be set to None by default, or True if
             # specified on command-line.  The command-line override is intended
-            # to supporess high-dpi mode just for this run for testing.
+            # to support high-dpi mode just for this run for testing.
             #
             # The more permanent setting is qt_enable_highdpi which is the GUI
             # preferences option, so we don't enable highdpi if it's explicitly
