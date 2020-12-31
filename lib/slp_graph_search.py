@@ -94,19 +94,26 @@ class _GraphSearchJob:
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
 
-    def get_job_cache(self):
+    def get_job_cache(self, reverse=True):
+        gs_cache = []
+
         wallet = self.valjob.ref()
         if not wallet:
-            return []
+            return gs_cache
+
         wallet_val = self.valjob.validitycache
         token_id = self.valjob.graph.validator.token_id_hex
-        try:
-            gs_cache = [[key, wallet.verified_tx[key][0]] for key in wallet.slpv1_validity.keys() \
-                    if wallet.tx_tokinfo[key]["token_id"] == token_id and wallet.slpv1_validity[key] == 1]
-            return [base64.standard_b64encode(codecs.decode(item[0],'hex')[::-1]).decode("ascii")
-                            for item in sorted(gs_cache, key=itemgetter(1), reverse=True)][:10]
-        except KeyError:
-            return []
+
+        for [key, val] in wallet.slpv1_validity.items():
+            _token_id = wallet.tx_tokinfo.get(key, {}).get("token_id", None)
+            if _token_id == token_id and val == 1:
+                b = codecs.decode(key, 'hex')
+                if reverse:
+                    b = b[::-1]
+                b64 = base64.standard_b64encode(b).decode("ascii")
+                gs_cache.append(b64)
+
+        return gs_cache
 
     def _cancel(self):
         self.job_complete = True
