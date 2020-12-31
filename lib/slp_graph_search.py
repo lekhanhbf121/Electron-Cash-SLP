@@ -23,13 +23,14 @@ import json
 import base64
 import requests
 import codecs
+from operator import itemgetter
 from .transaction import Transaction
 from .caches import ExpiringCache
 from electroncash import networks
 
 class _GraphSearchJob:
-    def __init__(self, txid, valjob_ref):
-        self.root_txid = txid
+    def __init__(self, valjob_ref):
+        self.root_txid = valjob_ref.root_txid
         self.valjob = valjob_ref
 
         # metadata fetched from back end
@@ -65,12 +66,6 @@ class _GraphSearchJob:
             self.waiting_to_cancel = True
             self.cancel_callback = callback
 
-    def _cancel(self):
-        self.job_complete = True
-        self.search_success = False
-        if self.cancel_callback:
-            self.cancel_callback(self)
-
     def set_success(self):
         self.search_success = True
         self.job_complete = True
@@ -98,6 +93,26 @@ class _GraphSearchJob:
         ''' Puts a non-deserialized copy of tx into the tx_cache. '''
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
+
+    def get_job_cache(self):
+        wallet = self.valjob.ref()
+        if not wallet:
+            return []
+        wallet_val = self.valjob.validitycache
+        token_id = self.valjob.graph.validator.token_id_hex
+        try:
+            gs_cache = [[key, wallet.verified_tx[key][0]] for key in wallet.slpv1_validity.keys() \
+                    if wallet.tx_tokinfo[key]["token_id"] == token_id and wallet.slpv1_validity[key] == 1]
+            return [base64.standard_b64encode(codecs.decode(item[0],'hex')[::-1]).decode("ascii")
+                            for item in sorted(gs_cache, key=itemgetter(1), reverse=True)][:10]
+        except KeyError:
+            return []
+
+    def _cancel(self):
+        self.job_complete = True
+        self.search_success = False
+        if self.cancel_callback:
+            self.cancel_callback(self)
 
 class _SlpGraphSearchManager:
     """
@@ -149,7 +164,7 @@ class _SlpGraphSearchManager:
 
         with self.lock:
             if txid not in self._search_jobs.keys():
-                job = _GraphSearchJob(txid, valjob_ref)
+                job = _GraphSearchJob(valjob_ref)
                 self._search_jobs[txid] = job
                 self.search_queue.put(job)
             else:
@@ -234,14 +249,15 @@ class _SlpGraphSearchManager:
         elif kind == 'bchd':
             txid_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
             url = host + "/v1/GetSlpGraphSearch"
-            query_json = { "hash": txid_b64 } # , "valid_txids": [] }
+            query_json = { "hash": txid_b64, "valid_hashes": job.get_job_cache() }
             res_txns_key = 'txdata'
         else:
             raise Exception("unknown server kind")
 
         dat = b''
         time_last_updated = time.perf_counter()
-        with requests.post(url, json=query_json, stream=True, timeout=60) as r:
+        headers = {'Content-Type': 'application/json', 'Accept':'application/json'}
+        with requests.post(url, data=json.dumps(query_json), headers=headers, stream=True, timeout=60) as r:
             for chunk in r.iter_content(chunk_size=None):
                 job.gs_response_size += len(chunk)
                 self.bytes_downloaded += len(chunk)
