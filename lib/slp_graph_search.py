@@ -186,7 +186,6 @@ class _SlpGraphSearchManager:
 
     def restart_search(self, job):
         def callback(job):
-            self.remove_job(job.root_txid)
             self.new_search(job.valjob)
             job = None
         if not job.job_complete:
