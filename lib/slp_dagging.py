@@ -505,20 +505,25 @@ class ValidationJob:
         #   prevent network calls to fetch non-contributing/invalid transactions.
         #
         #   This optimization requires all cache item source are equal to "graph_search"
-        # 
-        gs_job = slp_gs_mgr.find(self.root_txid)
-        if gs_job and not gs_job.job_complete:
-            print("Waiting for graph search download to complete.")
-            self.wakeup.wait()
-            print("Graph search download completed, proceeding with validation.")
+        #
+        if slp_gs_mgr.gs_enabled:
+            gs_job = slp_gs_mgr.find(self.root_txid)
 
-        if gs_job and gs_job.search_success:
-            for tx in cached:
-                dl_callback(tx)
-            for txid in txid_set:
-                skip_callback(txid)
-            txid_set.clear()
-            return txid_set
+            # check if we need to wait for the job to complete downloading
+            if gs_job and not gs_job.job_complete:
+                print("Waiting for graph search download to complete.")
+                self.wakeup.wait()
+                if slp_gs_mgr.gs_enabled:
+                    print("Graph search download completed, proceeding with validation.")
+
+            # we need to check gs_enabled again since it could change after the wake up event
+            if slp_gs_mgr.gs_enabled and gs_job and gs_job.search_success:
+                for tx in cached:
+                    dl_callback(tx)
+                for txid in txid_set:
+                    skip_callback(txid)
+                txid_set.clear()
+                return txid_set
         
         # build requests list from remaining txids.
         requests = []

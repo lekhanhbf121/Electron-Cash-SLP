@@ -138,28 +138,18 @@ class GraphContext(PrintError):
     def get_validation_config():
         config = get_config()
         try:
-            limit_dls   = config.get('slp_validator_download_limit', None)
-            limit_depth = config.get('slp_validator_depth_limit', None)
+            limit_dls    = config.get('slp_validator_download_limit', None)
+            limit_depth  = config.get('slp_validator_depth_limit', None)
             proxy_enable = config.get('slp_validator_proxy_enabled', False)
         except NameError: # in daemon mode (no GUI) 'config' is not defined
-            limit_dls = None
-            limit_depth = None
+            limit_dls    = None
+            limit_depth  = None
             proxy_enable = False
 
+        # feature doesn't yet exist..
+        proxy_enable = False
+
         return limit_dls, limit_depth, proxy_enable
-
-    @staticmethod
-    def get_gs_config():
-        config = get_config()
-        try:
-            gs_enable = config.get('slp_validator_graphsearch_enabled', False)
-            gs_host = config.get('slp_gs_host', None)
-        except NameError: # in daemon mode (no GUI) 'config' is not defined
-            gs_enable = False
-            gs_host = None
-
-        return gs_enable, gs_host
-
 
     def make_job(self, tx, wallet, network, *, debug=False, reset=False, callback_done=None, **kwargs) -> ValidationJob:
         """
@@ -197,32 +187,21 @@ class GraphContext(PrintError):
         def fetch_hook(txids, val_job):
             l = []
 
-            gs_enable, gs_host = self.get_gs_config()
-            slp_gs_mgr.slp_gs_host = gs_host
-
             nonlocal first_fetch_complete
 
-            gs_job = slp_gs_mgr.find(val_job.root_txid)
-
-            if gs_enable and gs_host and not gs_job:
-                gs_job = slp_gs_mgr.new_search(val_job)
-            elif not gs_enable and slp_gs_mgr:
-                slp_gs_mgr.cancel_all_jobs()
+            gs_job = slp_gs_mgr.new_search(val_job)
 
             if not first_fetch_complete:
                 slp_gs_mgr.slp_validation_fetch_signal.emit(0)
                 first_fetch_complete = True
 
             for txid in txids:
-                if gs_job:
-                    txn = gs_job.get_tx(txid)
-                    if txn:
-                        l.append(txn)
+                txn = gs_job.get_tx(txid)
+                if txn:
+                    l.append(txn)
                 else:
-                    try:
-                        l.append(wallet.transactions[txid])
-                    except KeyError:
-                        pass
+                    try: l.append(wallet.transactions[txid])
+                    except KeyError: pass
             return l
 
         def done_callback(job):

@@ -362,15 +362,17 @@ class SlpSearchJobListWidget(QTreeWidget):
         for k, job in jobs.items():
             if len(jobs) > 0:
                 tx_count = str(job.txn_count_progress)
-                status = 'In Queue'
-                if job.search_success:
-                    status = 'Downloaded'
-                elif job.job_complete:
-                    status = 'Exited'
-                elif job.waiting_to_cancel:
-                    status = 'Stopping...'
-                elif job.search_started:
-                    status = 'Downloading...'
+                status = 'NA'
+                if slp_gs_mgr.gs_enabled:
+                    status = 'In Queue'
+                    if job.search_success:
+                        status = 'Downloaded'
+                    elif job.job_complete:
+                        status = 'Exited'
+                    elif job.waiting_to_cancel:
+                        status = 'Stopping...'
+                    elif job.search_started:
+                        status = 'Downloading...'
                 success = str(job.search_success) if job.search_success else ''
                 exit_msg = ' ('+job.exit_msg+')' if job.exit_msg and status != 'Downloaded' else ''
                 x = QTreeWidgetItem([job.root_txid[:6], tx_count, self.humanbytes(job.gs_response_size), status + exit_msg])
@@ -414,11 +416,9 @@ class SlpGsServeListWidget(QTreeWidget):
         self.setHeaderLabels([_('GS Server')]) #, _('Server Status')])
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
-        host = self.parent.config.get('slp_gs_host', None)
-        if not host and networks.net.SLPDB_SERVERS:  # Note: testnet4 and scalenet may have empty SLPDB_SERVERS
+        if not slp_gs_mgr.gs_host and networks.net.SLPDB_SERVERS:  # Note: testnet4 and scalenet may have empty SLPDB_SERVERS
             host = next(iter(networks.net.SLPDB_SERVERS))
-            self.parent.config.set_key('slp_gs_host', host)
-        slp_gs_mgr.slp_gs_host = host
+            slp_gs_mgr.set_gs_host(host)
 
     def create_menu(self, position):
         item = self.currentItem()
@@ -454,7 +454,7 @@ class SlpGsServeListWidget(QTreeWidget):
         slp_gs_count = len(slp_gs_list)
         for k, items in slp_gs_list.items():
             if slp_gs_count > 0:
-                star = ' ◀' if k == slp_gs_mgr.slp_gs_host else ''
+                star = ' ◀' if k == slp_gs_mgr.gs_host else ''
                 x = QTreeWidgetItem([k+star]) #, 'NA'])
                 x.setData(0, Qt.UserRole, k)
                 # x.setData(1, Qt.UserRole, k)
@@ -687,10 +687,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.update()
 
     def use_slp_gs(self):
-        if self.slp_gs_enable_cb.isChecked():
-            self.config.set_key('slp_validator_graphsearch_enabled', True)
-        else:
-            self.config.set_key('slp_validator_graphsearch_enabled', False)
+        slp_gs_mgr.toggle_graph_search(self.slp_gs_enable_cb.isChecked())
         self.slp_gs_list_widget.update()
 
     def check_disable_proxy(self, b):
@@ -777,7 +774,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.split_label.setText(msg)
         self.nodes_list_widget.update(self.network)
         self.slp_gs_list_widget.update()
-        self.slp_gs_server_host.setText(slp_gs_mgr.slp_gs_host)
+        self.slp_gs_server_host.setText(slp_gs_mgr.gs_host)
         self.slp_gs_enable_cb.setChecked(self.config.get('slp_validator_graphsearch_enabled', False))
         self.slp_search_job_list_widget.update()
 
@@ -873,8 +870,7 @@ class NetworkChoiceLayout(QObject, PrintError):
             server = str(self.slp_gs_server_host.text())
         else:
             self.slp_gs_server_host.setText(server)
-        slp_gs_mgr.slp_gs_host = server
-        self.config.set_key('slp_gs_host', slp_gs_mgr.slp_gs_host)
+        slp_gs_mgr.set_gs_host(server)
         self.slp_gs_list_widget.update()
 
     def set_proxy(self):
