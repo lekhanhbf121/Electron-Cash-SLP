@@ -272,7 +272,7 @@ class SlpSearchJobListWidget(QTreeWidget):
         QTreeWidget.__init__(self)
         self.parent = parent
         self.network = parent.network
-        self.setHeaderLabels([_("Job Id"), _("Txn Count"), _("Data"), _("Status")])
+        self.setHeaderLabels([_("Job Id"), _("Txn Count"), _("Data"), _("Cache Size"), _("Status")])
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
         slp_gs_mgr.slp_validation_fetch_signal.connect(self.update_list_data, Qt.QueuedConnection)
@@ -292,9 +292,9 @@ class SlpSearchJobListWidget(QTreeWidget):
         menu.addAction(_("Copy Reversed Txid"), lambda: self._copy_txid_to_clipboard(True))
         menu.addAction(_("Refresh List"), lambda: self.update())
         txid = item.data(0, Qt.UserRole)
-        if item.data(3, Qt.UserRole) in ['Exited']:
+        if item.data(4, Qt.UserRole) in ['Exited']:
             menu.addAction(_("Restart Search"), lambda: self.restart_job(txid))
-        elif item.data(3, Qt.UserRole) not in ['Exited', 'Downloaded']:
+        elif item.data(4, Qt.UserRole) not in ['Exited', 'Downloaded']:
             menu.addAction(_("Cancel"), lambda: self.cancel_job(txid))
         menu.exec_(self.viewport().mapToGlobal(position))
 
@@ -312,8 +312,7 @@ class SlpSearchJobListWidget(QTreeWidget):
 
     def cancel_job(self, txid):
         job = slp_gs_mgr.find(txid)
-        if job:
-            job.sched_cancel(reason='user cancelled')
+        if job: job.sched_cancel(reason='user cancelled')
 
     def keyPressEvent(self, event):
         if event.key() in [ Qt.Key_F2, Qt.Key_Return ]:
@@ -375,9 +374,10 @@ class SlpSearchJobListWidget(QTreeWidget):
                         status = 'Downloading...'
                 success = str(job.search_success) if job.search_success else ''
                 exit_msg = ' ('+job.exit_msg+')' if job.exit_msg and status != 'Downloaded' else ''
-                x = QTreeWidgetItem([job.root_txid[:6], tx_count, self.humanbytes(job.gs_response_size), status + exit_msg])
+                x = QTreeWidgetItem([job.root_txid[:6], tx_count, self.humanbytes(job.gs_response_size), str(job.validity_cache_size), status + exit_msg])
                 x.setData(0, Qt.UserRole, k)
-                x.setData(3, Qt.UserRole, status)
+                x.setData(3, Qt.UserRole, job.validity_cache_size)
+                x.setData(4, Qt.UserRole, status)
                 if status == 'Downloading...':
                     working_item = x
                 elif status == "Downloaded":

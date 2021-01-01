@@ -11,6 +11,10 @@ a Graph Search server see:
 This class is currently only used by slp_validator_0x01.py.
 The NFT1 validator has not yet been attached to the NFT1 validator.
 
+Servers can be added or removed using "lib/servers_slpdb.json" and 
+"lib/servers_slpdb_testnet.json".  Currently only the bchd has been tested
+with the validation cache excludes.
+
 """
 
 import sys
@@ -40,6 +44,7 @@ class _GraphSearchJob:
         self.depth_map = None
         self.total_depth = None
         self.txn_count_total = None
+        self.validity_cache_size = 0
 
         # job status info
         self.search_started = False
@@ -112,7 +117,8 @@ class _GraphSearchJob:
                     b = b[::-1]
                 b64 = base64.standard_b64encode(b).decode("ascii")
                 gs_cache.append(b64)
-
+                
+        self.validity_cache_size = len(gs_cache)
         return gs_cache
 
     def _cancel(self):
