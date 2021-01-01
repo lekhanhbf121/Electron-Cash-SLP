@@ -122,10 +122,10 @@ class GraphContext_NFT1(GraphContext):
                     l.append(wallet.transactions[txid])
                 except KeyError:
                     pass
-            if proxy_enable:
-                proxy.add_job(txids, proxy_cb)
-                nonlocal num_proxy_requests
-                num_proxy_requests += 1
+            # if proxy_enable:
+            #     proxy.add_job(txids, proxy_cb)
+            #     nonlocal num_proxy_requests
+            #     num_proxy_requests += 1
             return l
 
         def done_callback(job):

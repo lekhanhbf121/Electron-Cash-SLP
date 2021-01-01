@@ -2,13 +2,18 @@
 SLP Graph Search Client
 
 Performs a background search and batch download of graph
-transactions from gs++ server. For more information about
-the gs++ server see:
+transactions from a Graph Search server. For more information about
+a Graph Search server see:
 
-https://github.com/blockparty-sh/cpp_slp_graph_search
+* gs++: https://github.com/blockparty-sh/cpp_slp_graph_search
+* bchd: https://github.com/simpleledgerinc/bchd/tree/graphsearch
 
 This class is currently only used by slp_validator_0x01.py.
 The NFT1 validator has not yet been attached to the NFT1 validator.
+
+Servers can be added or removed using "lib/servers_slpdb.json" and 
+"lib/servers_slpdb_testnet.json".  Currently only the bchd has been tested
+with the validation cache excludes.
 
 """
 
@@ -23,25 +28,29 @@ import json
 import base64
 import requests
 import codecs
+from operator import itemgetter
 from .transaction import Transaction
 from .caches import ExpiringCache
 from electroncash import networks
 
+from . import slp_validator_0x01
+
 class _GraphSearchJob:
-    def __init__(self, txid, valjob_ref):
-        self.root_txid = txid
-        self.valjob = valjob_ref
+    def __init__(self, valjob):
+        self.root_txid = valjob.root_txid
+        self.valjob = valjob
 
         # metadata fetched from back end
         self.depth_map = None
         self.total_depth = None
         self.txn_count_total = None
+        self.validity_cache_size = 0
 
         # job status info
         self.search_started = False
         self.search_success = None
         self.job_complete = False
-        self.exit_msg = None
+        self.exit_msg = ''
         self.depth_current_query = None
         self.txn_count_progress = 0
         self.gs_response_size = 0
@@ -50,9 +59,6 @@ class _GraphSearchJob:
         # ctl
         self.waiting_to_cancel = False
         self.cancel_callback = None
-
-        # host for graph search
-        self.host = slp_gs_mgr.slp_gs_host
 
         # gs job results cache - clears data after 30 minutes
         self._txdata = ExpiringCache(maxlen=10000000, name="GraphSearchTxnFetchCache", timeout=1800)
@@ -64,12 +70,6 @@ class _GraphSearchJob:
         if not self.waiting_to_cancel:
             self.waiting_to_cancel = True
             self.cancel_callback = callback
-
-    def _cancel(self):
-        self.job_complete = True
-        self.search_success = False
-        if self.cancel_callback:
-            self.cancel_callback(self)
 
     def set_success(self):
         self.search_success = True
@@ -99,6 +99,34 @@ class _GraphSearchJob:
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
 
+    def get_job_cache(self, reverse=True):
+        gs_cache = []
+
+        wallet = self.valjob.ref()
+        if not wallet:
+            return gs_cache
+
+        wallet_val = self.valjob.validitycache
+        token_id = self.valjob.graph.validator.token_id_hex
+
+        for [key, val] in wallet.slpv1_validity.items():
+            _token_id = wallet.tx_tokinfo.get(key, {}).get("token_id", None)
+            if _token_id == token_id and val == 1:
+                b = codecs.decode(key, 'hex')
+                if reverse:
+                    b = b[::-1]
+                b64 = base64.standard_b64encode(b).decode("ascii")
+                gs_cache.append(b64)
+                
+        self.validity_cache_size = len(gs_cache)
+        return gs_cache
+
+    def _cancel(self):
+        self.job_complete = True
+        self.search_success = False
+        if self.cancel_callback:
+            self.cancel_callback(self)
+
 class _SlpGraphSearchManager:
     """
     A single thread that processes graph search requests sequentially.
@@ -109,9 +137,6 @@ class _SlpGraphSearchManager:
         self._search_jobs = dict()
         self._gui_object = None
         self.lock = threading.Lock()
-
-        # graph search host url
-        self.slp_gs_host = ""
 
         # Create a single use queue on a new thread
         self.search_queue = queue.Queue()  # TODO: make this a PriorityQueue based on dag size
@@ -133,29 +158,69 @@ class _SlpGraphSearchManager:
     def slp_validation_fetch_signal(self):
         return self._gui_object().slp_validation_fetch_signal
 
+    @property
+    def gs_enabled(self):
+        return self._gui_object().config.get('slp_validator_graphsearch_enabled', False)
+
+    def _set_gs_enabled(self, enable):
+        self._gui_object().config.set_key('slp_validator_graphsearch_enabled', enable)
+
+    @property
+    def gs_host(self):
+        host = self._gui_object().config.get('slp_validator_graphsearch_host', '')
+        # handle case for upgraded config key name
+        if not host:
+            host = self._gui_object().config.get('slp_gs_host', '')
+            if not host: self.set_gs_host(host)
+        return host
+
+    def set_gs_host(self, host):
+        self._gui_object().config.set_key('slp_validator_graphsearch_host', host)
+
     def _emit_ui_update(self, data):
         if not self.slp_validation_fetch_signal:
             return
         self.slp_validation_fetch_signal.emit(data)
 
-    def new_search(self, valjob_ref):
+    def new_search(self, valjob):
         """
         Starts a new thread to fetch GS metadata for a job.
         Depending on the metadata results the job may end up being added to the GS queue.
 
         Returns weakref of the new GS job object if new job is created.
         """
-        txid = valjob_ref.root_txid
-
+        txid = valjob.root_txid
         with self.lock:
             if txid not in self._search_jobs.keys():
-                job = _GraphSearchJob(txid, valjob_ref)
+                job = _GraphSearchJob(valjob)
                 self._search_jobs[txid] = job
                 self.search_queue.put(job)
-            else:
-                job = self._search_jobs[txid]
-            return job
-        return None
+            return self._search_jobs[txid]
+
+    def toggle_graph_search(self, enable):
+        if self.gs_enabled == enable:
+            return
+
+        # get a weakref to each open wallet
+        wallets = weakref.WeakSet()
+        with self.lock:
+            for [_, job] in self._search_jobs.items():
+                job.valjob.stop()
+                if job.valjob.ref():
+                    wallets.add(job.valjob.ref())
+
+        # kill the current validator activity
+        slp_validator_0x01.shared_context.kill()
+
+        # delete all the gs jobs
+        with self.lock:
+            self._search_jobs.clear()
+
+        self._set_gs_enabled(enable)
+
+        # activate slp in each wallet
+        for wallet in wallets:
+            if wallet: wallet.activate_slp()
 
     def remove_search_job(self, root_txid):
         with self.lock:
@@ -168,11 +233,6 @@ class _SlpGraphSearchManager:
                 and not self._search_jobs[root_txid].search_success:
                 return True
             return False
-
-    def cancel_all_jobs(self):
-        with self.lock:
-            for job in self._search_jobs.values():
-                job.sched_cancel()
 
     def find(self, root_txid):
         with self.lock:
@@ -196,6 +256,9 @@ class _SlpGraphSearchManager:
     def mainloop(self,):
         while True:
             job = self.search_queue.get(block=True)
+            if not self.gs_enabled:
+                job.set_failed('gs is disabled')
+                continue
             job.search_started = True
             if not job.valjob.running and not job.valjob.has_never_run:
                 job.set_failed('validation finished')
@@ -217,13 +280,13 @@ class _SlpGraphSearchManager:
         if not job.valjob.running and not job.valjob.has_never_run:
             job.set_failed('validation finished')
             return
-        print('Requesting txid from gs++: ' + job.root_txid)
+        print('GS Request: {} ({})'.format(job.root_txid, self.gs_host))
         txid = codecs.encode(codecs.decode(job.root_txid,'hex')[::-1], 'hex').decode()
-        print('Requesting txid from gs++ (reversed): ' + txid)
+        print('GS Request: {} (reversed) ({})'.format(txid, self.gs_host))
 
         # setup post url/query based on gs server kind
         kind = 'bchd'
-        host = slp_gs_mgr.slp_gs_host
+        host = slp_gs_mgr.gs_host
         if networks.net.SLPDB_SERVERS.get(host):
             kind = networks.net.SLPDB_SERVERS.get(host)["kind"]
         if kind == 'gs++':
@@ -233,20 +296,21 @@ class _SlpGraphSearchManager:
         elif kind == 'bchd':
             txid_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
             url = host + "/v1/GetSlpGraphSearch"
-            query_json = { "hash": txid_b64 } # , "valid_txids": [] }
+            query_json = { "hash": txid_b64, "valid_hashes": job.get_job_cache() }
             res_txns_key = 'txdata'
         else:
             raise Exception("unknown server kind")
 
         dat = b''
         time_last_updated = time.perf_counter()
-        with requests.post(url, json=query_json, stream=True, timeout=60) as r:
+        headers = {'Content-Type': 'application/json', 'Accept':'application/json'}
+        with requests.post(url, data=json.dumps(query_json), headers=headers, stream=True, timeout=60) as r:
             for chunk in r.iter_content(chunk_size=None):
                 job.gs_response_size += len(chunk)
                 self.bytes_downloaded += len(chunk)
                 dat += chunk
                 t = time.perf_counter()
-                if (t - time_last_updated) > 10:
+                if (t - time_last_updated) > 3:
                     self._emit_ui_update(self.bytes_downloaded)
                     time_last_updated = t
                 if not job.valjob.running:
@@ -254,6 +318,8 @@ class _SlpGraphSearchManager:
                     return
                 elif job.waiting_to_cancel:
                     job._cancel()
+                    return
+                elif not self.gs_enabled:
                     return
 
         try:
