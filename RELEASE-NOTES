@@ -187,3 +187,19 @@ Electron Cash - SLP Token Edition
 - Enable Dark mode in macOS
 - Updated pyinstaller config to fix long loading time issue on macOS Catalina
 - Add EULA for config key 'slp_eula_accepted'
+
+3.6.6 Updates
+----
+- Token validation performance improvements
+- Increased Bitcoin Files upload limit to 10522 bytes, from 5261 bytes
+- Fixed dark theme color issues
+- Updated secp256k1 sub-module to github.com/Electron-Cash/secp256k1.git
+- Added a warning associated with using the SLP address conversion tool
+- Only enable SLP conversion tool within an SLP type wallet
+- Added flashing notification for seed warning icon
+- Disabled BFP uploads in watch-only wallet types
+- Disabled the RPC daemon subcommands start/stop subcommands since these are not compatible with the SLP validator
+- Prevent RPC commands from accepting SLP address format in RPC "address" parameter in non-SLP wallets
+- RPC commands "getunusedaddress" and "createnewaddress" now return SLP address format in SLP wallets
+- Removed cointext support since this service is no longer available
+- Various other minor bug fixes and improvements
