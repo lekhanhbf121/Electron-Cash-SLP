@@ -2787,7 +2787,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             return False
         return True
 
-    def _chk_no_legacy_address(self):
+    def _warn_if_legacy_address(self):
         """Show a warning if self.payto_e has legacy addresses, since the user
         might be trying to send BTC instead of BCH."""
         warn_legacy_address = bool(self.config.get("warn_legacy_address", True))
@@ -2831,6 +2831,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 )
                 if res[1]:  # Never ask if checked
                     self.config.set_key("warn_legacy_address", False)
+                break
 
     def do_preview(self):
         self.do_send(preview = True)
@@ -2847,7 +2848,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if not self._chk_no_segwit_suspects():
             return
 
-        self._chk_no_legacy_address()
+        self._warn_if_legacy_address()
 
         r = self.read_send_tab(preview=preview)
         if not r:
