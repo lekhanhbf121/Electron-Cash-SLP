@@ -4358,6 +4358,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             for item in history:
                 if is_csv:
                     cols = [item['txid'], item.get('label', ''), item['confirmations'], item['value'], item['fee'], item['date']]
+                    if self.is_slp_wallet:
+                        cols += [item['slp_value'], item['slp_name'], item['slp_token_id']]
                     if has_fiat_columns:
                         cols += [item['fiat_value'], item['fiat_balance'], item['fiat_fee']]
                     if include_addresses:
@@ -4382,6 +4384,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if is_csv:
                     transaction = csv.writer(f, lineterminator='\n')
                     cols = ["transaction_hash","label", "confirmations", "value", "fee", "timestamp"]
+                    if self.is_slp_wallet:
+                        cols += ["slp_value", "slp_name", "slp_token_id"]
                     if has_fiat_columns:
                         cols += [f"fiat_value_{ccy}", f"fiat_balance_{ccy}", f"fiat_fee_{ccy}"]  # in CSV mode, we use column names eg fiat_value_USD, etc
                     if include_addresses:

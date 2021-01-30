@@ -1922,9 +1922,30 @@ class Abstract_Wallet(PrintError):
             return format_satoshis(v, decimal_point=decimal_point,
                                    is_diff=is_diff)
 
-        # grab history
+        # grab bch history
         h = self.get_history(domain, reverse=True)
         out = []
+
+        # grab slp history
+        _slp_h = self.get_slp_history(domain=domain, validities_considered=(None,0,1,2,3,4))
+
+        def fmt_slp_amt(v, decimals):
+            if v is None:
+                return '--'
+            if decimals == "?":
+                return '?'
+            return format_satoshis(v, decimal_point=int(decimals), is_diff=True)
+
+        slp_h = dict((tx_hash, { \
+                    'value': fmt_slp_amt(delta, self.token_types[token_id]['decimals']), \
+                    'token_id': token_id, \
+                    'name': self.token_types[token_id]['name'] \
+                }) for tx_hash, _, _, _, delta, token_id in _slp_h)
+
+        def get_slp_tx(tx_hash):
+            if slp_h.get(tx_hash) is None:
+                return { 'value': '--', 'name': '--', 'token_id': '--' }
+            return slp_h.get(tx_hash)
 
         n, l = 0, max(1, float(len(h)))
         for tx_hash, height, conf, timestamp, value, balance in h:
@@ -1943,6 +1964,9 @@ class Abstract_Wallet(PrintError):
             except MissingTx as e:
                 self.print_error(str(e))
                 continue
+
+            slp_info = get_slp_tx(tx_hash)
+
             item = {
                 'txid'          : tx_hash,
                 'height'        : height,
@@ -1951,6 +1975,9 @@ class Abstract_Wallet(PrintError):
                 'value'         : fmt_amt(value, is_diff=True),
                 'fee'           : fmt_amt(fee, is_diff=False),
                 'balance'       : fmt_amt(balance, is_diff=False),
+                'slp_value'     : slp_info['value'],
+                'slp_name'      : slp_info['name'],
+                'slp_token_id'  : slp_info['token_id']
             }
             if item['height'] > 0:
                 date_str = format_time(timestamp) if timestamp is not None else _("unverified")
