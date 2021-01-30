@@ -1933,13 +1933,20 @@ class Abstract_Wallet(PrintError):
             if v is None:
                 return '--'
             if decimals == "?":
-                return '?'
+                decimals = 0
             return format_satoshis(v, decimal_point=int(decimals), is_diff=True)
 
+        def get_token_info(token_id):
+            return self.token_types.get(token_id, {
+                'class': '?',
+                'decimals': 0,
+                'name': 'unknown'
+            })
+
         slp_h = dict((tx_hash, { \
-                    'value': fmt_slp_amt(delta, self.token_types[token_id]['decimals']), \
+                    'value': fmt_slp_amt(delta, get_token_info(token_id)['decimals']), \
                     'token_id': token_id, \
-                    'name': self.token_types[token_id]['name'] \
+                    'name': get_token_info(token_id)['name'] \
                 }) for tx_hash, _, _, _, delta, token_id in _slp_h)
 
         def get_slp_tx(tx_hash):
