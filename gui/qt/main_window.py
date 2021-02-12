@@ -53,6 +53,9 @@ from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
 from electroncash.wallet import Multisig_Wallet, Deterministic_Wallet, sweep_preparations
+
+from lib.util import NotEnoughUnfrozenFundsSlp
+
 try:
     from electroncash.plot import plot_history
 except:
@@ -2620,10 +2623,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                         slp_msg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
                         send_amount = slp_msg.op_return_fields["token_output"][1]
                         # TODO make sure there is only 1 output
-                        coins, slp_msg, needs_postage = SlpPostOffice.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount)
+                        coins, slp_msg, needs_postage, postage_fee = SlpPostOffice.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount)
                         change_output = (0, self.slp_get_change_address(), 546)
                         postoffice_output = (0, Address.from_slpaddr_string(postage["address"]), 546)
                         tx = SlpPostOffice.build_slp_txn(coins, slp_msg, outputs[1], postoffice_output, change_output)
+                    except (NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp) as e:
+                        self.show_error(str(e))
+                        return
                     except:
                         pass
                 if not needs_postage:
@@ -2634,14 +2640,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     postage = self.slp_post_office_client.get_optimized_postage_data_for_token(self.slp_token_id)
                     try:
                         send_amount = self.slp_amount_e.get_amount()  # Probably a bad idea to call this here
-                        coins, slp_msg, needs_postage = SlpPostOffice.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount)
+                        old_slp_msg = slp.SlpMessage.parseSlpOutputScript(outputs[0][1])
+                        coins, slp_msg, needs_postage, postage_fee = SlpPostOffice.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount, old_slp_msg)
                         change_output = (0, self.slp_get_change_address(), 546)
                         postoffice_output = (0, Address.from_slpaddr_string(postage["address"]), 546)
                         if needs_postage:
-                            tx = SlpPostOffice.build_slp_txn(coins, slp_msg, outputs[1], postoffice_output, change_output)
+                            tx = SlpPostOffice.build_slp_txn(coins, slp_msg, outputs, postoffice_output, change_output, send_amount, old_slp_msg)
                             self.postage_payment = True
                         else:
-                            tx = SlpPostOffice.build_slp_txn(coins, outputs[0], outputs[1], change_output, None)
+                            tx = SlpPostOffice.build_slp_txn(coins, outputs[0], outputs, change_output, None, send_amount, old_slp_msg)
+                    except (NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp) as e:
+                        self.show_error(str(e))
+                        return
                     except:
                         pass
                     if not postage:
@@ -2672,13 +2682,24 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         # confirmation dialog
         if self.slp_token_id:
-            slp_amt_str = format_satoshis_plain_nofloat(self.slp_amount_e.get_amount(), self.wallet.token_types.get(self.slp_token_id)['decimals'])
-            slp_name = self.wallet.token_types[self.slp_token_id]['name']
-            msg = [
-                _("BCH amount to be sent") + ": " + self.format_amount_and_units(amount),
-                "\nToken amount to be sent" + ": " + slp_amt_str + " " + slp_name,
-                _("\nMining fee") + ": " + self.format_amount_and_units(fee),
-            ]
+            if self.postage_payment:
+                slp_amt_str = format_satoshis_plain_nofloat(self.slp_amount_e.get_amount(), self.wallet.token_types.get(self.slp_token_id)['decimals'])
+                postage_fee_amt_str = format_satoshis_plain_nofloat(postage_fee, self.wallet.token_types.get(self.slp_token_id)['decimals'])
+
+                slp_name = self.wallet.token_types[self.slp_token_id]['name']
+                msg = [
+                    _("BCH amount to be sent") + ": " + self.format_amount_and_units(amount),
+                    "\nToken amount to be sent" + ": " + slp_amt_str + " " + slp_name,
+                    _("\nPostage fee") + ": " + postage_fee_amt_str + " " + slp_name,
+                ]
+            else:
+                slp_amt_str = format_satoshis_plain_nofloat(self.slp_amount_e.get_amount(), self.wallet.token_types.get(self.slp_token_id)['decimals'])
+                slp_name = self.wallet.token_types[self.slp_token_id]['name']
+                msg = [
+                    _("BCH amount to be sent") + ": " + self.format_amount_and_units(amount),
+                    "\nToken amount to be sent" + ": " + slp_amt_str + " " + slp_name,
+                    _("\nMining fee") + ": " + self.format_amount_and_units(fee),
+                ]
         else:
             msg = [
                 _("\nAmount to be sent") + ": " + self.format_amount_and_units(amount),
@@ -2696,7 +2717,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         #if fee > confirm_rate * tx.estimated_size() / 1000:
         #    msg.append(_('Warning') + ': ' + _("The fee for this transaction seems unusually high."))
 
-        if (fee < (tx.estimated_size())):
+        if not self.postage_payment and (fee < (tx.estimated_size())):
             msg.append(_('\nWarning') + ': ' + _("You're using a fee of less than 1.0 sats/B. It may take a very long time to confirm."))
             tx.ephemeral['warned_low_fee_already'] = True
 

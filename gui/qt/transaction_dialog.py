@@ -46,7 +46,7 @@ from electroncash.slp import SlpMessage
 from electroncash.util import bfh, Weak, PrintError
 from .util import *
 
-from electroncash.util import format_satoshis_nofloat
+from electroncash.util import format_satoshis_nofloat, format_satoshis_plain_nofloat
 
 dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
@@ -487,12 +487,28 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         size_str = _("Size: {size} bytes").format(size=size)
         fee_str = _("Fee") + ": "
         if fee is not None:
-            fee_str = _("Fee: {fee_amount} {fee_unit} ( {fee_rate} )")
-            fee_str = fee_str.format(fee_amount=format_amount(fee), fee_unit=base_unit,
-                                     fee_rate=self.main_window.format_fee_rate(fee/size*1000))
-            dusty_fee = self.tx.ephemeral.get('dust_to_fee', 0)
-            if dusty_fee:
-                fee_str += ' <font color=#999999>' + (_("( %s in dust was added to fee )") % format_amount(dusty_fee)) + '</font>'
+            if self.slp_needs_postage:
+                outputs = self.tx.outputs()
+                post_office_output_index = 2
+                if len(self.slp_info['token_output']) -1 > 3:
+                    if not self.wallet.is_change(outputs[-1]):
+                        post_office_output_index = len(self.slp_info['token_output']) - 2
+                    else:
+                        post_office_output_index = len(self.slp_info['token_output']) - 1
+
+                postage_fee_amt_str = format_satoshis_plain_nofloat(
+                    self.slp_info['token_output'][post_office_output_index],
+                    self.wallet.token_types.get(self.slp_info['token_id_hex'])['decimals']
+                )
+                fee_str = _("Fee: {fee_amount} {slp_token_name}")
+                fee_str = fee_str.format(fee_amount=postage_fee_amt_str, slp_token_name=self.slp_info['name'])
+            else:
+                fee_str = _("Fee: {fee_amount} {fee_unit} ( {fee_rate} )")
+                fee_str = fee_str.format(fee_amount=format_amount(fee), fee_unit=base_unit,
+                                         fee_rate=self.main_window.format_fee_rate(fee/size*1000))
+                dusty_fee = self.tx.ephemeral.get('dust_to_fee', 0)
+                if dusty_fee:
+                    fee_str += ' <font color=#999999>' + (_("( %s in dust was added to fee )") % format_amount(dusty_fee)) + '</font>'
         elif self._dl_pct is not None:
             fee_str = _('Downloading input data, please wait...') + ' {:.0f}%'.format(self._dl_pct)
         else:
@@ -676,6 +692,15 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
         i_text.clear()
         cursor = i_text.textCursor()
         has_schnorr = False
+
+        outputs = self.tx.outputs()
+        post_office_output_index = 2
+        if len(self.slp_info['token_output']) - 1 > 3:
+            if not self.wallet.is_change(outputs[-1]):
+                post_office_output_index = len(self.slp_info['token_output']) - 2
+            else:
+                post_office_output_index = len(self.slp_info['token_output']) - 1
+
         for i, x in enumerate(self.tx.fetched_inputs() or self.tx.inputs()):
             a_name = f"input {i}"
             for fmt in (ext, rec, chg, lnk):
@@ -728,7 +753,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
                 if self.slp_outputs and i > 0 and len(self.slp_outputs) > i:
                     cursor.insertText(' '*(6), ext)
                     cursor.insertText(self.slp_outputs[i], slp)
-                    if self.slp_needs_postage and i == 2:
+                    if self.slp_needs_postage and i == post_office_output_index:
                         cursor.insertText(' ', ext)
                         cursor.insertText("POSTAGE", slp)
                     self.slp_legend.setHidden(False)

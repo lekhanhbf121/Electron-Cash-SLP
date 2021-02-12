@@ -11,12 +11,16 @@ from .transaction import Transaction
 class SlpPostOffice:
 
     @staticmethod
-    def build_slp_txn(coins, slp_output, receiver_output, postoffice_output, change_output):
+    def build_slp_txn(coins, slp_output, pre_postage_outputs, postoffice_output, change_output, send_amount, old_slp_msg):
         slp_msg = SlpMessage.parseSlpOutputScript(slp_output[1])
-        outputs = [slp_output, receiver_output]
-        if len(slp_msg.op_return_fields["token_output"]) - 1 == 2:
+        pre_postage_outputs = list(pre_postage_outputs[1:])
+        if sum(old_slp_msg.op_return_fields["token_output"]) > send_amount:  # has change output
+            pre_postage_outputs = pre_postage_outputs[:-1]
+
+        outputs = [slp_output] + pre_postage_outputs
+        if len(slp_msg.op_return_fields["token_output"]) - len(pre_postage_outputs) == 2:
             outputs.extend([postoffice_output])
-        elif len(slp_msg.op_return_fields["token_output"]) - 1 == 3:
+        elif len(slp_msg.op_return_fields["token_output"]) - len(pre_postage_outputs) == 3:
             outputs.extend([postoffice_output, change_output])
         tx = Transaction.from_io(coins, outputs)
         return tx
@@ -27,7 +31,7 @@ class SlpPostOffice:
         pass
 
     @staticmethod
-    def calculate_postage_and_build_slp_msg(wallet, config, tokenId, po_data, send_amount):
+    def calculate_postage_and_build_slp_msg(wallet, config, tokenId, po_data, send_amount, old_slp_msg):
 
         # determine the amount of postage to pay based on the token's rate and number of inputs we will sign
         weight = po_data["weight"]
@@ -39,14 +43,19 @@ class SlpPostOffice:
         if rate is None:
             raise Exception("Post Office does not offer postage for tokenId: " + tokenId)
 
+        pre_postage_amts = list(old_slp_msg.op_return_fields["token_output"][1:])
+        if sum(pre_postage_amts) > send_amount:  # has change output
+            pre_postage_amts = pre_postage_amts[:-1]
+        min_dust_count = len(pre_postage_amts)
+
         # variables used for txn size estimation
-        slpmsg_output_max_size = 8 + 1 + 73                 # case where both postage and change are needed
-        slpmsg_output_mid_size = slpmsg_output_max_size - 9 # case where no token change is not needed
-        slpmsg_output_min_size = slpmsg_output_mid_size - 9 # case where no token or change are needed
-        output_unit_size = 34                               # p2pkh output size
-        input_unit_size_ecdsa = 149                         # approx. size needed for ecdsa signed input
-        input_unit_size_schnorr = 141                       # approx. size needed for schnorr signed input
-        txn_overhead = 4 + 1 + 1 + 4                        # txn version, input count varint, output count varint, timelock
+        slpmsg_output_min_size = 8 + 1 + 46 + 9 * min_dust_count  # case where no postage or change are needed
+        slpmsg_output_mid_size = slpmsg_output_min_size + 9       # case where change is not needed
+        slpmsg_output_max_size = slpmsg_output_mid_size + 9       # case where both postage and change are needed
+        output_unit_size = 34                                     # p2pkh output size
+        input_unit_size_ecdsa = 149                               # approx. size needed for ecdsa signed input
+        input_unit_size_schnorr = 141                             # approx. size needed for schnorr signed input
+        txn_overhead = 4 + 1 + 1 + 4                              # txn version, input count varint, output count varint, timelock
 
         # determine number of stamps required in this while loop
         sats_diff_w_fee = 1    # controls entry into while loop
@@ -55,7 +64,7 @@ class SlpPostOffice:
             stamp_count += 1
             coins, _ = SlpCoinChooser.select_coins(wallet, tokenId, (send_amount + (rate * stamp_count)), config)
 
-            output_dust_count = 1
+            output_dust_count = min_dust_count
             slpmsg_output_size = slpmsg_output_min_size
             postage_amt = rate * stamp_count
             total_coin_value = 0
@@ -65,10 +74,10 @@ class SlpPostOffice:
             change_amt = total_coin_value - send_amount - postage_amt
 
             if postage_amt > 0 and change_amt > 0:
-                output_dust_count = 3
+                output_dust_count += 2
                 slpmsg_output_size = slpmsg_output_max_size
             elif postage_amt > 0 or change_amt > 0:
-                output_dust_count = 2
+                output_dust_count = 1
                 slpmsg_output_size = slpmsg_output_mid_size
             
             txn_size_wo_stamps = txn_overhead + input_unit_size_ecdsa * len(coins) + output_unit_size * output_dust_count + slpmsg_output_size
@@ -80,24 +89,25 @@ class SlpPostOffice:
             fee_rate = 1
             sats_diff_w_fee = (txn_size_wo_stamps * fee_rate) + output_sats_diff - stamp_count * weight
 
-        if output_dust_count == 1:
-            amts = [send_amount]
+        dust_count_diff = output_dust_count - min_dust_count
+        if dust_count_diff == 0:
+            amts = pre_postage_amts
             needs_postage = False
-        elif output_dust_count == 2 and postage_amt > 0:
-            amts = [send_amount, postage_amt]
+        elif dust_count_diff == 1 and postage_amt > 0:
+            amts = pre_postage_amts + [postage_amt]
             needs_postage = True
-        elif output_dust_count == 2 and change_amt > 0:
-            amts = [send_amount, change_amt]
+        elif dust_count_diff == 1 and change_amt > 0:
+            amts = pre_postage_amts + [change_amt]
             needs_postage = False
-        elif output_dust_count == 3:
-            amts = [send_amount, postage_amt, change_amt]
+        elif dust_count_diff == 2:
+            amts = pre_postage_amts + [postage_amt, change_amt]
             needs_postage = True
         else:
             raise Exception("Unhandled exception")
 
         slp_output = buildSendOpReturnOutput_V1(tokenId, amts)
 
-        return coins, slp_output, needs_postage
+        return coins, slp_output, needs_postage, postage_amt
 
     @staticmethod
     def sign_inputs_for_po_server(tx, wallet):
