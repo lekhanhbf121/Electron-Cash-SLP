@@ -130,15 +130,7 @@ class SatochipClient(PrintError):
 
     def get_xpub(self, bip32_path, xtype):
         assert xtype in SatochipPlugin.SUPPORTED_XTYPES
-
-        try:
-            hex_authentikey = self.handler.win.wallet.storage.get('authentikey')
-            self.print_error("get_xpub(): self.handler.win.wallet.storage.authentikey:", hex_authentikey)#debugSatochip
-            if hex_authentikey is not None:
-                self.cc.parser.authentikey_from_storage= ECPubkey(bytes.fromhex(hex_authentikey))
-        except Exception as e: #attributeError?
-            self.print_error("get_xpub(): exception when getting authentikey from self.handler.win.wallet.storage:", str(e))#debugSatochip
-        
+       
         try:
             # needs PIN
             self.cc.card_verify_PIN()
@@ -294,6 +286,8 @@ class Satochip_KeyStore(Hardware_KeyStore):
             self.client = None
         raise Exception(message)
 
+    def can_change_password(self):
+        return True                              
 
     def decrypt_message(self, pubkey, message, password):
         raise RuntimeError(_('Encryption and decryption are currently not supported for {}').format(self.device))
@@ -724,13 +718,15 @@ class SatochipPlugin(HW_PluginBase):
             wizard.passphrase_dialog(run_next=f)
         else:
             wizard.run('confirm_seed', seed, '')
-
+        
     def confirm_seed(self, wizard, seed, passphrase):
-        f = lambda x: self.confirm_passphrase(wizard, seed, passphrase)
-        wizard.confirm_seed_dialog(run_next=f, test=lambda x: x==seed)
-
-    def confirm_passphrase(self, wizard, seed, passphrase):
-        f = lambda x: self.derive_bip39_seed(seed, x) #f = lambda x: self.derive_electrum_seed(seed, x)
+        f = lambda x,skip=False: self.confirm_passphrase(wizard, seed, passphrase, skipped_backup=False)
+        wizard.confirm_seed_dialog(run_next=f, test=lambda x,skip=False: x==seed, can_skip=False)
+    
+    def confirm_passphrase(self, wizard, seed, passphrase, skipped_backup=False):
+        if skipped_backup:
+            raise Exception("Cannot skip backup with Satochip hardware wallet setup.")
+        f = lambda x: self.derive_bip32_seed(seed, x)
         if passphrase:
             title = _('Confirm Seed Extension')
             message = '\n'.join([
@@ -740,7 +736,7 @@ class SatochipPlugin(HW_PluginBase):
             wizard.line_dialog(run_next=f, title=title, message=message, default='', test=lambda x: x==passphrase)
         else:
             f('')
-
+    
     def derive_electrum_seed(self, seed, passphrase):
         self.bip32_seed = mnemonic.Mnemonic_Electrum('en').mnemonic_to_seed(seed, passphrase)
     
@@ -751,7 +747,7 @@ class SatochipPlugin(HW_PluginBase):
     def restore_from_seed(self, wizard):
         wizard.opt_bip39 = True
         wizard.opt_ext = True
-        test = mnemonic.is_seed 
+        test = bitcoin.is_seed #mnemonic.is_seed 
         f= lambda seed, is_bip39, is_ext: self.on_restore_seed(wizard, seed, is_bip39, is_ext)
         wizard.restore_seed_dialog(run_next=f, test=test)
 
