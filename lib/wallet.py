@@ -67,6 +67,7 @@ from .contacts import Contacts
 
 from .slp import SlpMessage, SlpParsingError, SlpUnsupportedSlpTokenType, SlpNoMintingBatonFound, OpreturnError
 from . import slp_validator_0x01, slp_validator_0x01_nft1
+from .slp_graph_search import slp_gs_mgr
 
 def _(message): return message
 
@@ -185,8 +186,8 @@ class Abstract_Wallet(PrintError):
         # verifier (SPV) and synchronizer are started in start_threads
         self.synchronizer = None
         self.verifier = None
-        self.ui_emit_validation_fetch = None
-        self.ui_emit_validity_updated = None  # Qt GUI attaches a signal to this attribute -- see slp_check_validation
+
+        # slp graph databases for token type 1 and NFT1
         self.slp_graph_0x01, self.slp_graph_0x01_nft = None, None
 
         # Removes defunct entries from self.pruned_txo asynchronously
@@ -1611,15 +1612,13 @@ class Abstract_Wallet(PrintError):
                 (txid,node), = job.nodes.items()
                 val = node.validity
                 tti['validity'] = val
-                ui_cb = self.ui_emit_validity_updated
-                if ui_cb:
-                    ui_cb(txid, val)
+                slp_gs_mgr.slp_validity_signal.emit(txid, val)
 
             if tti['type'] in ['SLP1']:
                 job = self.slp_graph_0x01.make_job(tx, self, self.network,
                                                         debug=2 if is_verbose else 1,  # set debug=2 here to see the verbose dag when running with -v
                                                         reset=False)
-            elif tti['type'] in ['SLP65','SLP129']:
+            elif tti['type'] in ['SLP65', 'SLP129']:
                 job = self.slp_graph_0x01_nft.make_job(tx, self, self.network, nft_type=tti['type'],
                                                         debug=2 if is_verbose else 1,  # set debug=2 here to see the verbose dag when running with -v
                                                         reset=False)
@@ -1923,9 +1922,37 @@ class Abstract_Wallet(PrintError):
             return format_satoshis(v, decimal_point=decimal_point,
                                    is_diff=is_diff)
 
-        # grab history
+        # grab bch history
         h = self.get_history(domain, reverse=True)
         out = []
+
+        # grab slp history
+        _slp_h = self.get_slp_history(domain=domain, validities_considered=(None,0,1,2,3,4))
+
+        def fmt_slp_amt(v, decimals):
+            if v is None:
+                return '--'
+            if decimals == "?":
+                decimals = 0
+            return format_satoshis(v, decimal_point=int(decimals), is_diff=True)
+
+        def get_token_info(token_id):
+            return self.token_types.get(token_id, {
+                'class': '?',
+                'decimals': 0,
+                'name': 'unknown'
+            })
+
+        slp_h = dict((tx_hash, { \
+                    'value': fmt_slp_amt(delta, get_token_info(token_id)['decimals']), \
+                    'token_id': token_id, \
+                    'name': get_token_info(token_id)['name'] \
+                }) for tx_hash, _, _, _, delta, token_id in _slp_h)
+
+        def get_slp_tx(tx_hash):
+            if slp_h.get(tx_hash) is None:
+                return { 'value': '--', 'name': '--', 'token_id': '--' }
+            return slp_h.get(tx_hash)
 
         n, l = 0, max(1, float(len(h)))
         for tx_hash, height, conf, timestamp, value, balance in h:
@@ -1944,6 +1971,9 @@ class Abstract_Wallet(PrintError):
             except MissingTx as e:
                 self.print_error(str(e))
                 continue
+
+            slp_info = get_slp_tx(tx_hash)
+
             item = {
                 'txid'          : tx_hash,
                 'height'        : height,
@@ -1952,6 +1982,9 @@ class Abstract_Wallet(PrintError):
                 'value'         : fmt_amt(value, is_diff=True),
                 'fee'           : fmt_amt(fee, is_diff=False),
                 'balance'       : fmt_amt(balance, is_diff=False),
+                'slp_value'     : slp_info['value'],
+                'slp_name'      : slp_info['name'],
+                'slp_token_id'  : slp_info['token_id']
             }
             if item['height'] > 0:
                 date_str = format_time(timestamp) if timestamp is not None else _("unverified")

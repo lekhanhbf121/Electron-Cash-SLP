@@ -33,6 +33,7 @@ from electroncash.util import timestamp_to_datetime, profiler
 from electroncash.util import format_satoshis_nofloat
 
 from .slp_add_token_dialog import SlpAddTokenDialog
+from electroncash.slp_graph_search import slp_gs_mgr
 
 from locale import localeconv
 from collections import defaultdict
@@ -71,8 +72,9 @@ class HistoryList(MyTreeWidget):
 
     def __init__(self, parent=None):
         MyTreeWidget.__init__(self, parent, self.create_menu, [], 4, deferred_updates=True)
-        self.slp_validity_signal = parent.gui_object.slp_validity_signal
-        self.slp_validity_signal.connect(self.slp_validity_slot, Qt.QueuedConnection)
+
+        slp_gs_mgr.slp_validity_signal.connect(self.slp_validity_slot, Qt.QueuedConnection)
+
         self.editable_columns=[]
         self.refresh_headers()
         self.setColumnHidden(1, True)

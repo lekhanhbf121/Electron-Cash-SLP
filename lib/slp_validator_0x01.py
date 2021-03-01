@@ -17,8 +17,8 @@ from .slp_dagging import TokenGraph, ValidationJob, ValidationJobManager, Valida
 from .bitcoin import TYPE_SCRIPT
 from .util import PrintError
 
-from . import slp_proxying # loading this module starts a thread.
-from .slp_graph_search import SlpGraphSearchManager # thread is started upon instantiation
+from . import slp_proxying               # loading this module starts a thread.
+from .slp_graph_search import slp_gs_mgr # loading this module starts a thread.
 
 class GraphContext(PrintError):
     ''' Instance of the DAG cache. Uses a single per-instance
@@ -34,7 +34,6 @@ class GraphContext(PrintError):
         self.is_parallel = is_parallel
         self.job_mgrs = weakref.WeakValueDictionary()   # token_id_hex -> ValidationJobManager (only used if is_parallel, otherwise self.job_mgr is used)
         self.name = name
-        self.graph_search_mgr = SlpGraphSearchManager()
         self._setup_job_mgr()
 
     def diagnostic_name(self):
@@ -139,28 +138,18 @@ class GraphContext(PrintError):
     def get_validation_config():
         config = get_config()
         try:
-            limit_dls   = config.get('slp_validator_download_limit', None)
-            limit_depth = config.get('slp_validator_depth_limit', None)
+            limit_dls    = config.get('slp_validator_download_limit', None)
+            limit_depth  = config.get('slp_validator_depth_limit', None)
             proxy_enable = config.get('slp_validator_proxy_enabled', False)
         except NameError: # in daemon mode (no GUI) 'config' is not defined
-            limit_dls = None
-            limit_depth = None
+            limit_dls    = None
+            limit_depth  = None
             proxy_enable = False
 
+        # feature doesn't yet exist..
+        proxy_enable = False
+
         return limit_dls, limit_depth, proxy_enable
-
-    @staticmethod
-    def get_gs_config():
-        config = get_config()
-        try:
-            gs_enable = config.get('slp_validator_graphsearch_enabled', False)
-            gs_host = config.get('slp_gs_host', None)
-        except NameError: # in daemon mode (no GUI) 'config' is not defined
-            gs_enable = False
-            gs_host = None
-
-        return gs_enable, gs_host
-
 
     def make_job(self, tx, wallet, network, *, debug=False, reset=False, callback_done=None, **kwargs) -> ValidationJob:
         """
@@ -198,39 +187,21 @@ class GraphContext(PrintError):
         def fetch_hook(txids, val_job):
             l = []
 
-            gs_enable, gs_host = self.get_gs_config()
-            network.slp_gs_host = gs_host
-
             nonlocal first_fetch_complete
 
-            if gs_enable \
-                and gs_host \
-                and self.graph_search_mgr \
-                and not val_job.graph_search_job:
-                    if val_job.root_txid in self.graph_search_mgr.search_jobs.keys() \
-                        and self.graph_search_mgr.search_jobs[val_job.root_txid].job_complete \
-                        and not self.graph_search_mgr.search_jobs[val_job.root_txid].search_success:
-                            self.graph_search_mgr.search_jobs.pop(val_job.root_txid)
-                    search_job = self.graph_search_mgr.new_search(val_job)
-                    val_job.graph_search_job = search_job if search_job else None
-            elif not gs_enable and self.graph_search_mgr:
-                for job in self.graph_search_mgr.search_jobs.values():
-                    job.sched_cancel()
+            gs_job = slp_gs_mgr.new_search(val_job)
 
-            if network.slp_validation_fetch_signal and not first_fetch_complete:
-                network.slp_validation_fetch_signal.emit(0)
+            if not first_fetch_complete:
+                slp_gs_mgr.slp_validation_fetch_signal.emit(0)
                 first_fetch_complete = True
 
             for txid in txids:
-                if val_job.graph_search_job:
-                    txn = val_job.graph_search_job.get_tx(txid)
-                    if txn:
-                        l.append(txn)
+                txn = gs_job.get_tx(txid)
+                if txn:
+                    l.append(txn)
                 else:
-                    try:
-                        l.append(wallet.transactions[txid])
-                    except KeyError:
-                        pass
+                    try: l.append(wallet.transactions[txid])
+                    except KeyError: pass
             return l
 
         def done_callback(job):
@@ -301,7 +272,7 @@ class GraphContext(PrintError):
 # stopped -- ultimately stopping the entire DAG lookup for that token if all
 # wallets verifying a token are closed.  The next time a wallet containing that
 # token is opened, however, the validation continues where it left off.
-shared_context = GraphContext(is_parallel=False)  # <-- Set is_parallel=True if you want 1 thread per token (tokens validate in parallel). Otherwise there is 1 validator thread app-wide and tokens validate in series.
+shared_context = GraphContext(is_parallel=True)  # <-- Set is_parallel=True if you want 1 thread per token (tokens validate in parallel). Otherwise there is 1 validator thread app-wide and tokens validate in series.
 
 class Validator_SLP1(ValidatorGeneric):
     prevalidation = True # indicate we want to check validation when some inputs still active.

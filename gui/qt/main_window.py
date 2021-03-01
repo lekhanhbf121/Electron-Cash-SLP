@@ -178,8 +178,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.wallet.use_change = True
             self.wallet.storage.put('use_change', self.wallet.use_change)
         self.network = gui_object.daemon.network
-        self.network.slp_validity_signal = self.gui_object.slp_validity_signal
-        self.network.slp_validation_fetch_signal = self.gui_object.slp_validation_fetch_signal
         self.slp_post_office_client = SlpPostOfficeClient(hosts=networks.net.POST_OFFICE_SERVERS)
         self.fx = gui_object.daemon.fx
         self.invoices = wallet.invoices
@@ -569,8 +567,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def load_wallet(self):
         self.wallet.thread = TaskThread(self, self.on_error, name = self.wallet.diagnostic_name() + '/Wallet')
-        self.wallet.ui_emit_validity_updated = self.gui_object.slp_validity_signal.emit
-        self.wallet.ui_emit_validation_fetch = self.gui_object.slp_validation_fetch_signal.emit
         self.update_recently_visited(self.wallet.storage.path)
         # address used to create a dummy transaction and estimate transaction fee
         self.history_list.update()
@@ -1537,7 +1533,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def save_payment_request(self):
         if not self.receive_address:
             self.show_error(_('No receiving address'))
-        if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not "":
+        if self.receive_token_type_combo.currentData() != None and self.receive_slp_amount_e.text() != "":
             amount = float(self.receive_slp_amount_e.text())
         else:
             amount = self.receive_amount_e.get_amount()
@@ -1694,7 +1690,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.update_receive_address_widget()
 
     def update_receive_qr(self):
-        if self.receive_token_type_combo.currentData() is not None and self.receive_slp_amount_e.text() is not '':
+        if self.receive_token_type_combo.currentData() != None and self.receive_slp_amount_e.text() != '':
             amount = self.receive_slp_amount_e.text() # if self.receive_slp_amount_e.text() is not '' else None
             token_id = self.receive_token_type_combo.currentData()
         else:
@@ -4466,6 +4462,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             for item in history:
                 if is_csv:
                     cols = [item['txid'], item.get('label', ''), item['confirmations'], item['value'], item['fee'], item['date']]
+                    if self.is_slp_wallet:
+                        cols += [item['slp_value'], item['slp_name'], item['slp_token_id']]
                     if has_fiat_columns:
                         cols += [item['fiat_value'], item['fiat_balance'], item['fiat_fee']]
                     if include_addresses:
@@ -4490,6 +4488,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 if is_csv:
                     transaction = csv.writer(f, lineterminator='\n')
                     cols = ["transaction_hash","label", "confirmations", "value", "fee", "timestamp"]
+                    if self.is_slp_wallet:
+                        cols += ["slp_value", "slp_name", "slp_token_id"]
                     if has_fiat_columns:
                         cols += [f"fiat_value_{ccy}", f"fiat_balance_{ccy}", f"fiat_fee_{ccy}"]  # in CSV mode, we use column names eg fiat_value_USD, etc
                     if include_addresses:
@@ -5421,10 +5421,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if self.wallet.thread:  # guard against window close before load_wallet was called (#1554)
             self.wallet.thread.stop()
             self.wallet.thread.wait() # Join the thread to make sure it's really dead.
-        if self.wallet.ui_emit_validity_updated:
-            self.wallet.ui_emit_validity_updated = None  # detach callback
-        if self.wallet.ui_emit_validation_fetch:
-            self.wallet.ui_emit_validation_fetch = None
 
         self.tx_update_mgr.clean_up()  # disconnects some signals
 

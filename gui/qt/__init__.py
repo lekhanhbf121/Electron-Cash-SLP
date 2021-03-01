@@ -23,7 +23,7 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import gc, os, platform, shutil, signal, sys, traceback
+import gc, os, platform, shutil, signal, sys, traceback, weakref
 
 try:
     import PyQt5
@@ -71,6 +71,7 @@ from .network_dialog import NetworkDialog
 from .exception_window import Exception_Hook
 from .update_checker import UpdateChecker
 
+from electroncash.slp_graph_search import slp_gs_mgr
 
 class ElectrumGui(QObject, PrintError):
     new_window_signal = pyqtSignal(str, object)
@@ -82,9 +83,11 @@ class ElectrumGui(QObject, PrintError):
     # when a wallet is closed the connection will be auto-cleaned for that wallet.
     # The network object and the validator need to keep references to these
     # so we let them live here, in this singleton object.
+    #
+    # In __init__ we use "slp_gs_mgr.bind_gui(weakref.ref(self))" to allow access to
+    # these signals from anywhere the slp_gs_mgr Singleton is imported.
     slp_validity_signal = pyqtSignal(object, object)
     slp_validation_fetch_signal = pyqtSignal(int)
-    #slp_post_office_client = SlpPostOfficeClient([ "http://localhost:5000/po/" ])
 
     instance = None
 
@@ -151,6 +154,9 @@ class ElectrumGui(QObject, PrintError):
 
         self._check_and_warn_qt_version()
 
+        # provide graph search manager with a weak reference to access slp related pyqtSignals
+        slp_gs_mgr.bind_gui(weakref.ref(self))
+
     def __del__(self):
         stale = True
         if __class__.instance is self:
@@ -216,7 +222,7 @@ class ElectrumGui(QObject, PrintError):
             #
             # qt_disable_highdpi will be set to None by default, or True if
             # specified on command-line.  The command-line override is intended
-            # to supporess high-dpi mode just for this run for testing.
+            # to support high-dpi mode just for this run for testing.
             #
             # The more permanent setting is qt_enable_highdpi which is the GUI
             # preferences option, so we don't enable highdpi if it's explicitly
@@ -900,6 +906,11 @@ class ElectrumGui(QObject, PrintError):
             event = QEvent(QEvent.Clipboard)
             self.app.sendEvent(self.app.clipboard(), event)
             self.tray.hide()
+
+            # clean shared pyqtSignals
+            self.slp_validity_signal = None
+            self.slp_validation_fetch_signal = None
+
         self.app.aboutToQuit.connect(clean_up)
 
         Exception_Hook(self.config) # This wouldn't work anyway unless the app event loop is active, so we must install it once here and no earlier.

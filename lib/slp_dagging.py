@@ -29,6 +29,8 @@ from abc import ABC, abstractmethod
 from .transaction import Transaction
 from .util import PrintError
 
+from .slp_graph_search import slp_gs_mgr
+
 INF_DEPTH=2147483646  # 'infinity' value for node depths. 2**31 - 2
 
 
@@ -200,7 +202,6 @@ class ValidationJob:
         self.txids = tuple([txid])
         self.network = network
         self.fetch_hook = fetch_hook
-        self.graph_search_job = None
         self.validitycache = {} if validitycache is None else validitycache
         self.download_limit = download_limit
         if depth_limit is None:
@@ -250,15 +251,16 @@ class ValidationJob:
                 validity = self.graph._nodes.get(self.root_txid, None).validity
             except:
                 validity = 0
-            if self.graph_search_job is not None \
+
+            gs_job = slp_gs_mgr.find(self.root_txid)
+            if gs_job is not None \
+                and gs_job.job_complete \
+                and gs_job.search_success \
                 and (not isinstance(retval, bool) or validity > 1) \
-                and retval != 'stopped' \
-                and self.graph_search_job.job_complete \
-                and self.graph_search_job.search_success:
+                and retval != 'stopped':
                 with self._statelock:
                     self.validitycache[self.root_txid] = 0
-                    self.graph_search_job.set_failed('invalid based on graph search data')
-                    self.graph_search_job = None
+                    gs_job.set_failed('invalid based on graph search data (retval={})'.format(retval))
                     self.downloads = 0
                     self.currentdepth = 0
                     self.paused = None
@@ -370,11 +372,13 @@ class ValidationJob:
         self.graph.run_sched()
 
         def skip_callback(txid):
+            if txid == self.root_txid:
+                return
             if self.debug > 0:
                 print("DEBUG-DAG: SKIPPING: " + txid)
             node = self.graph.get_node(txid)
-            node.set_validity(False,2)
-            
+            node.set_validity(False, 2)
+
             # temp for debugging
             # f = open("dag-"+self.txids[0][0:5]+".txt","a")
             # f.write(txid+","+str(self.currentdepth)+",false,\n")
@@ -456,11 +460,12 @@ class ValidationJob:
 
             txids_gotten = interested_txids.difference(txids_missing)
 
-            if len(txids_gotten) == 0 and self.graph_search_job and not self.graph_search_job.job_complete:
-                self.wakeup.clear()
-                self.wakeup.wait()
-                continue
-            elif len(txids_gotten) == 0:
+            # if len(txids_gotten) == 0:
+            #     gs_job = slp_gs_mgr.find(self.root_txid)
+            #     if gs_job and not gs_job.job_complete:
+            #         self.wakeup.wait()
+            #         continue
+            if len(txids_gotten) == 0:
                 return "missing txes"
 
         raise RuntimeError('loop ended')
@@ -497,17 +502,28 @@ class ValidationJob:
         # =====
         # Here we determine if missing txids can just be inferred to be invalid
         #   because they are not currently in graph search results. The benefit is to
-        #   prevent network calls to fetch non-contributing/invalid txns.
+        #   prevent network calls to fetch non-contributing/invalid transactions.
         #
         #   This optimization requires all cache item source are equal to "graph_search"
-        # 
-        if self.graph_search_job and self.graph_search_job.search_success:
-            for tx in cached:
-                dl_callback(tx)
-            for txid in txid_set:
-                skip_callback(txid)
-            txid_set.clear()
-            return txid_set
+        #
+        if slp_gs_mgr.gs_enabled:
+            gs_job = slp_gs_mgr.find(self.root_txid)
+
+            # check if we need to wait for the job to complete downloading
+            if gs_job and not gs_job.job_complete:
+                print("Waiting for graph search download to complete.")
+                self.wakeup.wait()
+                if slp_gs_mgr.gs_enabled:
+                    print("Graph search download completed, proceeding with validation.")
+
+            # we need to check gs_enabled again since it could change after the wake up event
+            if slp_gs_mgr.gs_enabled and gs_job and gs_job.search_success:
+                for tx in cached:
+                    dl_callback(tx)
+                for txid in txid_set:
+                    skip_callback(txid)
+                txid_set.clear()
+                return txid_set
         
         # build requests list from remaining txids.
         requests = []

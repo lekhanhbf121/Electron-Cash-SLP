@@ -1052,7 +1052,7 @@ class OPReturnTooLarge(OPReturnError):
 
 class RateLimiter(PrintError):
     ''' Manages the state of a @rate_limited decorated function, collating
-    multiple invocations. This class is not intented to be used directly. Instead,
+    multiple invocations. This class is not intended to be used directly. Instead,
     use the @rate_limited decorator (for instance methods).
 
     This state instance gets inserted into the instance attributes of the target
@@ -1260,7 +1260,7 @@ def rate_limited(rate, *, classlevel=False, ts_after=False):
                 TL;DR: ts_after=True : `rate` defines the time interval you want
                                         from last call's exit to entry into next
                                         call.
-                       ts_adter=False: `rate` defines the time between each
+                       ts_after=False: `rate` defines the time between each
                                         call's entry.
 
         (See on_fx_quotes & on_fx_history in main_window.py for example usages

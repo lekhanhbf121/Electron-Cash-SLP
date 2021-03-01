@@ -69,13 +69,13 @@ def make_bitcoinfile_metadata_opreturn(version: int, chunk_count: int, data: byt
     pushes.append(chunk_count.to_bytes(1,'big'))
 
     #filename
-    if filename is None or filename is '':
+    if filename == None or filename == '':
         pushes.append(b'')
     else:
         pushes.append(filename.encode('utf-8'))
 
     # fileext
-    if fileext is None or fileext is '':
+    if fileext == None or fileext == '':
         pushes.append(b'')
     else:
         pushes.append(fileext.encode('utf-8'))
@@ -87,7 +87,7 @@ def make_bitcoinfile_metadata_opreturn(version: int, chunk_count: int, data: byt
         pushes.append(filesize.to_bytes(2,'big'))
 
     # filehash sha256
-    if filehash is None or filehash is '':
+    if filehash == None or filehash == '':
         pushes.append(b'')
     else:
         hashbytes = bytes.fromhex(filehash)
@@ -96,7 +96,7 @@ def make_bitcoinfile_metadata_opreturn(version: int, chunk_count: int, data: byt
         pushes.append(hashbytes)
 
     # previous sha256 filehash
-    if prev_filehash is None or prev_filehash is '':
+    if prev_filehash == None or prev_filehash == '':
         pushes.append(b'')
     else:
         hashbytes = bytes.fromhex(prev_filehash)
@@ -105,7 +105,7 @@ def make_bitcoinfile_metadata_opreturn(version: int, chunk_count: int, data: byt
         pushes.append(hashbytes)
 
     # external URI
-    if fileuri is None or fileuri is '':
+    if fileuri == None or fileuri == '':
         pushes.append(b'')
     else:
         pushes.append(fileuri.encode('utf-8'))
