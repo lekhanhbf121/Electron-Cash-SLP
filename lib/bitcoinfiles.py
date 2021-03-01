@@ -386,13 +386,13 @@ class BfpMessage:
                 raise BfpInvalidOutputMessage('On-Chain file BFP message with incorrect number of parameters')
 
             try:
-                bfpMsg.op_return_fields['chunk_count'] = parseChunkToInt(chunks[2], 1, 1, True)
+                bfpMsg.op_return_fields['chunk_count'] = parseChunkToInt(chunks[2], 1, 8, True)
             except:
                 raise BfpInvalidOutputMessage('Bad chunk count')
 
             bfpMsg.op_return_fields['filename'] = chunks[3]
             bfpMsg.op_return_fields['fileext'] = chunks[4]
-            bfpMsg.op_return_fields['size'] = parseChunkToInt(chunks[5], 0, 2, False)
+            bfpMsg.op_return_fields['size'] = parseChunkToInt(chunks[5], 0, 8, False)
 
             bfpMsg.op_return_fields['file_sha256'] = chunks[6]
             if len(bfpMsg.op_return_fields['file_sha256']) not in (0, 32):
