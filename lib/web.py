@@ -89,13 +89,13 @@ def BE_sorted_list():
     return sorted(BE_info())
 
 
-def create_URI(addr, amount, message, *, op_return=None, op_return_raw=None, token_id=None):
+def create_URI(addr, amount, message, *, op_return=None, op_return_raw=None, token_id=None, net=None):
     if not isinstance(addr, Address):
         return ""
     if op_return is not None and op_return_raw is not None:
         raise ValueError('Must specify exactly one of op_return or \
                             op_return_hex as kwargs to create_URI')
-    scheme, path = addr.to_URI_components()
+    scheme, path = addr.to_URI_components(net=net)
     query = []
     if token_id:
         query.append('amount=%s-%s'%( amount, token_id ))
@@ -120,18 +120,28 @@ def urldecode(url):
     ''' Inverse of urlencode '''
     return urllib.parse.unquote(url)
 
-def parse_URI(uri, on_pr=None):
+def parseable_schemes(net = None) -> tuple:
+    if net is None:
+        net = networks.net
+    return (net.CASHADDR_PREFIX, net.SLPADDR_PREFIX)
+
+def parse_URI(uri, on_pr=None, *, net=None):
+    if net is None:
+        net = networks.net
     if ':' not in uri:
         # Test it's valid
-        Address.from_string(uri)
+        Address.from_string(uri, net=net)
         return {'address': uri}
 
     if (uri.strip().lower().split(':', 1)[0] != networks.net.CASHADDR_PREFIX
         and uri.strip().lower().split(':', 1)[0] !=  networks.net.SLPADDR_PREFIX):
         raise Exception("Not a URI starting with '{}:' or '{}:'".format(networks.net.CASHADDR_PREFIX, networks.net.SLPADDR_PREFIX))
 
-    u = urllib.parse.urlparse(uri)
+    u = urllib.parse.urlparse(uri, allow_fragments=False)  # allow_fragments=False allows for cashacct:name#number URIs
     # The scheme always comes back in lower case
+    accept_schemes = parseable_schemes(net=net)
+    if u.scheme not in accept_schemes:
+        raise Exception("Not a {} URI").format(str(accept_schemes))
     address = u.path
 
     # python for android fails to parse query
@@ -148,7 +158,8 @@ def parse_URI(uri, on_pr=None):
     out = {k: v[0] for k, v in pq.items()}
     out['scheme'] = u.scheme
     if address:
-        Address.from_string(address)
+        # validate
+        Address.from_string(address, net=net)
         out['address'] = address
 
     amounts = dict()
@@ -192,7 +203,9 @@ def parse_URI(uri, on_pr=None):
     r = out.get('r')
     sig = out.get('sig')
     name = out.get('name')
-    if on_pr and (r or (name and sig)):
+    is_pr = bool(r or (name and sig))
+
+    if on_pr and is_pr:
         def get_payment_request_thread():
             from . import paymentrequest as pr
             if name and sig:
