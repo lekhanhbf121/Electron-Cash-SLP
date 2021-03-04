@@ -21,17 +21,19 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from decimal import Decimal as PyDecimal  # Qt 5.12 also exports Decimal
+import decimal # Qt 5.12 also exports Decimal, so take the package name
 import os
 import re
 import shutil
+import sys
 import threading
 import urllib
 
 from .address import Address
 from . import bitcoin
 from . import networks
-from .util import format_satoshis_plain, bh2u, print_error
+from .util import format_satoshis_plain, bh2u, bfh, print_error, do_in_main_thread
+from .i18n import _
 
 
 DEFAULT_EXPLORER = "Bitcoin.com"
@@ -89,13 +91,13 @@ def BE_sorted_list():
     return sorted(BE_info())
 
 
-def create_URI(addr, amount, message, *, op_return=None, op_return_raw=None, token_id=None):
+def create_URI(addr, amount, message, *, op_return=None, op_return_raw=None, token_id=None, net=None):
     if not isinstance(addr, Address):
         return ""
     if op_return is not None and op_return_raw is not None:
         raise ValueError('Must specify exactly one of op_return or \
                             op_return_hex as kwargs to create_URI')
-    scheme, path = addr.to_URI_components()
+    scheme, path = addr.to_URI_components(net=net)
     query = []
     if token_id:
         query.append('amount=%s-%s'%( amount, token_id ))
@@ -120,18 +122,72 @@ def urldecode(url):
     ''' Inverse of urlencode '''
     return urllib.parse.unquote(url)
 
-def parse_URI(uri, on_pr=None):
+def parseable_schemes(net = None) -> tuple:
+    if net is None:
+        net = networks.net
+    return (net.CASHADDR_PREFIX, net.SLPADDR_PREFIX)
+
+class ExtraParametersInURIWarning(RuntimeWarning):
+    ''' Raised by parse_URI to indicate the parsing succeeded but that
+    extra parameters were encountered when parsing.
+    args[0] is the function return value (dict of parsed args).
+    args[1:] are the URL parameters that were not understood (unknown params)'''
+
+class DuplicateKeyInURIError(RuntimeError):
+    ''' Raised on duplicate param keys in URI.
+    args[0] is a translated error message suitable for the UI
+    args[1:] is the list of duplicate keys. '''
+
+class BadSchemeError(RuntimeError):
+    ''' Raised if the scheme is bad/unknown for a URI. '''
+
+class BadURIParameter(ValueError):
+    ''' Raised if:
+            - 'amount' is not numeric,
+            - 'address' is invalid
+            - bad cashacct string,
+            - 'time' or 'exp' are not ints
+
+        args[0] is the bad argument name e.g. 'amount'
+        args[1] is the underlying Exception that was raised (if any, may be missing). '''
+
+def parse_URI(uri, on_pr=None, *, net=None, strict=False, on_exc=None):
+    """ If strict=True, may raise ExtraParametersInURIWarning (see docstring
+    above).
+
+    on_pr - a callable that will run in the context of a daemon thread if this
+    is a payment request which requires further network processing. A single
+    argument is passed to the callable, the payment request after being verified
+    on the network. Note: as stated, this runs in the context of the daemon
+    thread, unlike on_exc below.
+
+    on_exc - (optional) a callable that will be executed in the *main thread*
+    only in the cases of payment requests and only if they fail to serialize or
+    deserialize. The callable must take 1 arg, a sys.exc_info() tuple. Note: as
+    stateed, this runs in the context of the main thread always, unlike on_pr
+    above.
+
+    May raise DuplicateKeyInURIError if duplicate keys were found.
+    May raise BadSchemeError if unknown scheme.
+    May raise Exception subclass on other misc. failure.
+
+    Returns a dict of uri_param -> value on success """
+    if net is None:
+        net = networks.net
     if ':' not in uri:
         # Test it's valid
-        Address.from_string(uri)
+        Address.from_string(uri, net=net)
         return {'address': uri}
 
     if (uri.strip().lower().split(':', 1)[0] != networks.net.CASHADDR_PREFIX
         and uri.strip().lower().split(':', 1)[0] !=  networks.net.SLPADDR_PREFIX):
         raise Exception("Not a URI starting with '{}:' or '{}:'".format(networks.net.CASHADDR_PREFIX, networks.net.SLPADDR_PREFIX))
 
-    u = urllib.parse.urlparse(uri)
+    u = urllib.parse.urlparse(uri, allow_fragments=False)  # allow_fragments=False allows for cashacct:name#number URIs
     # The scheme always comes back in lower case
+    accept_schemes = parseable_schemes(net=net)
+    if u.scheme not in accept_schemes:
+        raise BadSchemeError(_("Not a {schemes} URI")).format(schemes=str(accept_schemes))
     address = u.path
 
     # python for android fails to parse query
@@ -142,35 +198,40 @@ def parse_URI(uri, on_pr=None):
         pq = urllib.parse.parse_qs(u.query, keep_blank_values=True)
 
     for k, v in pq.items():
-        if len(v)!=1:
-            raise Exception('Duplicate Key', k)
+        if len(v) != 1:
+            raise DuplicateKeyInURIError(_('Duplicate key in URI'), k)
 
     out = {k: v[0] for k, v in pq.items()}
     out['scheme'] = u.scheme
     if address:
-        Address.from_string(address)
+        # validate
+        try: Address.from_string(address, net=net)
+        except Exception as e: raise BadURIParameter('address', e) from e
         out['address'] = address
 
     amounts = dict()
     for key in out:
-        if 'amount' in key and key not in amounts:
-            if '-' in out[key]:
-                am = out[key].split('-', 1)[0]
-                amount = PyDecimal(am)
-                tokenparams = out[key].split('-', 1)[1]
-            else:
-                tokenparams = None
-                amount = PyDecimal(out[key]) * bitcoin.COIN
-            if tokenparams:
-                tokenid = tokenparams.split('-', 1)[0]
-                #TODO check regex of tokenid
-                try:
-                    tokenflags = tokenparams.split('-', 1)[1]
-                    amounts[tokenid] = { 'amount': amount.real, 'tokenflags': tokenflags }
-                except:
-                    amounts[tokenid] = { 'amount': amount.real, 'tokenflags': None }
-            else:
-                amounts['bch'] = { 'amount': int(amount), 'tokenflags': None }
+        try:
+            if 'amount' in key and key not in amounts:
+                if '-' in out[key]:
+                    am = out[key].split('-', 1)[0]
+                    amount = decimal.Decimal(am)
+                    tokenparams = out[key].split('-', 1)[1]
+                else:
+                    tokenparams = None
+                    amount = decimal.Decimal(out[key]) * bitcoin.COIN
+                if tokenparams:
+                    tokenid = tokenparams.split('-', 1)[0]
+                    #TODO check regex of tokenid
+                    try:
+                        tokenflags = tokenparams.split('-', 1)[1]
+                        amounts[tokenid] = { 'amount': amount.real, 'tokenflags': tokenflags }
+                    except:
+                        amounts[tokenid] = { 'amount': amount.real, 'tokenflags': None }
+                else:
+                    amounts['bch'] = { 'amount': int(amount), 'tokenflags': None }
+        except (ValueError, decimal.InvalidOperation, TypeError) as e:
+            raise BadURIParameter('amount', e) from e
     if 'amount' in out:
         out.pop('amount')
     if len(amounts) > 0:
@@ -179,32 +240,69 @@ def parse_URI(uri, on_pr=None):
         raise Exception('Too many amounts requested in the URI. SLP payment requests cannot send more than 1 BCH and 1 SLP payment simultaneously.')
     if 'message' in out:
         out['message'] = out['message']
+
+    if strict and 'memo' in out and 'message' in out:
+        # these two args are equivalent and cannot both appear together
+        raise DuplicateKeyInURIError(_('Duplicate key in URI'), 'memo', 'message')
+    elif 'message' in out:
         out['memo'] = out['message']
+    elif 'memo' in out:
+        out['message'] = out['memo']
     if 'time' in out:
-        out['time'] = int(out['time'])
+        try: out['time'] = int(out['time'])
+        except ValueError as e: raise BadURIParameter('time', e) from e
     if 'exp' in out:
-        out['exp'] = int(out['exp'])
+        try: out['exp'] = int(out['exp'])
+        except ValueError as e: raise BadURIParameter('exp', e) from e
     if 'sig' in out:
-        out['sig'] = bh2u(bitcoin.base_decode(out['sig'], None, base=58))
+        try: out['sig'] = bh2u(bitcoin.base_decode(out['sig'], None, base=58))
+        except Exception as e: raise BadURIParameter('sig', e) from e
     if 'op_return_raw' in out and 'op_return' in out:
-        del out['op_return_raw']  # allow only 1 of these
+        if strict:
+            # these two args cannot both appear together
+            raise DuplicateKeyInURIError(_('Duplicate key in URI'), 'op_return', 'op_return_raw')
+        del out['op_return_raw']  # if not strict, just pick 1 and delete the other
+
+    if 'op_return_raw' in out:
+        # validate op_return_raw arg
+        try: bfh(out['op_return_raw'])
+        except Exception as e: raise BadURIParameter('op_return_raw', e) from e
 
     r = out.get('r')
     sig = out.get('sig')
     name = out.get('name')
-    if on_pr and (r or (name and sig)):
+    is_pr = bool(r or (name and sig))
+
+    if on_pr and is_pr:
         def get_payment_request_thread():
             from . import paymentrequest as pr
-            if name and sig:
-                s = pr.serialize_request(out).SerializeToString()
-                request = pr.PaymentRequest(s)
-            else:
-                request = pr.get_payment_request(r, is_slp=(u.scheme == "simpleledger"))
+            try:
+                if name and sig:
+                    s = pr.serialize_request(out).SerializeToString()
+                    request = pr.PaymentRequest(s)
+                else:
+                    request = pr.get_payment_request(r, is_slp=(u.scheme == "simpleledger"))
+            except:
+                ''' May happen if the values in the request are such
+                that they cannot be serialized to a protobuf. '''
+                einfo = sys.exc_info()
+                print_error("Error processing payment request:", str(einfo[1]))
+                if on_exc:
+                    do_in_main_thread(on_exc, einfo)
+                return
             if on_pr:
+                # FIXME: See about also making this use do_in_main_thread.
+                # However existing code for Android and/or iOS may not be
+                # expecting this, so we will leave the original code here where
+                # it runs in the daemon thread context. :/
                 on_pr(request)
         t = threading.Thread(target=get_payment_request_thread, daemon=True)
         t.start()
-
+    if strict:
+        accept_keys = {'r', 'sig', 'name', 'address', 'amount', 'label', 'message', 'memo', 'op_return', 'op_return_raw', 'time', 'exp'}
+        extra_keys = set(out.keys()) - accept_keys
+        if extra_keys:
+            raise ExtraParametersInURIWarning(out, *tuple(extra_keys))
     return out
 
 def check_www_dir(rdir):

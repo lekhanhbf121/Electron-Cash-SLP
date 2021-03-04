@@ -26,6 +26,7 @@
 import re
 import sys, time, threading
 import os, json, traceback
+import copy
 import shutil
 import csv
 from decimal import Decimal as PyDecimal  # Qt 5.12 also exports Decimal
@@ -1581,7 +1582,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def export_payment_request(self, addr):
         r = self.wallet.receive_requests[addr]
-        pr = paymentrequest.serialize_request(r).SerializeToString()
+        try:
+            pr = paymentrequest.serialize_request(r).SerializeToString()
+        except ValueError as e:
+            ''' User entered some large amount or other value that doesn't fit
+            into a C++ type.  See #1738. '''
+            self.show_error(str(e))
+            return
         name = r['id'] + '.bip70'
         fileName = self.getSaveFileName(_("Select where to save your payment request"), name, "*.bip70")
         if fileName:
@@ -1692,6 +1699,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.update_receive_address_widget()
 
     def update_receive_qr(self):
+        if not self.receive_address:
+            return
         if self.receive_token_type_combo.currentData() != None and self.receive_slp_amount_e.text() != '':
             amount = self.receive_slp_amount_e.text() # if self.receive_slp_amount_e.text() is not '' else None
             token_id = self.receive_token_type_combo.currentData()
@@ -2673,8 +2682,17 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             #return
 
         if preview:
+            # NB: this ultimately takes a deepcopy of the tx in question
+            # (TxDialog always takes a deep copy).
             self.show_transaction(tx, tx_desc, needs_postage)
             return
+
+        # We must "freeze" the tx and take a deep copy of it here. This is
+        # because it's possible that it points to coins in self.pay_from and
+        # other shared data. We want the tx to be immutable from this point
+        # forward with its own private data. This fixes a bug where sometimes
+        # the tx would stop being "is_complete" randomly after broadcast!
+        tx = copy.deepcopy(tx)
 
         # confirmation dialog
         if self.slp_token_id:
@@ -3035,11 +3053,31 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if not URI:
             return
         try:
-            out = web.parse_URI(URI, self.on_pr)
+            out = web.parse_URI(URI, self.on_pr, strict=True, on_exc=self.on_error)
+        except web.ExtraParametersInURIWarning as e:
+            out = e.args[0]  # out dict is in e.args[0]
+            extra_params = e.args[1:]
+            self.show_warning(ngettext('Extra parameter in URI was ignored:\n\n{extra_params}',
+                                       'Extra parameters in URI were ignored:\n\n{extra_params}',
+                                       len(extra_params)
+                              ).format(extra_params=', '.join(extra_params)))
+            # fall through ...
+        except web.BadURIParameter as e:
+            extra_info = (len(e.args) > 1 and str(e.args[1])) or ''
+            self.print_error('Bad URI Parameter:', *[repr(i) for i in e.args])
+            if extra_info:
+                extra_info = '\n\n' + extra_info  # prepend newlines
+            self.show_error(_('Bad parameter: {bad_param_name}{extra_info}').format(bad_param_name=e.args[0], extra_info=extra_info))
+            return
+        except web.DuplicateKeyInURIError as e:
+            # this exception always has a translated message as args[0]
+            # plus a list of keys as args[1:], see web.parse_URI
+            self.show_error(e.args[0] + ":\n\n" + ', '.join(e.args[1:]))
+            return
         except Exception as e:
             if 'ms-python' in URI:  # this is needed for visual studio code debugger
                 return
-            self.show_error(_('Invalid Address URI:') + '\n' + str(e))
+            self.show_error(_('Invalid Address URI:') + '\n\n' + str(e))
             return
         self.show_send_tab()
         r = out.get('r')
@@ -3059,7 +3097,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         # use label as description (not BIP21 compliant)
         if label and not message:
             message = label
-        if address:
+        if address or URI.strip().lower().split(':', 1)[0] in web.parseable_schemes():
             self.payto_e.setText(URI.split('?')[0])
         if message:
             self.message_e.setText(message)
@@ -3351,7 +3389,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def get_coins(self, isInvoice = False):
         if self.pay_from:
-            return self.pay_from
+            return copy.deepcopy(self.pay_from)
         else:
             return self.wallet.get_spendable_coins(None, self.config, isInvoice)
 

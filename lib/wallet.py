@@ -2024,7 +2024,7 @@ class Abstract_Wallet(PrintError):
 
     def get_label(self, tx_hash):
         label = self.labels.get(tx_hash, '')
-        if label is '':
+        if not label:
             label = self.get_default_label(tx_hash)
         return label
 
@@ -3000,7 +3000,7 @@ class ImportedWalletBase(Simple_Wallet):
         return self.txin_type
 
     def can_delete_address(self):
-        return True
+        return len(self.get_addresses()) > 1  # Cannot delete the last address
 
     def has_seed(self):
         return False
@@ -3028,8 +3028,10 @@ class ImportedWalletBase(Simple_Wallet):
 
     def delete_address(self, address):
         assert isinstance(address, Address)
-        if address not in self.get_addresses():
+        all_addrs = self.get_addresses()
+        if len(all_addrs) <= 1 or address not in all_addrs:
             return
+        del all_addrs
 
         transactions_to_remove = set()  # only referred to by this address
         transactions_new = set()  # txs that are not only referred to by address

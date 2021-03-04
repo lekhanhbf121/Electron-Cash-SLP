@@ -43,7 +43,7 @@ from .i18n import _
 from .interface import Connection, Interface
 from . import blockchain
 from . import version
-
+from .tor import TorController
 
 DEFAULT_AUTO_CONNECT = True
 # Versions prior to 4.0.15 had this set to True, but we opted for False to
@@ -209,6 +209,8 @@ class Network(util.DaemonThread):
     SERVER_RETRY_INTERVAL = 10  # How often to reconnect when server down in secs
     MAX_MESSAGE_BYTES = 1024*1024*32 # = 32MB. The message size limit in bytes. This is to prevent a DoS vector whereby the server can fill memory with garbage data.
 
+    tor_controller: TorController = None
+
     def __init__(self, config=None):
         if config is None:
             config = {}  # Do not use mutables as default values!
@@ -225,6 +227,10 @@ class Network(util.DaemonThread):
         self.whitelisted_servers, self.whitelisted_servers_hostmap = self._compute_whitelist()
         self.print_error("server blacklist: {} server whitelist: {}".format(self.blacklisted_servers, self.whitelisted_servers))
         self.default_server = self.get_config_server()
+
+        self.tor_controller = TorController(self.config)
+        self.tor_controller.active_port_changed.append(self.on_tor_port_changed)
+        self.tor_controller.start()
 
         self.lock = threading.Lock()
         # locks: if you need to take multiple ones, acquire them in the order they are defined here!
@@ -281,6 +287,20 @@ class Network(util.DaemonThread):
         Network.INSTANCE = self # This implicitly should force stale instances to eventually del
         self.start_network(deserialize_server(self.default_server)[2], deserialize_proxy(self.config.get('proxy')))
         self.slp_post_office_enabled = None
+
+    def on_tor_port_changed(self, controller: TorController):
+        if not controller.active_socks_port or not controller.is_enabled() or not self.config.get('tor_use', False):
+            return
+
+        proxy = deserialize_proxy(self.config.get('proxy'))
+        port = str(controller.active_socks_port)
+        if proxy["port"] == port:
+            return
+        proxy["port"] = port
+        self.config.set_key('proxy', serialize_proxy(proxy))
+        # This handler can run before `proxy` is present and `load_parameters` needs it
+        if hasattr(self, "proxy"):
+            self.load_parameters()
 
     def __del__(self):
         ''' NB: due to Network.INSTANCE keeping the singleton instance alive,
@@ -1468,6 +1488,11 @@ class Network(util.DaemonThread):
                 self.run_jobs()    # Synchronizer and Verifier and Fx
             self.process_pending_sends()
         self.stop_network()
+
+        self.tor_controller.active_port_changed.remove(self.on_tor_port_changed)
+        self.tor_controller.stop()
+        self.tor_controller = None
+
         self.on_stop()
 
     def on_server_version(self, interface, version_data):
@@ -1804,7 +1829,7 @@ class Network(util.DaemonThread):
                 dust_thold = dust_threshold(Network.get_instance())
             except: pass
             return _("Transaction could not be broadcast due to dust outputs (dust threshold is {} satoshis).").format(dust_thold)
-        elif r'Missing inputs' in server_msg or r'Inputs unavailable' in server_msg or r"bad-txns-inputs-spent" in server_msg:
+        elif r'Missing inputs' in server_msg or r'Inputs unavailable' in server_msg or r"bad-txns-inputs-spent" in server_msg or r"bad-txns-inputs-missingorspent" in server_msg:
             return _("Transaction could not be broadcast due to missing, already-spent, or otherwise invalid inputs.")
         elif r"transaction already in block chain" in server_msg:
             # We get this message whenever any of this transaction's outputs are already in confirmed utxo set (and are unspent).
@@ -1812,7 +1837,7 @@ class Network(util.DaemonThread):
             return _("The transaction already exists in the blockchain.")
         elif r'insufficient priority' in server_msg or r'rate limited free transaction' in server_msg or r'min relay fee not met' in server_msg:
             return _("The transaction was rejected due to paying insufficient fees.")
-        elif r'mempool min fee not met' in server_msg:
+        elif r'mempool min fee not met' in server_msg or r"mempool full" in server_msg:
             return _("The transaction was rejected due to paying insufficient fees (possibly due to network congestion).")
         elif r'bad-txns-premature-spend-of-coinbase' in server_msg:
             return _("Transaction could not be broadcast due to an attempt to spend a coinbase input before maturity.")
@@ -1826,22 +1851,37 @@ class Network(util.DaemonThread):
             return _("The transaction was rejected due to its use of non-standard inputs.")
         elif r"absurdly-high-fee" in server_msg:
             return _("The transaction was rejected because it specifies an absurdly high fee.")
-        elif r"non-mandatory-script-verify-flag" in server_msg:
-            return _("The transaction was rejected because it contians a non-mandatory script verify flag.")
-        elif r"tx-size" in server_msg:
+        elif r"non-mandatory-script-verify-flag" in server_msg or r"mandatory-script-verify-flag-failed" in server_msg or r"upgrade-conditional-script-failure" in server_msg:
+            return _("The transaction was rejected due to an error in script execution.")
+        elif r"tx-size" in server_msg or r"bad-txns-oversize" in server_msg:
             return _("The transaction was rejected because it is too large (in bytes).")
         elif r"scriptsig-size" in server_msg:
             return _("The transaction was rejected because it contains a script that is too large.")
         elif r"scriptpubkey" in server_msg:
-            return _("The transaction was rejected because it contains a non-standard script public key signature.")
+            return _("The transaction was rejected because it contains a non-standard output script.")
         elif r"bare-multisig" in server_msg:
-            return _("The transaction was rejected because it contains a bare multisig input.")
+            return _("The transaction was rejected because it contains a bare multisig output.")
         elif r"multi-op-return" in server_msg:
             return _("The transaction was rejected because it contains multiple OP_RETURN outputs.")
         elif r"scriptsig-not-pushonly" in server_msg:
             return _("The transaction was rejected because it contains non-push-only script sigs.")
-        elif r'bad-txns-nonfinal' in server_msg:
+        elif r'bad-txns-nonfinal' in server_msg or r'non-BIP68-final' in server_msg:
             return _("The transaction was rejected because it is not considered final according to network rules.")
+        elif r"bad-txns-too-many-sigops" in server_msg or r"bad-txn-sigops" in server_msg:
+            # std limit is 4000; this is basically impossible to reach on mainnet using normal txes, due to the 100kB size limit.
+            return _("The transaction was rejected because it contains too many signature-check opcodes.")
+        elif r"bad-txns-inputvalues-outofrange" in server_msg or r"bad-txns-vout-negative" in server_msg or r"bad-txns-vout-toolarge" in server_msg or r"bad-txns-txouttotal-toolarge" in server_msg:
+            return _("The transaction was rejected because its amounts are out of range.")
+        elif r"bad-txns-in-belowout" in server_msg or r"bad-txns-fee-outofrange" in server_msg:
+            return _("The transaction was rejected because it pays a negative or huge fee.")
+        elif r"bad-tx-coinbase" in server_msg:
+            return _("The transaction was rejected because it is a coinbase transaction.")
+        elif r"bad-txns-prevout-null" in server_msg or r"bad-txns-inputs-duplicate" in server_msg:
+            return _("The transaction was rejected because it contains null or duplicate inputs.")
+        elif r"bad-txns-vin-empty" in server_msg or r"bad-txns-vout-empty" in server_msg:
+            return _("The transaction was rejected because it is has no inputs or no outputs.")
+        elif r"bad-txns-undersize" in server_msg:
+            return _("The transaction was rejected because it is too small.")
         elif r'version' in server_msg:
             return _("The transaction was rejected because it uses a non-standard version.")
         return _("An error occurred broadcasting the transaction")

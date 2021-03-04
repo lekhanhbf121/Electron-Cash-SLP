@@ -23,7 +23,9 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import socket, queue, codecs
+import queue
+import socket
+import codecs
 
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
@@ -35,7 +37,11 @@ from electroncash import networks
 from electroncash.util import print_error, Weak, PrintError
 from electroncash.network import serialize_server, deserialize_server, get_eligible_servers
 from electroncash.slp_graph_search import slp_gs_mgr
+from electroncash.plugins import run_hook
+from electroncash.tor import TorController
+
 from .util import *
+from .utils import UserPortValidator
 
 protocol_names = ['TCP', 'SSL']
 protocol_letters = 'ts'
@@ -50,9 +56,15 @@ class NetworkDialog(QDialog, MessageBoxMixin):
         self.nlayout = NetworkChoiceLayout(self, network, config)
         vbox = QVBoxLayout(self)
         vbox.addLayout(self.nlayout.layout())
-        vbox.addLayout(Buttons(CloseButton(self)))
+        # We don't want the close button's behavior to have the enter key close
+        # the window because user may edit text fields, etc, so we do the below:
+        close_but = CloseButton(self); close_but.setDefault(False); close_but.setAutoDefault(False)
+        vbox.addLayout(Buttons(close_but))
         self.network_updated_signal.connect(self.on_update)
         network.register_callback(self.on_network, ['blockchain_updated', 'interfaces', 'status'])
+
+    def jumpto(self, location : str):
+        self.nlayout.jumpto(location)
 
     def on_network(self, event, *args):
         ''' This may run in network thread '''
@@ -539,11 +551,11 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.tor_proxy = None
 
         # tor detector
-        self.td = TorDetector(self)
+        self.td = TorDetector(self, self.network)
         self.td.found_proxy.connect(self.suggest_proxy)
 
         self.tabs = tabs = QTabWidget()
-        server_tab = QWidget()
+        self.server_tab = server_tab = QWidget()
         weakTd = Weak.ref(self.td)
         class ProxyTab(QWidget):
             def showEvent(slf, e):
@@ -556,10 +568,10 @@ class NetworkChoiceLayout(QObject, PrintError):
                 td = weakTd()
                 if e.isAccepted() and td:
                     td.stop() # stops the tor detector when proxy_tab disappears
-        proxy_tab = ProxyTab()
-        blockchain_tab = QWidget()
-        slp_tab = QWidget()
-        post_office_tab = QWidget()
+        self.proxy_tab = proxy_tab = ProxyTab()
+        self.blockchain_tab = blockchain_tab = QWidget()
+        self.slp_tab = slp_tab = QWidget()
+        self.post_office_tab = post_office_tab = QWidget()
         tabs.addTab(blockchain_tab, _('Overview'))
         tabs.addTab(server_tab, _('Server'))
         tabs.addTab(proxy_tab, _('Proxy'))
@@ -641,6 +653,7 @@ class NetworkChoiceLayout(QObject, PrintError):
 
         # proxy setting
         self.proxy_cb = QCheckBox(_('Use proxy'))
+        self.proxy_cb.setToolTip(_("If enabled, all connections application-wide will be routed through this proxy."))
         self.proxy_cb.clicked.connect(self.check_disable_proxy)
         self.proxy_cb.clicked.connect(self.set_proxy)
 
@@ -667,16 +680,69 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.tor_cb.setIcon(QIcon(":icons/tor_logo.svg"))
         self.tor_cb.setEnabled(False)
         self.tor_cb.clicked.connect(self.use_tor_proxy)
+        tor_proxy_tooltip = _("If enabled, all connections application-wide will be routed through Tor.")
+        tor_proxy_help = (
+            tor_proxy_tooltip + "\n\n" +
+            _("Depending on your configuration and preferences as a user, this may or may not be ideal.  "
+              "In general, connections routed through Tor hide your IP address from servers, at the expense of "
+              "performance and network throughput.") + "\n\n" +
+            _("For the average user, it's recommended that you leave this option "
+              "disabled and only leave the 'integrated Tor client' option enabled.") )
+        self.tor_cb.setToolTip(tor_proxy_tooltip)
 
-        grid.addWidget(self.tor_cb, 1, 0, 1, 3)
-        grid.addWidget(self.proxy_cb, 2, 0, 1, 3)
-        grid.addWidget(HelpButton(_('Proxy settings apply to all connections: with Electron Cash servers, but also with third-party services.')), 2, 4)
-        grid.addWidget(self.proxy_mode, 4, 1)
-        grid.addWidget(self.proxy_host, 4, 2)
-        grid.addWidget(self.proxy_port, 4, 3)
-        grid.addWidget(self.proxy_user, 5, 2)
-        grid.addWidget(self.proxy_password, 5, 3)
-        grid.setRowStretch(7, 1)
+        self.tor_enabled = QCheckBox(_("Start integrated Tor client"))
+        self.tor_enabled.setIcon(QIcon(":icons/tor_logo.svg"))
+        self.tor_enabled.clicked.connect(self.set_tor_enabled)
+        self.tor_enabled.setChecked(self.network.tor_controller.is_enabled())
+        tor_enabled_tooltip = _("This will enable the integrated Tor proxy.")
+        self.tor_enabled.setToolTip(tor_enabled_tooltip)
+        tor_enabled_help = (
+            tor_enabled_tooltip + "\n\n"
+            + _("If unsure, it's safe to enable this feature, and leave 'Use Tor Proxy' disabled.  "
+                "In that situation, only certain plugins (such as CashFusion) will use Tor, but your "
+                "regular SPV server connections will remain unaffected.") )
+
+        self.tor_custom_port_cb = QCheckBox(_("Custom port"))
+        self.tor_custom_port_cb.setEnabled(self.tor_enabled.isChecked())
+        self.tor_enabled.clicked.connect(self.tor_custom_port_cb.setEnabled)
+        self.tor_custom_port_cb.setChecked(bool(self.network.tor_controller.get_socks_port()))
+        self.tor_custom_port_cb.clicked.connect(self.on_custom_port_cb_click)
+        custom_port_tooltip = _("Leave unspecified to automatically allocate a port.")
+        self.tor_custom_port_cb.setToolTip(custom_port_tooltip)
+        self.network.tor_controller.status_changed.append_weak(self.on_tor_status_changed)
+
+        self.tor_socks_port = QLineEdit()
+        self.tor_socks_port.setFixedWidth(60)
+        self.tor_socks_port.editingFinished.connect(self.set_tor_socks_port)
+        self.tor_socks_port.setText(str(self.network.tor_controller.get_socks_port()))
+        self.tor_socks_port.setToolTip(custom_port_tooltip)
+        self.tor_socks_port.setValidator(UserPortValidator(self.tor_socks_port, accept_zero=True))
+        self.tor_socks_port.setEnabled(self.tor_custom_port_cb.isChecked())
+
+        # Start integrated Tor
+        grid.addWidget(self.tor_enabled, 1, 0, 1, 2)
+        grid.addWidget(HelpButton(tor_enabled_help), 1, 4)
+        # Custom integrated Tor port
+        hbox = QHBoxLayout()
+        hbox.addSpacing(20)  # indentation
+        hbox.addWidget(self.tor_custom_port_cb, 0, Qt.AlignLeft|Qt.AlignVCenter)
+        hbox.addWidget(self.tor_socks_port, 0, Qt.AlignLeft|Qt.AlignVCenter)
+        hbox.addStretch(2)
+        hbox.setContentsMargins(0,0,0,6)  # a bit of a "paragraph break" here
+        grid.addLayout(hbox, 2, 0, 1, 3)
+        grid.addWidget(HelpButton(custom_port_tooltip), 2, 4)
+        # Use Tor Proxy
+        grid.addWidget(self.tor_cb, 3, 0, 1, 3)
+        grid.addWidget(HelpButton(tor_proxy_help), 3, 4)
+        # Proxy settings
+        grid.addWidget(self.proxy_cb, 4, 0, 1, 3)
+        grid.addWidget(HelpButton(_('Proxy settings apply to all connections: with Electron Cash servers, but also with third-party services.')), 4, 4)
+        grid.addWidget(self.proxy_mode, 6, 1)
+        grid.addWidget(self.proxy_host, 6, 2)
+        grid.addWidget(self.proxy_port, 6, 3)
+        grid.addWidget(self.proxy_user, 7, 2)
+        grid.addWidget(self.proxy_password, 7, 3)
+        grid.setRowStretch(8, 1)
 
         # SLP Validation Tab
         grid = QGridLayout(slp_tab)
@@ -761,12 +827,35 @@ class NetworkChoiceLayout(QObject, PrintError):
         vbox.addWidget(tabs)
         self.layout_ = vbox
 
+        self.network.tor_controller.active_port_changed.append_weak(self.on_tor_port_changed)
+
         self.fill_in_proxy_settings()
         self.update()
 
     def use_slp_gs(self):
         slp_gs_mgr.toggle_graph_search(self.slp_gs_enable_cb.isChecked())
         self.slp_gs_list_widget.update()
+
+    def jumpto(self, location : str):
+        if not isinstance(location, str):
+            return
+        location = location.strip().lower()
+        if location in ('proxy', 'tor'):
+            self.tabs.setCurrentWidget(self.proxy_tab)
+        elif location in ('servers', 'server'):
+            self.tabs.setCurrentWidget(self.server_tab)
+        elif location in ('blockchain', 'overview', 'main'):
+            self.tabs.setCurrentWidget(self.blockchain_tab)
+        elif not run_hook('on_network_dialog_jumpto', self, location):
+            self.print_error(f"jumpto: unknown location '{location}'")
+
+    def on_tor_port_changed(self, controller: TorController):
+        if not controller.active_socks_port or not controller.is_enabled() or not self.tor_use:
+            return
+
+        # The Network class handles actually changing the port, we just
+        # set the value in the text box here.
+        self.proxy_port.setText(str(controller.active_socks_port))
 
     def check_disable_proxy(self, b):
         if not self.config.is_modifiable('proxy'):
@@ -1020,6 +1109,32 @@ class NetworkChoiceLayout(QObject, PrintError):
             self.proxy_cb.setChecked(True)
         self.set_proxy()
 
+    def set_tor_enabled(self, enabled: bool):
+        self.network.tor_controller.set_enabled(enabled)
+
+    def on_tor_status_changed(self, controller):
+        if controller.status in (TorController.Status.STARTED, TorController.Status.READY):
+            self.tor_enabled.setChecked(True)
+        elif controller.status == TorController.Status.ERRORED and self.tabs.isVisible():
+            QMessageBox.critical(None, _("Tor Client Error"),
+                                 _("The integrated Tor client experienced an error or could not be started."))
+        else:
+            self.tor_enabled.setChecked(False)
+        self.tor_custom_port_cb.setEnabled(self.tor_enabled.isChecked())
+
+    def set_tor_socks_port(self):
+        socks_port = int(self.tor_socks_port.text())
+        self.network.tor_controller.set_socks_port(socks_port)
+
+    def on_custom_port_cb_click(self, b):
+        self.tor_socks_port.setEnabled(b)
+        if not b:
+            self.tor_socks_port.setText("0")
+            self.set_tor_socks_port()
+
+    def proxy_settings_changed(self):
+        self.tor_cb.setChecked(False)
+
     def set_blacklisted(self, server, bl):
         self.network.server_set_blacklisted(server, bl, True)
         self.set_server() # if the blacklisted server is the active server, this will force a reconnect to another server
@@ -1081,6 +1196,15 @@ class NetworkChoiceLayout(QObject, PrintError):
 class TorDetector(QThread):
     found_proxy = pyqtSignal(object)
 
+    def __init__(self, parent, network):
+        super().__init__(parent)
+        self.network = network
+        self.network.tor_controller.active_port_changed.append_weak(self.on_tor_port_changed)
+
+    def on_tor_port_changed(self, controller: TorController):
+        if controller.active_socks_port and self.isRunning():
+            self.stopQ.put('kick')
+
     def start(self):
         self.stopQ = queue.Queue() # create a new stopQ blowing away the old one just in case it has old data in it (this prevents races with stop/start arriving too quickly for the thread)
         super().start()
@@ -1088,10 +1212,15 @@ class TorDetector(QThread):
     def stop(self):
         if self.isRunning():
             self.stopQ.put(None)
+            self.wait()
 
     def run(self):
-        ports = [9050, 9150] # Probable ports for Tor to listen at
         while True:
+            ports = [9050, 9150] # Probable ports for Tor to listen at
+
+            if self.network.tor_controller and self.network.tor_controller.is_enabled() and self.network.tor_controller.active_socks_port:
+                ports.insert(0, self.network.tor_controller.active_socks_port)
+
             for p in ports:
                 if TorDetector.is_tor_port(p):
                     self.found_proxy.emit(("127.0.0.1", p))
@@ -1099,8 +1228,13 @@ class TorDetector(QThread):
             else:
                 self.found_proxy.emit(None) # no proxy found, will hide the Tor checkbox
             try:
-                self.stopQ.get(timeout=10.0) # keep trying every 10 seconds
-                return # we must have gotten a stop signal if we get here, break out of function, ending thread
+                stopq = self.stopQ.get(timeout=10.0) # keep trying every 10 seconds
+                if stopq is None:
+                    return # we must have gotten a stop signal if we get here, break out of function, ending thread
+                # We were kicked, which means the integrated tor port changed.
+                # Run the detection after a slight delay which increases the reliability.
+                QThread.msleep(250)
+                continue
             except queue.Empty:
                 continue # timeout, keep looping
 
