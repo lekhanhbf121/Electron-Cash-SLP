@@ -55,8 +55,6 @@ from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
 from electroncash.wallet import Multisig_Wallet, Deterministic_Wallet, sweep_preparations
 
-from lib.util import NotEnoughUnfrozenFundsSlp
-
 try:
     from electroncash.plot import plot_history
 except:
