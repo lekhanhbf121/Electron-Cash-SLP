@@ -299,7 +299,7 @@ def parse_URI(uri, on_pr=None, *, net=None, strict=False, on_exc=None):
         t = threading.Thread(target=get_payment_request_thread, daemon=True)
         t.start()
     if strict:
-        accept_keys = {'r', 'sig', 'name', 'address', 'amount', 'label', 'message', 'memo', 'op_return', 'op_return_raw', 'time', 'exp'}
+        accept_keys = {'r', 'sig', 'name', 'address', 'amount', 'label', 'message', 'memo', 'op_return', 'op_return_raw', 'time', 'exp', 'scheme', 'amounts'}
         extra_keys = set(out.keys()) - accept_keys
         if extra_keys:
             raise ExtraParametersInURIWarning(out, *tuple(extra_keys))
