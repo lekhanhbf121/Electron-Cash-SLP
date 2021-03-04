@@ -575,7 +575,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         tabs.addTab(blockchain_tab, _('Overview'))
         tabs.addTab(server_tab, _('Server'))
         tabs.addTab(proxy_tab, _('Proxy'))
-        tabs.addTab(slp_tab, _('Tokens'))
+        tabs.addTab(slp_tab, _('Graph Search'))
         tabs.addTab(post_office_tab, _('Post Office'))
 
         if wizard:
