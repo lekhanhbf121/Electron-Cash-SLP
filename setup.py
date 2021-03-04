@@ -107,7 +107,6 @@ setup(
         'electroncash_plugins.digitalbitbox',
         'electroncash_plugins.virtualkeyboard',
         'electroncash_plugins.satochip',
-        'electroncash_plugins.satochip_2FA',
     ],
     package_dir={
         'electroncash': 'lib',
