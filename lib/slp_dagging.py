@@ -114,7 +114,7 @@ class ValidatorGeneric(ABC):
 
         `myinfo` is direct from get_info().
 
-        `input_info` is a list with same length as `vins` from get_info()
+        `inputs_info` is a list with same length as `vins` from get_info()
 
          [(vin_0, validity_0, out_n_0),
           (vin_1, validity_1, out_n_1),
@@ -918,7 +918,16 @@ class TokenGraph:
             n.set_validity(*proxyval)
             self.run_sched()
 
-
+    def get_valid_txids(self, limit=-1):
+        """
+        Get a list of valid txids stored in this graph.
+        """
+        valid_txids = []
+        nodes_copy = self._nodes.copy()
+        for txid in nodes_copy:
+            if nodes_copy[txid].validity == 1:
+                valid_txids.append(txid)
+        return valid_txids
 
 class Connection:
     # Connection represents a tx output <-> tx input connection

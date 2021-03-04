@@ -99,7 +99,7 @@ class _GraphSearchJob:
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
 
-    def get_job_cache(self, reverse=True):
+    def get_job_cache(self, *, reverse=True, max_size=0):
         gs_cache = []
 
         wallet = self.valjob.ref()
@@ -109,6 +109,7 @@ class _GraphSearchJob:
         wallet_val = self.valjob.validitycache
         token_id = self.valjob.graph.validator.token_id_hex
 
+        # pull valid txids from wallet storage
         for [key, val] in wallet.slpv1_validity.items():
             _token_id = wallet.tx_tokinfo.get(key, {}).get("token_id", None)
             if _token_id == token_id and val == 1:
@@ -117,8 +118,25 @@ class _GraphSearchJob:
                     b = b[::-1]
                 b64 = base64.standard_b64encode(b).decode("ascii")
                 gs_cache.append(b64)
-                
+
+        # pull valid txids from the shared in-memory token graph
+        for txid in self.valjob.graph.get_valid_txids():
+            b = codecs.decode(txid, 'hex')
+            if reverse:
+                b = b[::-1]
+            b64 = base64.standard_b64encode(b).decode("ascii")
+            gs_cache.append(b64)
+
+        # TODO: pull valid txids from a "checkpoints" file shipped with the wallet
+        #   these txids can be selected intelligently through graph analysis.  Tokens
+        #   supported in the type of arrangement would likely be done through the
+        #   support of the token issuer for the purpose of improving user experience.
+
+        gs_cache = list(set(gs_cache))
+        if max_size > 0:
+            gs_cache = list(set(random.choices(gs_cache, k=max_size)))
         self.validity_cache_size = len(gs_cache)
+
         return gs_cache
 
     def _cancel(self):
@@ -296,7 +314,7 @@ class _SlpGraphSearchManager:
         elif kind == 'bchd':
             txid_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
             url = host + "/v1/GetSlpGraphSearch"
-            query_json = { "hash": txid_b64, "valid_hashes": job.get_job_cache() }
+            query_json = { "hash": txid_b64, "valid_hashes": job.get_job_cache(max_size=50) }
             res_txns_key = 'txdata'
         else:
             raise Exception("unknown server kind")
