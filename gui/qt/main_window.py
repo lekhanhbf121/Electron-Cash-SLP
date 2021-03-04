@@ -2873,7 +2873,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         # Check fee >= size otherwise warn. FIXME: If someday network relay
         # rules change to be other than 1.0 sats/B minimum, this code needs
         # to be changed.
-        if (isinstance(fee, int) and tx.is_complete() and fee < len(str(tx))//2
+        if not self.postage_payment and (isinstance(fee, int) and tx.is_complete() and fee < len(str(tx))//2
                 and not tx.ephemeral.get('warned_low_fee_already')):
             msg = _('Warning') + ': ' + _("You're using a fee of less than 1.0 sats/B. It may take a very long time to confirm.") + "\n\n" + _("Proceed?")
             if not self.question(msg, title = _("Low Fee")):
