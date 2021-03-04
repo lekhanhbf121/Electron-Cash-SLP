@@ -87,7 +87,6 @@ setup(
     },
     packages=[
         'electroncash',
-        'electroncash.locale',  # work-around for Android platform limitations
         'electroncash.qrreaders',
         'electroncash.utils',
         'electroncash_gui',
