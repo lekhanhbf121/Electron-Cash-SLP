@@ -1747,7 +1747,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.max_button.setDisabled(False)
             self.fiat_send_e.setDisabled(False)
             self.slp_extra_bch_cb.setHidden(True)
-            self.use_post_office.setHidden(True)
+            # self.use_post_office.setHidden(True)
             self.slp_amount_e.setDisabled(True)
             self.slp_max_button.setDisabled(True)
             self.slp_amount_label.setDisabled(True)
@@ -1756,7 +1756,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.opreturn_label.setEnabled(True)
         else:
             self.slp_extra_bch_cb.setHidden(False)
-            self.use_post_office.setHidden(False)
+            # if self.config.get('slp_post_office_enabled', False):
+            #     self.use_post_office.setHidden(False)
+            #     self.use_post_office.setEnabled(True)
             self.slp_extra_bch_cb.setChecked(False)
             self.slp_extra_bch_cb.clicked.emit()
             self.slp_amount_e.setDisabled(False)
@@ -1806,9 +1808,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.max_button.setDisabled(True)
             self.fiat_send_e.setDisabled(True)
 
-    def set_slp_post_office_enabled(self):
-        active = self.use_post_office.isChecked()
-        self.config.set_key('slp_post_office_enabled', active)
+    # def set_slp_post_office_enabled(self):
+    #     active = self.use_post_office.isChecked()
+    #     self.config.set_key('slp_post_office_enabled', active)
 
     def create_send_tab(self):
         # A 4-column grid layout.  All the stretch is in the last column.
@@ -1933,12 +1935,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.slp_extra_bch_cb.setHidden(True)
             grid.addWidget(self.slp_extra_bch_cb, 6, 2)
 
-            self.use_post_office = QCheckBox(_('Enable Postage Protocol'))
-            self.use_post_office.setEnabled(self.config.is_modifiable('slp_post_office_enabled'))
-            self.use_post_office.setChecked(self.config.get('slp_post_office_enabled', False))
-            self.use_post_office.setHidden(True)
-            self.use_post_office.clicked.connect(self.set_slp_post_office_enabled)
-            grid.addWidget(self.use_post_office, 6, 3)
+            # self.use_post_office = QCheckBox(_('Enable Postage Protocol'))
+            # self.use_post_office.setEnabled(self.config.is_modifiable('slp_post_office_enabled'))
+            # self.use_post_office.setChecked(self.config.get('slp_post_office_enabled', False))
+            # self.use_post_office.setHidden(True)
+            # self.use_post_office.clicked.connect(self.set_slp_post_office_enabled)
+            # grid.addWidget(self.use_post_office, 6, 3)
 
             self.slp_send_tab_widgets += [
                 self.slp_max_button, self.slp_extra_bch_cb
