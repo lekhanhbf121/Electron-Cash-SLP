@@ -777,8 +777,13 @@ class NetworkChoiceLayout(QObject, PrintError):
         grid = QGridLayout(post_office_tab)
 
         hbox = QHBoxLayout()
-        hbox.addWidget(QLabel(_('Server') + ':'))
+        warnpm = QIcon(":icons/warning.png").pixmap(20,20)
+        l = QLabel(); l.setPixmap(warnpm)
+        hbox.addWidget(l)
+        hbox.addWidget(QLabel(_('WARNING: The Post Office protocol is an experimental feature.')))
+        l = QLabel(); l.setPixmap(warnpm)
         hbox.addStretch(1)
+        hbox.addWidget(l)
         grid.addLayout(hbox, 1, 0)
 
         self.use_post_office = QCheckBox(_('Enable Postage Protocol'))
@@ -786,9 +791,13 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.use_post_office.clicked.connect(self.set_slp_post_office_enabled)
         grid.addWidget(self.use_post_office, 2, 0, 1, 5)
 
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel(_('Server') + ':'))
+        hbox.addStretch(1)
+        grid.addLayout(hbox, 3, 0)
 
         self.post_office_list_widget = PostOfficeServeListWidget(self)
-        grid.addWidget(self.post_office_list_widget, 3, 0, 1, 5)
+        grid.addWidget(self.post_office_list_widget, 4, 0, 1, 5)
 
         # Blockchain Tab
         grid = QGridLayout(blockchain_tab)
