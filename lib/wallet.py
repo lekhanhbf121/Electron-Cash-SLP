@@ -2561,7 +2561,7 @@ class Abstract_Wallet(PrintError):
                 info[addr] = index, sorted_xpubs, self.m if isinstance(self, Multisig_Wallet) else None, self.txin_type
         tx.output_info = info
 
-    def sign_transaction(self, tx, password, *, use_cache=False):
+    def sign_transaction(self, tx, password, *, use_cache=False, anyonecanpay=False):
         """ Sign a transaction, requires password (may be None for password-less
         wallets). If `use_cache` is enabled then signing will be much faster.
 
@@ -2583,7 +2583,7 @@ class Abstract_Wallet(PrintError):
         for k in self.get_keystores():
             try:
                 if k.can_sign(tx):
-                    k.sign_transaction(tx, password, use_cache=use_cache)
+                    k.sign_transaction(tx, password, use_cache=use_cache, anyonecanpay=anyonecanpay)
             except UserCancelled:
                 continue
 

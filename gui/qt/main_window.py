@@ -53,6 +53,9 @@ from electroncash import Transaction
 from electroncash import util, bitcoin, commands
 from electroncash import paymentrequest
 from electroncash.wallet import Multisig_Wallet, Deterministic_Wallet, sweep_preparations
+
+from lib.util import NotEnoughUnfrozenFundsSlp
+
 try:
     from electroncash.plot import plot_history
 except:
@@ -76,6 +79,8 @@ from electroncash.util import format_satoshis_nofloat
 from .slp_create_token_genesis_dialog import SlpCreateTokenGenesisDialog
 from .bfp_download_file_dialog import BfpDownloadFileDialog
 from .bfp_upload_file_dialog import BitcoinFilesUploadDialog
+from electroncash.slp_post_office import SlpPostOffice, SlpPostOfficePr, SlpPostOfficeClient
+from electroncash import networks
 
 try:
     # pre-load QtMultimedia at app start, if possible
@@ -173,7 +178,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.wallet.use_change = True
             self.wallet.storage.put('use_change', self.wallet.use_change)
         self.network = gui_object.daemon.network
-
+        self.slp_post_office_client = SlpPostOfficeClient(hosts=networks.net.POST_OFFICE_SERVERS)
         self.fx = gui_object.daemon.fx
         self.invoices = wallet.invoices
         self.contacts = wallet.contacts
@@ -181,6 +186,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.app = gui_object.app
         self.cleaned_up = False
         self.payment_request = None
+        self.postage_payment = None
         self.checking_accounts = False
         self.qr_window = None
         self.not_enough_funds = False
@@ -1248,9 +1254,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         d = address_dialog.AddressDialog(self,  addr, windowParent=parent)
         d.exec_()
 
-    def show_transaction(self, tx, tx_desc = None):
+    def show_transaction(self, tx, tx_desc = None, slp_needs_postage = False):
         '''tx_desc is set only for txs created in the Send tab'''
-        d = show_transaction(tx, self, tx_desc)
+        d = show_transaction(tx, self, tx_desc, slp_needs_postage=slp_needs_postage)
         self._tx_dialogs.add(d)
 
     def addr_toggle_slp(self, force_slp=False):
@@ -1732,6 +1738,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.max_button.setDisabled(False)
             self.fiat_send_e.setDisabled(False)
             self.slp_extra_bch_cb.setHidden(True)
+            self.use_post_office.setHidden(True)
             self.slp_amount_e.setDisabled(True)
             self.slp_max_button.setDisabled(True)
             self.slp_amount_label.setDisabled(True)
@@ -1740,6 +1747,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.opreturn_label.setEnabled(True)
         else:
             self.slp_extra_bch_cb.setHidden(False)
+            self.use_post_office.setHidden(False)
             self.slp_extra_bch_cb.setChecked(False)
             self.slp_extra_bch_cb.clicked.emit()
             self.slp_amount_e.setDisabled(False)
@@ -1788,6 +1796,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.amount_label.setDisabled(True)
             self.max_button.setDisabled(True)
             self.fiat_send_e.setDisabled(True)
+
+    def set_slp_post_office_enabled(self):
+        active = self.use_post_office.isChecked()
+        self.config.set_key('slp_post_office_enabled', active)
 
     def create_send_tab(self):
         # A 4-column grid layout.  All the stretch is in the last column.
@@ -1911,6 +1923,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.slp_extra_bch_cb.clicked.connect(self.on_slp_extra_bch)
             self.slp_extra_bch_cb.setHidden(True)
             grid.addWidget(self.slp_extra_bch_cb, 6, 2)
+
+            self.use_post_office = QCheckBox(_('Enable Postage Protocol'))
+            self.use_post_office.setEnabled(self.config.is_modifiable('slp_post_office_enabled'))
+            self.use_post_office.setChecked(self.config.get('slp_post_office_enabled', False))
+            self.use_post_office.setHidden(True)
+            self.use_post_office.clicked.connect(self.set_slp_post_office_enabled)
+            grid.addWidget(self.use_post_office, 6, 3)
 
             self.slp_send_tab_widgets += [
                 self.slp_max_button, self.slp_extra_bch_cb
@@ -2402,6 +2421,28 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             return func(self, *args, **kwargs)
         return request_password
 
+    def slp_get_change_address(self):
+        change_addr = None
+        """ start of logic copied from wallet.py """
+        addrs = self.wallet.get_change_addresses()[-self.wallet.gap_limit_for_change:]
+        if self.wallet.use_change and addrs:
+            # New change addresses are created only after a few
+            # confirmations.  Select the unused addresses within the
+            # gap limit; if none take one at random
+            change_addrs = [addr for addr in addrs if
+                            self.wallet.get_num_tx(addr) == 0]
+            if not change_addrs:
+                import random
+                change_addrs = [random.choice(addrs)]
+                change_addr = change_addrs[0]
+            elif len(change_addrs) > 1:
+                change_addr = change_addrs[1]
+            else:
+                change_addr = change_addrs[0]
+        else:
+            change_addr = self.wallet.get_addresses()[0]
+        return change_addr
+
     def read_send_tab(self, preview=False):
         bch_outputs = []
         selected_slp_coins = []
@@ -2499,29 +2540,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         """ SLP: Add an additional token change output """
         if self.slp_token_id:
-            change_addr = None
             token_outputs = slp.SlpMessage.parseSlpOutputScript(bch_outputs[0][1]).op_return_fields['token_output']
             if len(token_outputs) > 1 and len(bch_outputs) < len(token_outputs):
-                """ start of logic copied from wallet.py """
-                addrs = self.wallet.get_change_addresses()[-self.wallet.gap_limit_for_change:]
-                if self.wallet.use_change and addrs:
-                    # New change addresses are created only after a few
-                    # confirmations.  Select the unused addresses within the
-                    # gap limit; if none take one at random
-                    change_addrs = [addr for addr in addrs if
-                                    self.wallet.get_num_tx(addr) == 0]
-                    if not change_addrs:
-                        import random
-                        change_addrs = [random.choice(addrs)]
-                        change_addr = change_addrs[0]
-                    elif len(change_addrs) > 1:
-                        change_addr = change_addrs[1]
-                    else:
-                        change_addr = change_addrs[0]
-                elif coins:
-                    change_addr = coins[0]['address']
-                else:
-                    change_addr = self.wallet.get_addresses()[0]
+                change_addr = self.slp_get_change_address()
                 bch_outputs.append((TYPE_ADDRESS, change_addr, 546))
 
         # add non-SLP related BCH amounts
@@ -2562,6 +2583,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.do_send(preview = True)
 
     def do_send(self, preview = False):
+        needs_postage = False
         if run_hook('abort_send', self):
             return
 
@@ -2588,10 +2610,51 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             tx = self.wallet.make_unsigned_transaction(coins, outputs, self.config, fee, mandatory_coins=slp_coins)
         except NotEnoughFunds:
             if self.payment_request:
-                self.show_message(_("Insufficient BCH balance.\n\nPayment request requires a balance of confirmed coins."))
+                if self.slp_token_id:
+                    try:
+                        postage = json.loads(json.loads((self.payment_request.details.merchant_data).decode("utf8"))["postage"])
+                        # If only the BCH coins are unconfirmed and SLP are confirmed we can check merchant data to see if a post office is available.
+                        slp_msg = slp.SlpMessage.parseSlpOutputScript(self.payment_request.outputs[0][1])
+                        send_amount = slp_msg.op_return_fields["token_output"][1]
+                        # TODO make sure there is only 1 output
+                        coins, slp_msg, needs_postage, postage_fee = SlpPostOfficePr.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount)
+                        change_output = (0, self.slp_get_change_address(), 546)
+                        postoffice_output = (0, Address.from_slpaddr_string(postage["address"]), 546)
+                        tx = SlpPostOfficePr.build_slp_txn(coins, slp_msg, outputs[1], postoffice_output, change_output)
+                    except (NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp) as e:
+                        self.show_error(str(e))
+                        return
+                    except:
+                        pass
+                if not needs_postage:
+                    self.show_message(_("Insufficient BCH balance.\n\nPayment request requires a balance of confirmed coins."))
+                    return
+            elif self.config.get('slp_post_office_enabled', False):
+                if self.slp_token_id:
+                    postage = self.slp_post_office_client.get_optimized_postage_data_for_token(self.slp_token_id)
+                    try:
+                        send_amount = self.slp_amount_e.get_amount()  # Probably a bad idea to call this here
+                        old_slp_msg = slp.SlpMessage.parseSlpOutputScript(outputs[0][1])
+                        coins, slp_msg, needs_postage, postage_fee = SlpPostOffice.calculate_postage_and_build_slp_msg(self.wallet, self.config, self.slp_token_id, postage, send_amount, old_slp_msg)
+                        change_output = (0, self.slp_get_change_address(), 546)
+                        postoffice_output = (0, Address.from_slpaddr_string(postage["address"]), 546)
+                        if needs_postage:
+                            tx = SlpPostOffice.build_slp_txn(coins, slp_msg, outputs, postoffice_output, change_output, send_amount, old_slp_msg)
+                            self.postage_payment = True
+                        else:
+                            tx = SlpPostOffice.build_slp_txn(coins, outputs[0], outputs, change_output, None, send_amount, old_slp_msg)
+                    except (NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp) as e:
+                        self.show_error(str(e))
+                        return
+                    except:
+                        pass
+                    if not postage:
+                        self.show_message(
+                            _("Insufficient BCH balance.\n\nNo post office supporting the token was found."))
+                        return
             else:
                 self.show_message(_("Insufficient BCH balance"))
-            return
+                return
         except ExcessiveFee:
             self.show_message(_("Your fee is too high.  Max is 50 sat/byte."))
             return
@@ -2608,18 +2671,29 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             #return
 
         if preview:
-            self.show_transaction(tx, tx_desc)
+            self.show_transaction(tx, tx_desc, needs_postage)
             return
 
         # confirmation dialog
         if self.slp_token_id:
-            slp_amt_str = format_satoshis_plain_nofloat(self.slp_amount_e.get_amount(), self.wallet.token_types.get(self.slp_token_id)['decimals'])
-            slp_name = self.wallet.token_types[self.slp_token_id]['name']
-            msg = [
-                _("BCH amount to be sent") + ": " + self.format_amount_and_units(amount),
-                "\nToken amount to be sent" + ": " + slp_amt_str + " " + slp_name,
-                _("\nMining fee") + ": " + self.format_amount_and_units(fee),
-            ]
+            if self.postage_payment:
+                slp_amt_str = format_satoshis_plain_nofloat(self.slp_amount_e.get_amount(), self.wallet.token_types.get(self.slp_token_id)['decimals'])
+                postage_fee_amt_str = format_satoshis_plain_nofloat(postage_fee, self.wallet.token_types.get(self.slp_token_id)['decimals'])
+
+                slp_name = self.wallet.token_types[self.slp_token_id]['name']
+                msg = [
+                    _("BCH amount to be sent") + ": " + self.format_amount_and_units(amount),
+                    "\nToken amount to be sent" + ": " + slp_amt_str + " " + slp_name,
+                    _("\nPostage fee") + ": " + postage_fee_amt_str + " " + slp_name,
+                ]
+            else:
+                slp_amt_str = format_satoshis_plain_nofloat(self.slp_amount_e.get_amount(), self.wallet.token_types.get(self.slp_token_id)['decimals'])
+                slp_name = self.wallet.token_types[self.slp_token_id]['name']
+                msg = [
+                    _("BCH amount to be sent") + ": " + self.format_amount_and_units(amount),
+                    "\nToken amount to be sent" + ": " + slp_amt_str + " " + slp_name,
+                    _("\nMining fee") + ": " + self.format_amount_and_units(fee),
+                ]
         else:
             msg = [
                 _("\nAmount to be sent") + ": " + self.format_amount_and_units(amount),
@@ -2637,7 +2711,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         #if fee > confirm_rate * tx.estimated_size() / 1000:
         #    msg.append(_('Warning') + ': ' + _("The fee for this transaction seems unusually high."))
 
-        if (fee < (tx.estimated_size())):
+        if not self.postage_payment and (fee < (tx.estimated_size())):
             msg.append(_('\nWarning') + ': ' + _("You're using a fee of less than 1.0 sats/B. It may take a very long time to confirm."))
             tx.ephemeral['warned_low_fee_already'] = True
 
@@ -2659,17 +2733,17 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         def sign_done(success):
             if success:
                 if not tx.is_complete():
-                    self.show_transaction(tx, tx_desc)
+                    self.show_transaction(tx, tx_desc, needs_postage)
                     self.do_clear()
                 else:
                     self.broadcast_transaction(tx, tx_desc)
-        self.sign_tx_with_password(tx, sign_done, password)
+        self.sign_tx_with_password(tx, sign_done, password, slp_needs_postage=needs_postage)
 
     @protected
-    def sign_tx(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
-        self.sign_tx_with_password(tx, callback, password, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn)
+    def sign_tx(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None, slp_needs_postage=False):
+        self.sign_tx_with_password(tx, callback, password, slp_coins_to_burn=slp_coins_to_burn, slp_amt_to_burn=slp_amt_to_burn, slp_needs_postage=slp_needs_postage)
 
-    def sign_tx_with_password(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None):
+    def sign_tx_with_password(self, tx, callback, password, *, slp_coins_to_burn=None, slp_amt_to_burn=None, slp_needs_postage=False):
         '''Sign the transaction in a separate thread.  When done, calls
         the callback with a success code of True or False.
         '''
@@ -2691,9 +2765,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             callback(False)
 
         if self.tx_external_keypairs:
-            task = partial(Transaction.sign, tx, self.tx_external_keypairs, use_cache=True)
+            task = partial(Transaction.sign, tx, self.tx_external_keypairs, use_cache=True, anyonecanpay=slp_needs_postage)
         else:
-            task = partial(self.wallet.sign_transaction, tx, password, use_cache=True)
+            task = partial(self.wallet.sign_transaction, tx, password, use_cache=True, anyonecanpay=slp_needs_postage)
+
         WaitingDialog(self, _('Signing transaction...'), task,
                       on_signed, on_failed)
 
@@ -2740,6 +2815,30 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     self.invoices.set_paid(pr, tx.txid())
                     self.invoices.save()
                     self.payment_request = None
+
+            elif self.postage_payment:
+                refund_address = self.wallet.get_receiving_addresses()[0]
+                payment_url = self.slp_post_office_client.get_optimized_post_office_url_for_token(self.slp_token_id)
+                ack_status, ack_msg = paymentrequest.send_postage_payment(str(tx), payment_url, refund_address)
+                if not ack_status:
+                    if ack_msg == "no url":
+                        # "no url" hard-coded in send_payment method
+                        # it means merchant doesn't need the tx sent to him
+                        # since he didn't specify a POST url.
+                        # so we just broadcast and rely on that result status.
+                        ack_msg = None
+                    else:
+                        return False, ack_msg
+                # at this point either ack_status is True or there is "no url"
+                # and we proceed anyway with the broadcast
+                status, msg = self.network.broadcast_transaction(tx)
+
+                # figure out what to return...
+                msg = ack_msg or msg  # prefer the merchant's ack_msg over the broadcast msg, but fallback to broadcast msg if no ack_msg.
+                status = bool(ack_status or status)  # if both broadcast and merchant ACK failed -- it's a failure. if either succeeded -- it's a success
+
+                if status:
+                    self.postage_payment = None
 
             else:
                 # Not a PR, just broadcast.
@@ -3052,7 +3151,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.not_enough_funds_slp = False
             self.not_enough_unfrozen_funds_slp = False
             for e in self.slp_send_tab_widgets:
+                try:
+                    e.setFrozen(False)
+                except:
+                    pass
                 e.setDisabled(False)
+            self.slp_max_button.setDisabled(False)
             self.slp_amount_e.setText('')
             self.token_type_combo.setCurrentIndex(0)
             self.on_slptok() # resets parts of the send tab to initial state

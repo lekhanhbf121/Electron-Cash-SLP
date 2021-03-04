@@ -35,6 +35,8 @@ datas = [
     (home+'lib/servers_scalenet.json', PYPKG),
     (home+'lib/servers_slpdb.json', PYPKG),
     (home+'lib/servers_slpdb_testnet.json', PYPKG),
+    (home+'lib/servers_post_office.json', PYPKG),
+    (home+'lib/servers_post_office_testnet.json', PYPKG),
     (home+'lib/wordlist/english.txt', PYPKG + '/wordlist'),
     (home+'lib/locale', PYPKG + '/locale'),
     (home+'plugins', PYPKG + '_plugins'),

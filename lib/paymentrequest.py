@@ -186,10 +186,12 @@ class PaymentRequest:
         # verify the chain of certificates
         try:
             x, ca = verify_cert_chain(cert.certificate)
-        except BaseException as e:
-            traceback.print_exc(file=sys.stderr)
-            self.error = str(e)
-            return False
+        except:
+            return True
+        # except BaseException as e:
+        #     traceback.print_exc(file=sys.stderr)
+        #     self.error = str(e)
+        #     return False
         # get requestor name
         self.requestor = x.get_common_name()
         if self.requestor.startswith('*.'):
@@ -297,6 +299,7 @@ class PaymentRequest:
         paymnt.memo = "Paid using Electron Cash"
         pm = paymnt.SerializeToString()
         payurl = urllib.parse.urlparse(pay_det.payment_url)
+        headers = ACK_HEADERS_SLP if "6a04534c5000" in raw_tx else ACK_HEADERS
         try:
             headers = ACK_HEADERS
             if is_slp:
@@ -947,3 +950,34 @@ def get_payment_request_bitpay20(url, timeout=10.0):
     except Exception as e:
         print_error('[BitPay2.0] get_payment_request:', repr(e))
         return PaymentRequest(None, error=str(e))
+
+
+def send_postage_payment(raw_tx, payment_url, refund_addr):
+    payment = pb2.Payment()
+    # paymnt.merchant_data = pay_det.merchant_data
+    payment.transactions.append(bfh(raw_tx))
+    ref_out = payment.refund_to.add()
+    ref_out.script = bfh(transaction.Transaction.pay_script(refund_addr))
+    payment.memo = "Paid using Electron Cash"
+    pm = payment.SerializeToString()
+    payurl = urllib.parse.urlparse(payment_url)
+    headers = ACK_HEADERS_SLP
+    try:
+        r = requests.post(payurl.geturl(), data=pm, headers=headers, verify=ca_path)
+    except requests.exceptions.RequestException as e:
+        return False, str(e)
+    if r.status_code != 200:
+        # Propagate 'Bad request' (HTTP 400) messages to the user since they
+        # contain valuable information.
+        if r.status_code == 400:
+            return False, (r.reason + ": " + r.content.decode('UTF-8'))
+        # Some other errors might display an entire HTML document.
+        # Hide those and just display the name of the error code.
+        return False, r.reason
+    try:
+        paymntack = pb2.PaymentACK()
+        paymntack.ParseFromString(r.content)
+    except Exception:
+        return False, "PaymentACK could not be processed. Payment was sent; please manually verify that payment was received."
+    print("PaymentACK message received: %s" % paymntack.memo)
+    return True, paymntack.memo

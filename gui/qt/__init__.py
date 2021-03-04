@@ -60,6 +60,8 @@ from electroncash.util import (UserCancelled, PrintError, print_error,
                                get_new_wallet_name, Handlers)
 from electroncash import version
 
+from electroncash.slp_post_office import SlpPostOfficeClient
+
 from .installwizard import InstallWizard, GoBack
 
 from . import icons # This needs to be imported once app-wide then the :icons/ namespace becomes available for Qt icon filenames.
