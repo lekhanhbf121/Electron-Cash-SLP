@@ -733,7 +733,7 @@ class Commands(PrintError):
     @command('w')
     def listcontacts(self):
         """Show your list of contacts"""
-        return self.wallet.contacts
+        return self.wallet.contacts.get_all()
 
     @command('w')
     def getalias(self, key):
@@ -743,10 +743,11 @@ class Commands(PrintError):
     @command('w')
     def searchcontacts(self, query):
         """Search through contacts, return matching entries. """
-        results = {}
-        for key, value in self.wallet.contacts.items():
-            if query.lower() in key.lower():
-                results[key] = value
+        results = []
+        for contact in self.wallet.contacts.get_all():
+            lquery = query.lower()
+            if lquery in contact.name.lower() or lquery.lower() in contact.address.lower():
+                results.append(contact)
         return results
 
     @command('w')
@@ -960,8 +961,11 @@ class Commands(PrintError):
         """Sign payment request with an OpenAlias"""
         alias = self.config.get('alias')
         if not alias:
-            raise BaseException('No alias in your configuration')
-        alias_addr = self.wallet.contacts.resolve(alias)['address']
+            raise ValueError('No alias in your configuration')
+        data = self.wallet.contacts.resolve(alias)
+        alias_addr = (data and data.get('address')) or None
+        if not alias_addr:
+            raise RuntimeError('Alias could not be resolved')
         address_from_string_check_slp(address, self.wallet)  # throws with slp address format in non-slp wallets
         self.wallet.sign_payment_request(address, alias, alias_addr, password)
 

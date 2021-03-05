@@ -43,7 +43,7 @@ from functools import partial
 from .i18n import ngettext
 from .util import NotEnoughFunds, NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp, ExcessiveFee, PrintError, UserCancelled, profiler, format_satoshis, format_time, finalization_print_error, is_verbose
 
-from .address import Address, Script, ScriptOutput, PublicKey
+from .address import Address, Script, ScriptOutput, PublicKey, OpCodes
 from .bitcoin import *
 from .version import *
 from .keystore import load_keystore, Hardware_KeyStore, Imported_KeyStore, BIP32_KeyStore, xpubkey_to_address
@@ -56,14 +56,17 @@ from .plugins import run_hook
 from . import bitcoin
 from . import coinchooser
 from .synchronizer import Synchronizer
-from .verifier import SPV
+from .verifier import SPV, SPVDelegate
 from . import schnorr
 from . import ecc_fast
+from .blockchain import NULL_HASH_HEX
+
 
 from . import paymentrequest
 from .paymentrequest import PR_PAID, PR_UNPAID, PR_UNKNOWN, PR_EXPIRED
 from .paymentrequest import InvoiceStore
 from .contacts import Contacts
+from . import cashacct
 
 from .slp import SlpMessage, SlpParsingError, SlpUnsupportedSlpTokenType, SlpNoMintingBatonFound, OpreturnError
 from . import slp_validator_0x01, slp_validator_0x01_nft1
@@ -170,7 +173,7 @@ def sweep(privkeys, network, config, recipient, fee=None, imax=100, sign_schnorr
     return tx
 
 
-class Abstract_Wallet(PrintError):
+class Abstract_Wallet(PrintError, SPVDelegate):
     """
     Wallet classes are created to handle various address generation methods.
     Completion states (watching-only, single account, no seed, etc) are handled inside classes.
@@ -186,9 +189,15 @@ class Abstract_Wallet(PrintError):
         # verifier (SPV) and synchronizer are started in start_threads
         self.synchronizer = None
         self.verifier = None
+        # CashAccounts subsystem. Its network-dependent layer is started in
+        # start_threads. Note: object instantiation should be lightweight here.
+        # self.cashacct.load() is called later in this function to load data.
+        self.cashacct = cashacct.CashAcct(self)
+        finalization_print_error(self.cashacct)  # debug object lifecycle
 
         # slp graph databases for token type 1 and NFT1
         self.slp_graph_0x01, self.slp_graph_0x01_nft = None, None
+        self.weak_window = None  # Some of the GUI classes, such as the Qt ElectrumWindow, use this to refer back to themselves.  This should always be a weakref.ref (Weak.ref), or None
 
         # Removes defunct entries from self.pruned_txo asynchronously
         self.pruned_txo_cleaner_thread = None
@@ -222,6 +231,8 @@ class Abstract_Wallet(PrintError):
         # The two types of freezing are flagged independently of each other and 'spendable' is defined as a coin that satisfies
         # BOTH levels of freezing.
         self.frozen_coins = set(storage.get('frozen_coins', []))
+        self.frozen_coins_tmp = set()  # in-memory only
+
         # address -> list(txid, height)
         history = storage.get('addr_history',{})
         self._history = self.to_Address_dict(history)
@@ -231,7 +242,11 @@ class Abstract_Wallet(PrintError):
         # wallet.up_to_date is true when the wallet is synchronized (stronger requirement)
         self.up_to_date = False
 
-        # locks: if you need to take multiple ones, acquire them in the order they are defined here!
+        # The only lock. We used to have two here. That was more technical debt
+        # without much purpose. 1 lock is sufficient. In particular data
+        # structures that are touched by the network thread as well as the GUI
+        # (such as self.transactions, history, etc) need to be synchronized
+        # using this mutex.
         self.lock = threading.RLock()
 
         # load requests
@@ -257,16 +272,21 @@ class Abstract_Wallet(PrintError):
         self.invoices = InvoiceStore(self.storage)
         self.contacts = Contacts(self.storage)
 
+        # cashacct is started in start_threads, but it needs to have relevant
+        # data here, before the below calls happen
+        self.cashacct.load()
+
         # Now, finally, after object is constructed -- we can do this
         self.load_keystore()
         self.load_addresses()
         self.load_transactions()
         self.build_reverse_history()
 
+
         self.check_history()
 
         # Print debug message on finalization
-        finalization_print_error(self, "[{}/{}] finalized".format(__class__.__name__, self.diagnostic_name()))
+        finalization_print_error(self, "[{}/{}] finalized".format(type(self).__name__, self.diagnostic_name()))
 
     @property
     def is_slp(self):
@@ -319,6 +339,7 @@ class Abstract_Wallet(PrintError):
             if not self.txi.get(tx_hash) and not self.txo.get(tx_hash) and (tx_hash not in self.pruned_txo_values):
                 self.print_error("removing unreferenced tx", tx_hash)
                 self.transactions.pop(tx_hash)
+                self.cashacct.remove_transaction_hook(tx_hash)
 
         self.slpv1_validity = self.storage.get('slpv1_validity', {})
         self.token_types = self.storage.get('token_types', {})
@@ -503,6 +524,7 @@ class Abstract_Wallet(PrintError):
     def save_verified_tx(self, write=False):
         with self.lock:
             self.storage.put('verified_tx3', self.verified_tx)
+            self.cashacct.save()
             if write:
                 self.storage.write()
 
@@ -517,6 +539,7 @@ class Abstract_Wallet(PrintError):
             self._addr_bal_cache = {}
             self._history = {}
             self.tx_addr_hist = defaultdict(set)
+            self.cashacct.on_clear_history()
 
     @profiler
     def build_reverse_history(self):
@@ -546,6 +569,7 @@ class Abstract_Wallet(PrintError):
                     save = True
         if save:
             self.save_transactions()
+            self.cashacct.save()
 
     def basename(self):
         return os.path.basename(self.storage.path)
@@ -575,12 +599,13 @@ class Abstract_Wallet(PrintError):
     def set_up_to_date(self, up_to_date):
         with self.lock:
             self.up_to_date = up_to_date
-        if up_to_date:
-            self.save_transactions(write=True)
-            # if the verifier is also up to date, persist that too;
-            # otherwise it will persist its results when it finishes
-            if self.verifier and self.verifier.is_up_to_date():
-                self.save_verified_tx(write=True)
+            if up_to_date:
+                self.save_transactions()
+                # if the verifier is also up to date, persist that too;
+                # otherwise it will persist its results when it finishes
+                if self.verifier and self.verifier.is_up_to_date():
+                    self.save_verified_tx()
+                self.storage.write()
 
     def is_up_to_date(self):
         with self.lock: return self.up_to_date
@@ -699,14 +724,21 @@ class Abstract_Wallet(PrintError):
             # tx will be verified only if height > 0
             if tx_hash not in self.verified_tx:
                 self.unverified_tx[tx_hash] = tx_height
+                self.cashacct.add_unverified_tx_hook(tx_hash, tx_height)
 
-    def add_verified_tx(self, tx_hash, info):
+    def add_verified_tx(self, tx_hash, info, header):
         # Remove from the unverified map and add to the verified map and
         with self.lock:
             self.unverified_tx.pop(tx_hash, None)
             self.verified_tx[tx_hash] = info  # (tx_height, timestamp, pos)
             height, conf, timestamp = self.get_tx_height(tx_hash)
+            self.cashacct.add_verified_tx_hook(tx_hash, info, header)
         self.network.trigger_callback('verified2', self, tx_hash, height, conf, timestamp)
+
+    def verification_failed(self, tx_hash, reason):
+        ''' TODO: Notify gui of this if it keeps happening, try a different
+        server, rate-limited retries, etc '''
+        self.cashacct.verification_failed_hook(tx_hash, reason)
 
     def get_unverified_txs(self):
         '''Returns a map from tx hash to transaction height'''
@@ -731,6 +763,7 @@ class Abstract_Wallet(PrintError):
                     if not header or header.get('timestamp') != timestamp:
                         self.verified_tx.pop(tx_hash, None)
                         txs.add(tx_hash)
+            if txs: self.cashacct.undo_verifications_hook(txs)
         if txs:
             self._addr_bal_cache = {}  # this is probably not necessary -- as the receive_history_callback will invalidate bad cache items -- but just to be paranoid we clear the whole balance cache on reorg anyway as a safety measure
         return txs
@@ -751,6 +784,25 @@ class Abstract_Wallet(PrintError):
                 return height, 0, 0
             else:
                 return 0, 0, 0
+
+    def get_tx_block_hash(self, tx_hash):
+        ''' Only works for tx's in wallet, for which we know the height. '''
+        height, ign, ign2 = self.get_tx_height(tx_hash)
+        return self.get_block_hash(height)
+
+    def get_block_hash(self, height):
+        '''Convenience method equivalent to Blockchain.get_height(), except our
+        version returns None instead of NULL_HASH_HEX on 'not found' header. '''
+        ret = None
+        if self.network and height is not None and height >= 0 and height <= self.get_local_height():
+            bchain = self.network.blockchain()
+            if bchain:
+                ret = bchain.get_hash(height)
+                if ret == NULL_HASH_HEX:
+                    # if hash was NULL (all zeroes), prefer to return None
+                    ret = None
+        return ret
+
 
     def get_txpos(self, tx_hash):
         "return position, even if the tx is unverified"
@@ -933,6 +985,7 @@ class Abstract_Wallet(PrintError):
             coins.pop(txi)
             # cleanup/detect if the 'frozen coin' was spent and remove it from the frozen coin set
             self.frozen_coins.discard(txi)
+            self.frozen_coins_tmp.discard(txi)
 
         """
         SLP -- removes ALL SLP UTXOs that are either unrelated, or unvalidated
@@ -955,7 +1008,7 @@ class Abstract_Wallet(PrintError):
                 'prevout_hash':prevout_hash,
                 'height':tx_height,
                 'coinbase':is_cb,
-                'is_frozen_coin':txo in self.frozen_coins
+                'is_frozen_coin': txo in self.frozen_coins or txo in self.frozen_coins_tmp
             }
             out[txo] = x
         return out
@@ -971,6 +1024,7 @@ class Abstract_Wallet(PrintError):
             coins.pop(txi)
             # cleanup/detect if the 'frozen coin' was spent and remove it from the frozen coin set
             self.frozen_coins.discard(txi)
+            self.frozen_coins_tmp.discard(txi)
 
         coins_to_pop = []
         for coin in coins.items():
@@ -1011,7 +1065,7 @@ class Abstract_Wallet(PrintError):
                 'prevout_hash': prevout_hash,
                 'height': tx_height,
                 'coinbase': is_cb,
-                'is_frozen_coin': txo in self.frozen_coins,
+                'is_frozen_coin': txo in self.frozen_coins or txo in self.frozen_coins_tmp,
                 'token_value': addrdict[prevout_hash][int(prevout_n)]['qty'],
                 'token_validation_state': val
             }
@@ -1035,7 +1089,7 @@ class Abstract_Wallet(PrintError):
         c = u = x = 0
         had_cb = False
         for txo, (tx_height, v, is_cb) in received.items():
-            if exclude_frozen_coins and txo in self.frozen_coins:
+            if exclude_frozen_coins and (txo in self.frozen_coins or txo in self.frozen_coins_tmp):
                 continue
             had_cb = had_cb or is_cb  # remember if this address has ever seen a coinbase txo
             if is_cb and tx_height + COINBASE_MATURITY > self.get_local_height():
@@ -1123,43 +1177,62 @@ class Abstract_Wallet(PrintError):
                 unvalidated_token_bal += coin['token_value']
         return (valid_token_bal, unvalidated_token_bal, invalid_token_bal, unfrozen_valid_token_bal, valid_token_bal - unfrozen_valid_token_bal)
 
-    def get_utxos(self, *, domain = None, exclude_frozen = False, mature = False, confirmed_only = False, exclude_slp = True):
-        ''' Note that exclude_frozen = True checks for BOTH address-level and coin-level frozen status. '''
-        coins = []
-        if domain is None:
-            domain = self.get_addresses()
-        if exclude_frozen:
-            domain = set(domain) - self.frozen_addresses
-        for addr in domain:
-            utxos = self.get_addr_utxo(addr, exclude_slp=exclude_slp)
-            for x in utxos.values():
-                if exclude_frozen and x['is_frozen_coin']:
-                    continue
-                if confirmed_only and x['height'] <= 0:
-                    continue
-                if mature and x['coinbase'] and x['height'] + COINBASE_MATURITY > self.get_local_height():
-                    continue
-                coins.append(x)
-                continue
-        return coins
+    def get_utxos(self, domain = None, exclude_frozen = False, mature = False, confirmed_only = False,
+                  *, addr_set_out = None, exclude_slp = True):
+        '''Note that exclude_frozen = True checks for BOTH address-level and
+        coin-level frozen status.
 
-    def get_slp_utxos(self, slpTokenId, *, domain = None, exclude_frozen = False, confirmed_only = False, slp_include_invalid=False, slp_include_baton=False):
-        ''' Note that exclude_frozen = True checks for BOTH address-level and coin-level frozen status. '''
-        coins = []
-        if domain is None:
-            domain = self.get_addresses()
-        if exclude_frozen:
-            domain = set(domain) - self.frozen_addresses
-        for addr in domain:
-            utxos = self.get_slp_addr_utxo(addr, slpTokenId, slp_include_invalid=slp_include_invalid, slp_include_baton=slp_include_baton)
-            for x in utxos.values():
-                if exclude_frozen and x['is_frozen_coin']:
+        Optional kw-only arg `addr_set_out` specifies a set in which to add all
+        addresses encountered in the utxos returned. '''
+        with self.lock:
+            coins = []
+            if domain is None:
+                domain = self.get_addresses()
+            if exclude_frozen:
+                domain = set(domain) - self.frozen_addresses
+            for addr in domain:
+                utxos = self.get_addr_utxo(addr, exclude_slp=exclude_slp)
+                len_before = len(coins)
+                for x in utxos.values():
+                    if exclude_frozen and x['is_frozen_coin']:
+                        continue
+                    if confirmed_only and x['height'] <= 0:
+                        continue
+                    if mature and x['coinbase'] and x['height'] + COINBASE_MATURITY > self.get_local_height():
+                        continue
+                    coins.append(x)
+                if addr_set_out is not None and len(coins) > len_before:
+                    # add this address to the address set if it has results
+                    addr_set_out.add(addr)
+            return coins
+
+    def get_slp_utxos(self, slpTokenId, domain = None, exclude_frozen = False, confirmed_only = False, slp_include_invalid=False, slp_include_baton=False,
+                      *, addr_set_out = None):
+        '''Note that exclude_frozen = True checks for BOTH address-level and
+        coin-level frozen status.
+
+        Optional kw-only arg `addr_set_out` specifies a set in which to add all
+        addresses encountered in the utxos returned. '''
+        with self.lock:
+            coins = []
+            if domain is None:
+                domain = self.get_addresses()
+            if exclude_frozen:
+                domain = set(domain) - self.frozen_addresses
+            for addr in domain:
+                utxos = self.get_slp_addr_utxo(addr, slpTokenId, slp_include_invalid=slp_include_invalid, slp_include_baton=slp_include_baton)
+                len_before = len(coins)
+                for x in utxos.values():
+                    if exclude_frozen and x['is_frozen_coin']:
+                        continue
+                    if confirmed_only and x['height'] <= 0:
+                        continue
+                    coins.append(x)
                     continue
-                if confirmed_only and x['height'] <= 0:
-                    continue
-                coins.append(x)
-                continue
-        return coins
+                if addr_set_out is not None and len(coins) > len_before:
+                    # add this address to the address set if it has results
+                    addr_set_out.add(addr)
+            return coins
 
     def dummy_address(self):
         return self.get_receiving_addresses()[0]
@@ -1168,7 +1241,7 @@ class Abstract_Wallet(PrintError):
         return self.get_receiving_addresses() + self.get_change_addresses()
 
     def get_frozen_balance(self):
-        if not self.frozen_coins:
+        if not self.frozen_coins and not self.frozen_coins_tmp:
             # performance short-cut -- get the balance of the frozen address set only IFF we don't have any frozen coins
             return self.get_balance(self.frozen_addresses)
         # otherwise, do this more costly calculation...
@@ -1456,11 +1529,25 @@ class Abstract_Wallet(PrintError):
 
             # add outputs
             self.txo[tx_hash] = d = {}
+            op_return_ct = 0
+            deferred_cashacct_add = None
             for n, txo in enumerate(tx.outputs()):
                 ser = tx_hash + ':%d'%n
                 _type, addr, v = txo
                 mine = False
-                if self.is_mine(addr):
+                if isinstance(addr, ScriptOutput):
+                    if addr.is_opreturn():
+                        op_return_ct += 1
+                    if isinstance(addr, cashacct.ScriptOutput):
+                        # auto-detect CashAccount registrations we see,
+                        # and notify cashacct subsystem of that fact. But we
+                        # can only do it after making sure it's the *only*
+                        # OP_RETURN in the tx.
+                        deferred_cashacct_add = (
+                            lambda _tx_hash=tx_hash, _tx=tx, _n=n, _addr=addr:
+                                self.cashacct.add_transaction_hook(_tx_hash, _tx, _n, _addr)
+                        )
+                elif self.is_mine(addr):
                     # add coin to self.txo since it's mine.
                     mine = True
                     l = d.get(addr)
@@ -1480,6 +1567,13 @@ class Abstract_Wallet(PrintError):
 
             # save
             self.transactions[tx_hash] = tx
+
+            # Invoke the cashacct add hook (if defined) here at the end, with
+            # the lock held. We accept the cashacct.ScriptOutput only iff
+            # op_return_ct == 1 as per the Cash Accounts spec.
+            # See: https://gitlab.com/cash-accounts/lookup-server/blob/master/routes/parser.js#L253
+            if op_return_ct == 1 and deferred_cashacct_add:
+                deferred_cashacct_add()
 
             ### SLP: Handle incoming SLP transaction outputs here
             self.handleSlpTransaction(tx_hash, tx)
@@ -1679,6 +1773,10 @@ class Abstract_Wallet(PrintError):
 
             for addr, addrdict in self._slp_txo.items():
                 if tx_hash in addrdict: addrdict[tx_hash] = {}
+
+            # do this with the lock held
+            self.cashacct.remove_transaction_hook(tx_hash)
+
 
     def receive_tx_callback(self, tx_hash, tx, tx_height):
         self.add_transaction(tx_hash, tx)
@@ -2264,26 +2362,31 @@ class Abstract_Wallet(PrintError):
         return tx
 
     def is_frozen(self, addr):
-        ''' Address-level frozen query. Note: this is set/unset independent of 'coin' level freezing. '''
+        ''' Address-level frozen query. Note: this is set/unset independent of
+        'coin' level freezing. '''
         assert isinstance(addr, Address)
         return addr in self.frozen_addresses
 
     def is_frozen_coin(self, utxo):
-        ''' 'coin' level frozen query. `utxo' is a prevout:n string, or a dict as returned from get_utxos().
-            Note: this is set/unset independent of 'address' level freezing. '''
+        ''' 'coin' level frozen query. `utxo' is a prevout:n string, or a dict
+        as returned from get_utxos(). Note: this is set/unset independent of
+        'address' level freezing. '''
         assert isinstance(utxo, (str, dict))
         if isinstance(utxo, dict):
-            ret = ("{}:{}".format(utxo['prevout_hash'], utxo['prevout_n'])) in self.frozen_coins
+            name = ("{}:{}".format(utxo['prevout_hash'], utxo['prevout_n']))
+            ret = name in self.frozen_coins or name in self.frozen_coins_tmp
             if ret != utxo['is_frozen_coin']:
-                self.print_error("*** WARNING: utxo has stale is_frozen_coin flag")
+                self.print_error("*** WARNING: utxo has stale is_frozen_coin flag", name)
                 utxo['is_frozen_coin'] = ret # update stale flag
             return ret
-        return utxo in self.frozen_coins
+        else:
+            return utxo in self.frozen_coins or utxo in self.frozen_coins_tmp
 
     def set_frozen_state(self, addrs, freeze):
-        ''' Set frozen state of the addresses to FREEZE, True or False
-            Note that address-level freezing is set/unset independent of coin-level freezing, however both must
-            be satisfied for a coin to be defined as spendable.. '''
+        ''' Set frozen state of the addresses to `freeze`, True or False. Note
+        that address-level freezing is set/unset independent of coin-level
+        freezing, however both must be satisfied for a coin to be defined as
+        spendable. '''
         if all(self.is_mine(addr) for addr in addrs):
             if freeze:
                 self.frozen_addresses |= set(addrs)
@@ -2295,31 +2398,49 @@ class Abstract_Wallet(PrintError):
             return True
         return False
 
-    def set_frozen_coin_state(self, utxos, freeze):
-        ''' Set frozen state of the COINS to FREEZE, True or False.
-            utxos is a (possibly mixed) list of either "prevout:n" strings and/or coin-dicts as returned from get_utxos().
-            Note that if passing prevout:n strings as input, 'is_mine()' status is not checked for the specified coin.
-            Also note that coin-level freezing is set/unset independent of address-level freezing, however both must
-            be satisfied for a coin to be defined as spendable. '''
-        ok = 0
-        for utxo in utxos:
-            if isinstance(utxo, str):
-                if freeze:
-                    self.frozen_coins |= { utxo }
-                else:
-                    self.frozen_coins -= { utxo }
-                ok += 1
-            elif isinstance(utxo, dict) and self.is_mine(utxo['address']):
-                txo = "{}:{}".format(utxo['prevout_hash'], utxo['prevout_n'])
-                if freeze:
-                    self.frozen_coins |= { txo }
-                else:
-                    self.frozen_coins -= { txo }
-                utxo['is_frozen_coin'] = bool(freeze)
-                ok += 1
-        if ok:
-            self.storage.put('frozen_coins', list(self.frozen_coins))
-        return ok
+    def set_frozen_coin_state(self, utxos, freeze, *, temporary = False):
+        '''Set frozen state of the `utxos` to `freeze`, True or False. `utxos`
+        is a (possibly mixed) list of either "prevout:n" strings and/or
+        coin-dicts as returned from get_utxos(). Note that if passing prevout:n
+        strings as input, 'is_mine()' status is not checked for the specified
+        coin. Also note that coin-level freezing is set/unset independent of
+        address-level freezing, however both must be satisfied for a coin to be
+        defined as spendable.
+
+        The `temporary` flag only applies if `freeze = True`. In that case,
+        freezing coins will only affect the in-memory-only frozen set, which
+        doesn't get saved to storage. This mechanism was added so that plugins
+        (such as CashFusion) have a mechanism for ephemeral coin freezing that
+        doesn't persist across sessions.
+
+        Note that setting `freeze = False` effectively unfreezes both the
+        temporary and the permanent frozen coin sets all in 1 call. Thus after a
+        call to `set_frozen_coin_state(utxos, False), both the temporary and the
+        persistent frozen sets are cleared of all coins in `utxos`. '''
+        add_set = self.frozen_coins if not temporary else self.frozen_coins_tmp
+        def add(utxo):
+            add_set.add( utxo )
+        def discard(utxo):
+            self.frozen_coins.discard( utxo )
+            self.frozen_coins_tmp.discard( utxo )
+        apply_operation = add if freeze else discard
+        original_size = len(self.frozen_coins)
+        with self.lock:
+            ok = 0
+            for utxo in utxos:
+                if isinstance(utxo, str):
+                    apply_operation( utxo )
+                    ok += 1
+                elif isinstance(utxo, dict) and self.is_mine(utxo['address']):
+                    txo = "{}:{}".format(utxo['prevout_hash'], utxo['prevout_n'])
+                    apply_operation( txo )
+                    utxo['is_frozen_coin'] = bool(freeze)
+                    ok += 1
+            if original_size != len(self.frozen_coins):
+                # Performance optimization: only set storage if the perma-set
+                # changed.
+                self.storage.put('frozen_coins', list(self.frozen_coins))
+            return ok
 
     def prepare_for_verifier(self):
         # review transactions that are in the history
@@ -2342,7 +2463,7 @@ class Abstract_Wallet(PrintError):
 
     def start_threads(self, network):
         self.network = network
-        if self.network is not None:
+        if self.network:
             if self.is_slp:
                 # Note: it's important that SLP data structures are defined
                 # before the network (SPV/Synchronizer) callbacks are installed
@@ -2356,9 +2477,10 @@ class Abstract_Wallet(PrintError):
             self.prepare_for_verifier()
             self.verifier = SPV(self.network, self)
             self.synchronizer = Synchronizer(self, network)
-            finalization_print_error(self.verifier, "[{}.{}] finalized".format(self.diagnostic_name(), self.verifier.diagnostic_name()))
-            finalization_print_error(self.synchronizer, "[{}.{}] finalized".format(self.diagnostic_name(), self.synchronizer.diagnostic_name()))
+            finalization_print_error(self.verifier)
+            finalization_print_error(self.synchronizer)
             network.add_jobs([self.verifier, self.synchronizer])
+            self.cashacct.start(self.network)  # start cashacct network-dependent subsystem, nework.add_jobs, etc
         else:
             self.verifier = None
             self.synchronizer = None
@@ -2372,6 +2494,7 @@ class Abstract_Wallet(PrintError):
             # because these objects need to do thier clean-up actions in a
             # thread-safe fashion from within the thread where they normally
             # operate on their data structures.
+            self.cashacct.stop()
             self.synchronizer.release()
             self.verifier.release()
             self.synchronizer = None
@@ -2391,7 +2514,7 @@ class Abstract_Wallet(PrintError):
                 self.slp_graph_0x01, self.slp_graph_0x01_nft = None, None
             self.storage.put('stored_height', self.get_local_height())
         self.save_transactions()
-        self.save_verified_tx()
+        self.save_verified_tx()  # implicit cashacct.save
         self.storage.write()
 
     def start_pruned_txo_cleaner_thread(self):
@@ -2863,6 +2986,7 @@ class Abstract_Wallet(PrintError):
             self._history[address] = []
         if self.synchronizer:
             self.synchronizer.add(address)
+        self.cashacct.on_address_addition(address)
 
     def has_password(self):
         return self.storage.get('use_encryption', False)
@@ -2882,8 +3006,7 @@ class Abstract_Wallet(PrintError):
     def rebuild_history(self):
         ''' This is an advanced function for use in the GUI when the user
         wants to resynch the whole wallet from scratch, preserving labels
-        and contacts.  Right now this implementation is beta-quality but
-        appears to work great for the most part. '''
+        and contacts.  '''
         if not self.network or not self.network.is_connected():
             raise RuntimeError('Refusing to rebuild wallet without a valid server connection!')
         if not self.synchronizer or not self.verifier:
@@ -2903,7 +3026,7 @@ class Abstract_Wallet(PrintError):
         if do_addr_save:
             self.save_addresses()
         self.save_transactions()
-        self.save_verified_tx()
+        self.save_verified_tx()  # implicit cashacct.save
         self.storage.write()
         self.start_threads(network)
         self.network.trigger_callback('wallet_updated', self)
@@ -3073,7 +3196,14 @@ class ImportedWalletBase(Simple_Wallet):
         self.set_frozen_state([address], False)
 
         self.delete_address_derived(address)
+
+        self.cashacct.on_address_deletion(address)
+        self.cashacct.save()
+
         self.save_addresses()
+
+        self.storage.write() # no-op if above already wrote
+
 
 
 class ImportedAddressWallet(ImportedWalletBase):
@@ -3133,9 +3263,10 @@ class ImportedAddressWallet(ImportedWalletBase):
         if address in self.addresses:
             return False
         self.addresses.append(address)
-        self.save_addresses()
-        self.storage.write()
         self.add_address(address)
+        self.cashacct.save()
+        self.save_addresses()
+        self.storage.write() # no-op if already wrote in previous call
         self._sorted = None
         return True
 
@@ -3220,8 +3351,10 @@ class ImportedPrivkeyWallet(ImportedWalletBase):
     def import_private_key(self, sec, pw):
         pubkey = self.keystore.import_privkey(sec, pw)
         self.save_keystore()
-        self.storage.write()
         self.add_address(pubkey.address)
+        self.cashacct.save()
+        self.save_addresses()
+        self.storage.write()  # no-op if above already wrote
         return pubkey.address.to_ui_string()
 
     def export_private_key(self, address, password):

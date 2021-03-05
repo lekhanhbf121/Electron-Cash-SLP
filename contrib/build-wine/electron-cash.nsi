@@ -147,6 +147,11 @@ Section
   WriteRegStr HKCU "Software\Classes\simpleledger" "URL Protocol" ""
   WriteRegStr HKCU "Software\Classes\simpleledger" "DefaultIcon" "$\"$INSTDIR\electron.ico, 0$\""
   WriteRegStr HKCU "Software\Classes\simpleledger\shell\open\command" "" "$\"$INSTDIR\${INTERNAL_NAME}.exe$\" $\"%1$\""
+  ;Links cashacct: URI's to Electron Cash
+  WriteRegStr HKCU "Software\Classes\cashacct" "" "URL:cashacct Protocol"
+  WriteRegStr HKCU "Software\Classes\cashacct" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\cashacct" "DefaultIcon" "$\"$INSTDIR\electron.ico, 0$\""
+  WriteRegStr HKCU "Software\Classes\cashacct\shell\open\command" "" "$\"$INSTDIR\${INTERNAL_NAME}.exe$\" $\"%1$\""
 
   ;Adds an uninstaller possibilty to Windows Uninstall or change a program section
   WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayName" "$(^Name)"
@@ -193,6 +198,7 @@ Section "Uninstall"
 
   DeleteRegKey HKCU "Software\Classes\bitcoincash"
   DeleteRegKey HKCU "Software\Classes\simpleledger"
+  DeleteRegKey HKCU "Software\Classes\cashacct"
   DeleteRegKey HKCU "Software\${PRODUCT_NAME}"
   DeleteRegKey HKCU "${PRODUCT_UNINST_KEY}"
 SectionEnd
