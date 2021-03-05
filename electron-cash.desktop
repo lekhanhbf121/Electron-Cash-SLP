@@ -3,11 +3,11 @@
 # sudo desktop-file-install electron-cash.desktop
 
 [Desktop Entry]
-Comment=Lightweight Bitcoin Cash Client
+Comment=Lightweight Bitcoin Cash Client with SLP support
 Exec=electron-cash %u
 GenericName=Bitcoin Cash Wallet
 Icon=electron-cash
-Name=Electron Cash
+Name=Electron Cash SLP
 Categories=Finance;Network;
 StartupNotify=true
 StartupWMClass=Electron Cash
