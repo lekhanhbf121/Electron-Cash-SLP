@@ -52,7 +52,7 @@ GROUP_ID=$(id -g $USER)
 # To prevent weird errors, img name must capture user:group id since the
 # Dockerfile receives those as args and sets up a /homedir in the image
 # owned by $USER_ID:$GROUP_ID
-IMGNAME="ec-wine-builder-img_${USER_ID}_${GROUP_ID}"
+IMGNAME="ec-slp-wine-builder-img_${USER_ID}_${GROUP_ID}"
 
 info "Creating docker image ..."
 $SUDO docker build -t $IMGNAME \
@@ -85,7 +85,7 @@ FRESH_CLONE_DIR="$FRESH_CLONE/$GIT_DIR_NAME"
     -e GIT_REPO="$GIT_REPO" \
     -e BUILD_DEBUG="$BUILD_DEBUG" \
     -e PYI_SKIP_TAG="$PYI_SKIP_TAG" \
-    --name ec-wine-builder-cont \
+    --name ec-slp-wine-builder-cont \
     -v "$FRESH_CLONE_DIR":/homedir/wine64/drive_c/electroncash:delegated \
     --rm \
     --workdir /homedir/wine64/drive_c/electroncash/contrib/build-wine \

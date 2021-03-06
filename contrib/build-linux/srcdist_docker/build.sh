@@ -48,7 +48,7 @@ fi
 
 
 info "Creating docker image ..."
-$SUDO docker build -t electroncash-srcdist-builder-img \
+$SUDO docker build -t electroncash-slp-srcdist-builder-img \
     contrib/build-linux/srcdist_docker \
     || fail "Failed to create docker image"
 
@@ -76,12 +76,12 @@ mkdir "$FRESH_CLONE_DIR/contrib/build-linux/home" || fail "Failed to create home
     -e HOME="/opt/electroncash/contrib/build-linux/home" \
     -e GIT_REPO="$GIT_REPO" \
     -e BUILD_DEBUG="$BUILD_DEBUG" \
-    --name electroncash-srcdist-builder-cont \
+    --name electroncash-slp-srcdist-builder-cont \
     -v $FRESH_CLONE_DIR:/opt/electroncash:delegated \
     --rm \
     --workdir /opt/electroncash/contrib/build-linux/srcdist_docker \
     -u $(id -u $USER):$(id -g $USER) \
-    electroncash-srcdist-builder-img \
+    electroncash-slp-srcdist-builder-img \
     ./_build.sh $REV
 ) || fail "Build inside docker container failed"
 
