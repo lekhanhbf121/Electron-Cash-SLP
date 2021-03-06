@@ -60,7 +60,7 @@ fi
 DOCKER_SUFFIX=ub1604
 
 info "Creating docker image ..."
-$SUDO docker build -t electroncash-appimage-builder-img-$DOCKER_SUFFIX \
+$SUDO docker build -t electroncash-slp-appimage-builder-img-$DOCKER_SUFFIX \
     -f contrib/build-linux/appimage/Dockerfile_$DOCKER_SUFFIX \
     contrib/build-linux/appimage \
     || fail "Failed to create docker image"
@@ -89,12 +89,12 @@ mkdir "$FRESH_CLONE_DIR/contrib/build-linux/home" || fail "Failed to create home
     -e HOME="/opt/electroncash/contrib/build-linux/home" \
     -e GIT_REPO="$GIT_REPO" \
     -e BUILD_DEBUG="$BUILD_DEBUG" \
-    --name electroncash-appimage-builder-cont-$DOCKER_SUFFIX \
+    --name electroncash-slp-appimage-builder-cont-$DOCKER_SUFFIX \
     -v $FRESH_CLONE_DIR:/opt/electroncash:delegated \
     --rm \
     --workdir /opt/electroncash/contrib/build-linux/appimage \
     -u $(id -u $USER):$(id -g $USER) \
-    electroncash-appimage-builder-img-$DOCKER_SUFFIX \
+    electroncash-slp-appimage-builder-img-$DOCKER_SUFFIX \
     ./_build.sh $REV
 ) || fail "Build inside docker container failed"
 
