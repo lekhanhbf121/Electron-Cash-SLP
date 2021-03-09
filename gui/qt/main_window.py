@@ -328,7 +328,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             weakSelf = Weak.ref(self)
 
             # do this immediately after this event handler finishes -- noop on everything but linux
-            QTimer.singleShot(0, lambda: weakSelf() and weakSelf().gui_object.lin_win_maybe_show_highdpi_caveat_msg(weakSelf()))
+            def callback():
+                strongSelf = weakSelf()
+                if strongSelf:
+                    strongSelf.gui_object.lin_win_maybe_show_highdpi_caveat_msg(strongSelf)
+            QTimer.singleShot(0, callback)
 
     def update_token_type_combo(self):
         self.token_type_combo.clear()
@@ -1235,6 +1239,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.seed_button.setIcon(icon_dict["seed_ok"])
                 self.seed_button.setToolTip(_("Seed"))
                 self.seed_button.setStatusTip(None)
+        run_hook('window_update_status', self)
 
     def update_wallet(self):
         self.need_update.set() # will enqueue an _update_wallet() call in at most 0.5 seconds from now.
