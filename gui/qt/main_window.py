@@ -3907,6 +3907,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             return
         try:
             self.wallet.update_password(password, new_password, encrypt_file)
+            run_hook("on_new_password", self, password, new_password)
         except BaseException as e:
             self.show_error(str(e))
             return
