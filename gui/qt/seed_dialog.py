@@ -268,7 +268,13 @@ class SeedBackupDialog(AbstractSeedDialog):
         vbox2 = QVBoxLayout(self.slayout_widget)
         vbox2.setContentsMargins(0,0,0,0)
         title = _('To make sure that you have properly saved your seed, please retype it here.') + "<br><br>"
-        slayout = SeedLayout(title=title, seed=None, msg=False, passphrase=self.passphrase, editable=True, derivation=self.derivation, seed_type=self.seed_type, parent=self)
+        def compare_seed(tseed):
+            if not mnemonic.is_bip39_seed(tseed):
+                return False
+            orig = mnemonic.Mnemonic.mnemonic_to_seed(self.seed, self.passphrase)
+            bak = mnemonic.Mnemonic.mnemonic_to_seed(tseed, self.passphrase)
+            return orig == bak
+        slayout = SeedLayout(title=title, seed=None, msg=False, passphrase=self.passphrase, editable=True, derivation=self.derivation, seed_type=self.seed_type, is_seed=compare_seed, parent=self)
         vbox2.addLayout(slayout)
         self.vbox.insertWidget(0, self.slayout_widget)
         # clear clipboard so they can't copy-paste
