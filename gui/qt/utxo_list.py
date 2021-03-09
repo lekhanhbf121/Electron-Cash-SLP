@@ -142,21 +142,21 @@ class UTXOList(MyTreeWidget):
             utxo_item.setData(0, self.DataRoles.name, name)
             a_frozen = self.wallet.is_frozen(address)
             c_frozen = x['is_frozen_coin']
-            toolTipFrozen = ''
+            toolTipMisc = ''
             if a_frozen and not c_frozen:
                 # address is frozen, coin is not frozen
                 # emulate the "Look" off the address_list .py's frozen entry
                 utxo_item.setBackground(0, self.lightBlue)
-                toolTipFrozen = _("Address is frozen")
+                toolTipMisc = _("Address is frozen")
             elif c_frozen and not a_frozen:
                 # coin is frozen, address is not frozen
                 utxo_item.setBackground(0, self.blue)
-                toolTipFrozen = _("Coin is frozen")
+                toolTipMisc = _("Coin is frozen")
             elif c_frozen and a_frozen:
                 # both coin and address are frozen so color-code it to indicate that.
                 utxo_item.setBackground(0, self.lightBlue)
                 utxo_item.setForeground(0, self.cyanBlue)
-                toolTipFrozen = _("Coin & Address are frozen")
+                toolTipMisc = _("Coin & Address are frozen")
             # save the address-level-frozen and coin-level-frozen flags to the data item for retrieval later in create_menu() below.
             utxo_item.setData(0, self.DataRoles.frozen_flags, "{}{}".format(("a" if a_frozen else ""), ("c" if c_frozen else "")))
             # store the address
@@ -164,8 +164,8 @@ class UTXOList(MyTreeWidget):
             # store the ca_info for this address -- if any
             if ca_info:
                 utxo_item.setData(0, self.DataRoles.cash_account, ca_info)
-            if toolTipFrozen:
-                utxo_item.setToolTip(0, toolTipFrozen)
+            if toolTipMisc:
+                utxo_item.setToolTip(0, toolTipMisc)
             self.addChild(utxo_item)
             if name in prev_selection:
                 # NB: This needs to be here after the item is added to the widget. See #979.
@@ -198,7 +198,8 @@ class UTXOList(MyTreeWidget):
                 return
             spendable_coins = list(filter(lambda x: not selected.get(self.get_name(x), ''), coins))
             # Unconditionally add the "Spend" option but leave it disabled if there are no spendable_coins (or if has SLP coins)
-            menu.addAction(_("Spend"), lambda: self.parent.spend_coins(spendable_coins)).setEnabled(bool(spendable_coins) and not self.are_any_slp_coins(spendable_coins))
+            spend_action = menu.addAction(_("Spend"), lambda: self.parent.spend_coins(spendable_coins))
+            spend_action.setEnabled(bool(spendable_coins) and not self.are_any_slp_coins(spendable_coins))
             if len(selected) == 1:
                 # "Copy ..."
                 item = self.itemAt(position)
