@@ -24,6 +24,7 @@
 # SOFTWARE.
 from .util import *
 from electroncash.i18n import _
+from electroncash.plugins import run_hook
 from electroncash.address import Address
 from electroncash.bitcoin import COINBASE_MATURITY
 from electroncash import cashacct
@@ -177,6 +178,7 @@ class UTXOList(MyTreeWidget):
                 utxo_item.setData(0, self.DataRoles.cash_account, ca_info)
             if toolTipMisc:
                 utxo_item.setToolTip(0, toolTipMisc)
+            run_hook("utxo_list_item_setup", self, utxo_item, x, name)
             self.addChild(utxo_item)
             if name in prev_selection:
                 # NB: This needs to be here after the item is added to the widget. See #979.
