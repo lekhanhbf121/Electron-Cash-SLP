@@ -155,9 +155,6 @@ class PayToEdit(PrintError, ScanQRTextEdit):
         if len(lines) == 1:
             data = lines[0]
             lc_data = data.lower()
-            if any(lc_data.startswith(scheme + ":") for scheme in web.parseable_schemes()):
-                self.scan_f(data)
-                return
             try:
                 self.parse_address(data)
             except Exception as e:

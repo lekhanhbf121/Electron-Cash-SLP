@@ -3343,7 +3343,16 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if label and not message:
             message = label
         if address or URI.strip().lower().split(':', 1)[0] in web.parseable_schemes():
-            self.payto_e.setText(URI.split('?')[0])
+            # if scheme and address, set the payto field to scheme:address
+            # if address, set the payto field to the address.
+            # if *not* address, then we set the payto field to the empty string
+            # only IFF it was bitcoincash: and/or cashacct:, see issue #1131.
+            if scheme and address:
+                self.payto_e.setText(f'{scheme}:{address}')
+            elif address:
+                self.payto_e.setText(address)
+            else:
+                self.payto_e.setText('')
         if message:
             self.message_e.setText(message)
         if amounts:
