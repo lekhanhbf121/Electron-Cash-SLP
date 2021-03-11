@@ -68,6 +68,7 @@ from electroncash.util import (UserCancelled, PrintError, print_error,
                                standardize_path, finalization_print_error, Weak,
                                get_new_wallet_name, Handlers)
 from electroncash import version
+from electroncash.address import Address
 
 from electroncash.slp_post_office import SlpPostOfficeClient
 
@@ -85,6 +86,8 @@ from electroncash.slp_graph_search import slp_gs_mgr
 class ElectrumGui(QObject, PrintError):
     new_window_signal = pyqtSignal(str, object)
     update_available_signal = pyqtSignal(bool)
+    cashaddr_toggled_signal = pyqtSignal()  # app-wide signal for when cashaddr format is toggled. This used to live in each ElectrumWindow instance but it was recently refactored to here.
+    cashaddr_status_button_hidden_signal = pyqtSignal(bool)  # app-wide signal for when cashaddr toggle button is hidden from the status bar
     shutdown_signal = pyqtSignal()  # signal for requesting an app-wide full shutdown
     do_in_main_thread_signal = pyqtSignal(object, object, object)
 
@@ -138,6 +141,7 @@ class ElectrumGui(QObject, PrintError):
         self.gc_timer = QTimer(self); self.gc_timer.setSingleShot(True); self.gc_timer.timeout.connect(ElectrumGui.gc); self.gc_timer.setInterval(500) #msec
         self.nd = None
         self._last_active_window = None  # we remember the last activated ElectrumWindow as a Weak.ref
+        Address.show_cashaddr(self.get_addr_format())
         # Dark Theme -- ideally set this before any widgets are created.
         self.set_dark_theme_if_needed()
         # /
@@ -918,6 +922,37 @@ class ElectrumGui(QObject, PrintError):
             except TypeError:
                 self.tray.showMessage("Electron Cash", message, QSystemTrayIcon.Information, 20000)
 
+    _addr_format_toggle_list = [ Address.FMT_SLPADDR, Address.FMT_CASHADDR, Address.FMT_LEGACY ]
+
+    def get_addr_format(self):
+        ret = self.config.get('addr_format', Address.FMT_SLPADDR)
+        if not ret in self._addr_format_toggle_list:
+            ret = Address.FMT_SLPADDR # EC-SLP previously used number 2 for the SLP address format
+        return ret
+
+    def toggle_cashaddr(self, format = None):
+        was = self.get_addr_format()
+        if format is None:
+            idx = self._addr_format_toggle_list.index(was) + 1
+            if idx >= len(self._addr_format_toggle_list):
+                idx = 0;
+            format = self._addr_format_toggle_list[idx]
+        else:
+            format = int(format)
+        self.config.set_key('addr_format', format)
+        Address.show_cashaddr(format)
+        if was != format:
+            self.cashaddr_toggled_signal.emit()
+
+    def is_cashaddr_status_button_hidden(self):
+        return bool(self.config.get('hide_cashaddr_button', False))
+
+    def set_cashaddr_status_button_hidden(self, b):
+        b = bool(b)
+        was = self.is_cashaddr_status_button_hidden()
+        if was != b:
+            self.config.set_key('hide_cashaddr_button', bool(b))
+            self.cashaddr_status_button_hidden_signal.emit(b)
 
     @property
     def windows_qt_use_freetype(self):

@@ -65,7 +65,7 @@ class RequestList(MyTreeWidget):
         self.parent.receive_address_e.setText(addr.to_full_ui_string())
         self.parent.receive_message_e.setText(message)
         if req.get('token_id', None):
-            self.parent.toggle_cashaddr(2, True)
+            self.parent.gui_object.toggle_cashaddr(Address.FMT_SLPADDR)
             self.parent.receive_slp_token_type_label.setDisabled(False)
             self.parent.receive_slp_amount_e.setDisabled(False)
             self.parent.receive_slp_amount_label.setDisabled(False)
@@ -78,7 +78,7 @@ class RequestList(MyTreeWidget):
             self.parent.receive_amount_e.setText("")
             self.parent.receive_slp_amount_e.setText(str(amount))
         else:
-            self.parent.toggle_cashaddr(1, True)
+            self.parent.gui_object.toggle_cashaddr(Address.FMT_CASHADDR)
             self.parent.receive_token_type_combo.setCurrentIndex(0)
             self.parent.receive_slp_token_type_label.setDisabled(True)
             self.parent.receive_slp_amount_e.setDisabled(True)

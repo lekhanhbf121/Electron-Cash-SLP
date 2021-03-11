@@ -166,7 +166,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     new_fx_history_signal = pyqtSignal()
     network_signal = pyqtSignal(str, object)
     alias_received_signal = pyqtSignal()
-    cashaddr_toggled_signal = pyqtSignal()
     history_updated_signal = pyqtSignal()
     labels_updated_signal = pyqtSignal() # note this signal occurs when an explicit update_labels() call happens. Interested GUIs should also listen for history_updated_signal as well which also indicates labels may have changed.
     on_timer_signal = pyqtSignal()  # functions wanting to be executed from timer_actions should connect to this signal, preferably via Qt.DirectConnection
@@ -210,6 +209,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.externalpluginsdialog = None
         self.hardwarewalletdialog = None
         self.require_fee_update = False
+        self.cashaddr_toggled_signal = self.gui_object.cashaddr_toggled_signal  # alias for backwards compatibility for plugins -- this signal used to live in each window and has since been refactored to gui-object where it belongs (since it's really an app-global setting)
         self.tl_windows = []
         self.tx_external_keypairs = {}
         self._tx_dialogs = Weak.Set()
@@ -285,7 +285,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         for i in range(tabs.count()):
             self._shortcuts.add( QShortcut(QKeySequence("Alt+" + str(i + 1)), self, lambda i=i: wrtabs() and wrtabs().setCurrentIndex(i)) )
 
-        self.cashaddr_toggled_signal.connect(self.update_cashaddr_icon)
+        self.gui_object.cashaddr_toggled_signal.connect(self.update_cashaddr_icon)
+        self.gui_object.cashaddr_toggled_signal.connect(self.update_addr_format_text)
         self.payment_request_ok_signal.connect(self.payment_request_ok)
         self.payment_request_error_signal.connect(self.payment_request_error)
         self.gui_object.update_available_signal.connect(self.on_update_available)  # shows/hides the update_available_button, emitted by update check mechanism when a new version is available
@@ -626,11 +627,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.watching_only_changed()
         self.history_updated_signal.emit() # inform things like address_dialog that there's a new history
         if self.is_slp_wallet:
-            self.toggle_cashaddr(2, True)
+            self.gui_object.toggle_cashaddr(Address.FMT_SLPADDR)
             self.toggle_tab(self.slp_mgt_tab, 1)
             self.toggle_tab(self.slp_history_tab, 1)
         else:
-            self.toggle_cashaddr(1, True)
+            self.gui_object.toggle_cashaddr(Address.FMT_CASHADDR)
         self.update_receive_address_widget()
         self.address_list.update()
         self.utxo_list.update()
@@ -1229,8 +1230,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         self.tray.setToolTip("%s (%s)" % (text, self.wallet.basename()))
         self.balance_label.setText(text)
-        addr_format = self.config.get('addr_format', 1)
-        self.setAddrFormatText(addr_format)
         self.status_button.setIcon( icon )
         self.status_button.setStatusTip( status_tip )
         if self.wallet.has_seed():
@@ -1314,7 +1313,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def addr_toggle_slp(self, force_slp=False):
 
         def present_slp():
-            self.toggle_cashaddr(2, True)
+            self.gui_object.toggle_cashaddr(Address.FMT_SLPADDR)
             self.receive_slp_token_type_label.setDisabled(False)
             self.receive_slp_amount_e.setDisabled(False)
             self.receive_slp_amount_label.setDisabled(False)
@@ -1324,7 +1323,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             return
 
         if Address.FMT_UI == Address.FMT_SLPADDR:
-            self.toggle_cashaddr(1, True)
+            self.gui_object.toggle_cashaddr(Address.FMT_CASHADDR)
             self.receive_token_type_combo.setCurrentIndex(0)
         else:
             present_slp()
@@ -1359,7 +1358,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         label = HelpLabel(_('&Receiving address'), msg)
         label.setBuddy(self.receive_address_e)
         self.receive_address_e.textChanged.connect(self.update_receive_qr)
-        self.cashaddr_toggled_signal.connect(self.update_receive_address_widget)
+        self.gui_object.cashaddr_toggled_signal.connect(self.update_receive_address_widget)
         grid.addWidget(label, 0, 0)
         grid.addWidget(self.receive_address_e, 0, 1, 1, -1)
 
@@ -1590,7 +1589,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     else:
                         slf.main_window.show_slp_addr_btn.setText("Show Token Address")
                 else:
-                    slf.main_window.toggle_cashaddr(1, True)
+                    slf.main_window.gui_object.toggle_cashaddr(Address.FMT_CASHADDR)
 
         w = ReceiveTab()
         w.low_balance_warning_shown = False
@@ -3596,13 +3595,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def create_addresses_tab(self):
         from .address_list import AddressList
         self.address_list = l = AddressList(self)
-        self.cashaddr_toggled_signal.connect(l.update)
+        self.gui_object.cashaddr_toggled_signal.connect(l.update)
         return self.create_list_tab(l)
 
     def create_utxo_tab(self):
         from .utxo_list import UTXOList
         self.utxo_list = l = UTXOList(self)
-        self.cashaddr_toggled_signal.connect(l.update)
+        self.gui_object.cashaddr_toggled_signal.connect(l.update)
         return self.create_list_tab(l)
 
     def create_slp_mgt_tab(self):
@@ -3627,7 +3626,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.receive_tab.low_balance_warning_shown = True
             self.show_warning("Low BCH balance.\n\nBefore creating a new token you must add Bitcoin Cash to this wallet.  We recommend a minimum of 0.0001 BCH to get started.\n\nSend BCH to the address displayed in the 'Receive' tab.")
             self.show_receive_tab()
-            self.toggle_cashaddr(1, True)
+            self.gui_object.toggle_cashaddr(Address.FMT_CASHADDR)
             return
         try:
             self.create_token_dialog.show()
@@ -3639,7 +3638,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def create_contacts_tab(self):
         from .contact_list import ContactList
         self.contact_list = l = ContactList(self)
-        self.cashaddr_toggled_signal.connect(l.update)
+        self.gui_object.cashaddr_toggled_signal.connect(l.update)
         return self.create_list_tab(l)
 
     def remove_address(self, addr):
@@ -3958,6 +3957,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.toggle_cashaddr_status_bar
         )
         sb.addPermanentWidget(self.addr_converter_button)
+        self.addr_converter_button.setHidden(self.gui_object.is_cashaddr_status_button_hidden())
+        self.gui_object.cashaddr_status_button_hidden_signal.connect(self.addr_converter_button.setHidden)
 
         sb.addPermanentWidget(StatusBarButton(QIcon(":icons/preferences.svg"), _("Preferences"), self.settings_dialog ) )
         self.seed_button = StatusBarButton(QIcon(":icons/seed_warning.png"), _("Seed"), self.show_seed_dialog )
@@ -5068,48 +5069,39 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.update_status()
 
     def cashaddr_icon(self):
-        if self.config.get('addr_format', 0) == 1:
+        addr_format = self.gui_object.get_addr_format()
+        if addr_format == Address.FMT_CASHADDR:
             return QIcon(":icons/tab_converter.svg")
-        elif self.config.get('addr_format', 0)==2:
+        elif addr_format == Address.FMT_SLPADDR:
             return QIcon(":icons/tab_converter_slp.svg")
-        else:
+        elif addr_format == Address.FMT_LEGACY:
             return QIcon(":icons/tab_converter_bw.svg")
+        else:
+            raise RuntimeError(f"Unknown icon for address format {addr_format}")
 
     def update_cashaddr_icon(self):
         self.addr_converter_button.setIcon(self.cashaddr_icon())
 
     def toggle_cashaddr_status_bar(self):
-        self.toggle_cashaddr(self.config.get('addr_format', 2))
+        self.gui_object.toggle_cashaddr()
 
-    def toggle_cashaddr_settings(self,state):
-        self.toggle_cashaddr(state, True)
+    def toggle_cashaddr_settings(self, format):
+        self.gui_object.toggle_cashaddr(format)
 
-    def toggle_cashaddr(self, format, specified = False):
-        #Gui toggle should just increment, if "specified" is True it is being set from preferences, so leave the value as is.
-        if specified==False:
-            if self.is_slp_wallet:
-                max_format=2
-            else:
-                max_format=1
-            format+=1
-            if format > max_format:
-                format=0
-        self.config.set_key('addr_format', format)
-        Address.show_cashaddr(format)
-        self.setAddrFormatText(format)
-        for window in self.gui_object.windows:
-            window.cashaddr_toggled_signal.emit()
+    def toggle_cashaddr(self, format=None):
+        self.print_error('*** WARNING ElectrumWindow.toggle_cashaddr: This function is deprecated. Please do not call it!')
+        self.gui_object.toggle_cashaddr(format)
 
-    def setAddrFormatText(self, format):
-        try:
-            if format == 0:
-                self.addr_format_label.setText("Addr Format: Legacy")
-            elif format == 1:
-                self.addr_format_label.setText("Addr Format: Cash")
-            else:
-                self.addr_format_label.setText("Addr Format: SLP")
-        except AttributeError:
-            pass
+    def update_addr_format_text(self):
+        addr_format = self.gui_object.get_addr_format()
+        if addr_format == Address.FMT_LEGACY:
+            self.addr_format_label.setText("Addr Format: Legacy")
+        elif addr_format == Address.FMT_CASHADDR:
+            self.addr_format_label.setText("Addr Format: Cash")
+        elif addr_format == Address.FMT_SLPADDR:
+            self.addr_format_label.setText("Addr Format: SLP")
+        else:
+            raise RuntimeError(f"Unknown text for address format {addr_format}")
 
     def settings_dialog(self):
         class SettingsModalDialog(WindowModalDialog):
@@ -5127,17 +5119,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         gui_widgets = []
         misc_widgets = []
         global_tx_widgets, per_wallet_tx_widgets = [], []
-
-        addr_format_choices = ["Legacy Format","CashAddr Format","SLP Format"]
-        addr_format_dict={'Legacy Format':0,'CashAddr Format':1,'SLP Format':2}
-        msg = _('Choose which format the wallet displays for Bitcoin Cash addresses')
-        addr_format_label = HelpLabel(_('Address Format') + ':', msg)
-        addr_format_combo = QComboBox()
-        addr_format_combo.addItems(addr_format_choices)
-        addr_format_combo.setCurrentIndex(self.config.get("addr_format", 0))
-        addr_format_combo.currentIndexChanged.connect(self.toggle_cashaddr_settings)
-
-        gui_widgets.append((addr_format_label,addr_format_combo))
 
         # language
         lang_help = _('Select which language is used in the GUI (after restart).')
@@ -5477,6 +5458,30 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     self.need_restart = True
                 fontconfig_chk.stateChanged.connect(on_fontconfig_chk)
                 gui_widgets.append((fontconfig_chk, None))
+
+        # CashAddr control
+        gui_widgets.append((None, None)) # spacer
+        address_w = QGroupBox(_('Address format'))
+        address_w.setToolTip(_('Select between Cash Address and Legacy formats for addresses'))
+        hbox = QHBoxLayout(address_w)
+        cashaddr_cbox = QComboBox()
+        cashaddr_cbox.addItem(QIcon(':icons/tab_converter_slp.svg'), _("SLP"), Address.FMT_SLPADDR)
+        cashaddr_cbox.addItem(QIcon(':icons/tab_converter.svg'), _("CashAddr"), Address.FMT_CASHADDR)
+        cashaddr_cbox.addItem(QIcon(':icons/tab_converter_bw.svg'), _("Legacy"), Address.FMT_LEGACY)
+        fmt_idx = cashaddr_cbox.findData(self.gui_object.get_addr_format())
+        if fmt_idx >= 0:
+            cashaddr_cbox.setCurrentIndex(fmt_idx)
+        def cashaddr_cbox_handler(ignored_param):
+            fmt = int(cashaddr_cbox.currentData())
+            self.gui_object.toggle_cashaddr(fmt)
+        cashaddr_cbox.currentIndexChanged.connect(cashaddr_cbox_handler)
+        hbox.addWidget(cashaddr_cbox)
+        toggle_cashaddr_control = QCheckBox(_('Hide status button'))
+        toggle_cashaddr_control.setToolTip(_('If checked, the status bar button for toggling address formats will be hidden'))
+        toggle_cashaddr_control.setChecked(self.gui_object.is_cashaddr_status_button_hidden())
+        toggle_cashaddr_control.toggled.connect(self.gui_object.set_cashaddr_status_button_hidden)
+        hbox.addWidget(toggle_cashaddr_control)
+        gui_widgets.append((address_w, None))
 
         gui_widgets.append((None, None)) # spacer
         updatecheck_cb = QCheckBox(_("Automatically check for updates"))
