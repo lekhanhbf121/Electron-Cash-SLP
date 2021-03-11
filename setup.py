@@ -16,7 +16,10 @@ with open('contrib/requirements/requirements.txt') as f:
 with open('contrib/requirements/requirements-hw.txt') as f:
     requirements_hw = f.read().splitlines()
 
-version = imp.load_source('version', 'lib/version.py')
+with open('contrib/requirements/requirements-binaries.txt') as f:
+    requirements_binaries = f.read().splitlines()
+
+version = imp.load_source('version', 'electroncash/version.py')
 
 if sys.version_info[:3] < (3, 6):
     sys.exit("Error: Electron Cash requires Python version >= 3.6...")
@@ -53,8 +56,9 @@ if platform.system() in ['Linux', 'FreeBSD', 'DragonFly']:
         share_dir = user_share
     data_files += [
         # Menu icon
-        (os.path.join(share_dir, 'icons/hicolor/128x128/apps/'), ['icons/electron-cash.png']),
-        (os.path.join(share_dir, 'pixmaps/'),                    ['icons/electron-cash.png']),
+        (os.path.join(share_dir, 'icons/hicolor/256x256/apps/'),   ['icons/electron-cash.png']),
+        (os.path.join(share_dir, 'pixmaps/'),                      ['icons/electron-cash.png']),
+        (os.path.join(share_dir, 'icons/hicolor/scaleable/apps/'), ['icons/electron-cash.svg']),
         # Menu entry
         (os.path.join(share_dir, 'applications/'), ['electron-cash.desktop']),
         # App stream (store) metadata
@@ -121,7 +125,7 @@ platform_package_data = {}
 
 if sys.platform in ('linux'):
     platform_package_data = {
-        'electroncash_gui.qt' : [
+        'electroncash_gui.qt': [
             'data/ecsupplemental_lnx.ttf',
             'data/fonts.xml'
         ],
@@ -129,7 +133,7 @@ if sys.platform in ('linux'):
 
 if sys.platform in ('win32', 'cygwin'):
     platform_package_data = {
-        'electroncash_gui.qt' : [
+        'electroncash_gui.qt': [
             'data/ecsupplemental_win.ttf'
         ],
     }
@@ -137,9 +141,11 @@ if sys.platform in ('win32', 'cygwin'):
 setup(
     name=os.environ.get('EC_PACKAGE_NAME') or "Electron Cash SLP",
     version=os.environ.get('EC_PACKAGE_VERSION') or version.PACKAGE_VERSION,
-    install_requires=requirements + ['pyqt5'],
+    install_requires=requirements,
     extras_require={
         'hardware': requirements_hw,
+        'gui': requirements_binaries,
+        'all': requirements_hw + requirements_binaries
     },
     packages=[
         'electroncash',
@@ -164,11 +170,6 @@ setup(
         'electroncash_plugins.virtualkeyboard',
         'electroncash_plugins.satochip',
     ],
-    package_dir={
-        'electroncash': 'lib',
-        'electroncash_gui': 'gui',
-        'electroncash_plugins': 'plugins',
-    },
     package_data={
         'electroncash': [
             'servers.json',
@@ -187,7 +188,7 @@ setup(
             'locale/*/LC_MESSAGES/electron-cash.mo',
             'tor/bin/*'
         ],
-        # On Linux and Windows this means adding gui/qt/data/*.ttf
+        # On Linux and Windows this means adding electroncash_gui/qt/data/*.ttf
         # On Darwin we don't use that font, so we don't add it to save space.
         **platform_package_data
     },

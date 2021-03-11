@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<!-- Settings which are have defaults in the back end should not be given defaults here.
-     Instead, use Settings.setDefaultValues to get the defaults from the back end. -->
-
+<!-- Do not specify any defaults here: add them to Settings.setDefaultValues instead. -->
 <PreferenceScreen xmlns:tools="http://schemas.android.com/tools"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -30,7 +28,6 @@
         <ListPreference
             android:key="base_unit"
             android:title="@string/base_unit"
-            android:defaultValue="BCH"
             tools:summary="BCH"/>
         <ListPreference
             android:key="block_explorer"

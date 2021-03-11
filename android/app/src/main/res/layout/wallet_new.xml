@@ -50,7 +50,9 @@
             app:layout_constraintHorizontal_bias="0.0"
             app:layout_constraintStart_toStartOf="@+id/textView3"
             app:layout_constraintTop_toBottomOf="@+id/textView3"
-            tools:text="@string/test_wallet"/>
+            tools:text="@string/test_wallet">
+            <requestFocus/>
+        </EditText>
 
         <TextView
             android:id="@+id/textView6"
@@ -66,7 +68,7 @@
             app:layout_constraintTop_toBottomOf="@+id/etName"/>
 
         <EditText
-            android:id="@+id/etPassword"
+            android:id="@+id/etNewPassword"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:inputType="textPassword"
@@ -90,7 +92,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:inputType="textPassword"
-            app:layout_constraintBaseline_toBaselineOf="@+id/etPassword"
+            app:layout_constraintBaseline_toBaselineOf="@+id/etNewPassword"
             app:layout_constraintEnd_toEndOf="@+id/textView7"
             app:layout_constraintStart_toStartOf="@+id/textView7"
             tools:text="@string/password"/>

@@ -54,16 +54,16 @@ if [ -d ${compact_name}/electroncash ]; then
 	rm -fr ${compact_name}/electroncash
 fi
 
-echo "Pulling 'electroncash' libs into project from ../lib ..."
-if [ ! -d ../lib/locale ]; then
+echo "Pulling 'electroncash' libs into project from ../electroncash ..."
+if [ ! -d ../electroncash/locale ]; then
 	(cd .. && contrib/make_locale && cd ios)
 	if [ "$?" != 0 ]; then
 		echo ERROR: Could not build locales
 		exit 1
 	fi
 fi
-cp -fpR ../lib ${compact_name}/electroncash
-echo "Removing lib/tests..."
+cp -fpR ../electroncash ${compact_name}/electroncash
+echo "Removing electroncash/tests..."
 rm -fr ${compact_name}/electroncash/tests
 find ${compact_name} -name \*.pyc -exec rm -f {} \;
 
@@ -133,6 +133,9 @@ if [ -f "${infoplist}" ]; then
 	plutil -insert 'NSPhotoLibraryAddUsageDescription' -string 'Required to save QR images to the photo library' -- ${infoplist}
 	plutil -insert 'NSPhotoLibraryUsageDescription' -string 'Required to save QR images to the photo library' -- ${infoplist}
 	plutil -insert 'LSSupportsOpeningDocumentsInPlace' -bool NO -- ${infoplist}
+
+	# We don't support dark mode, so we must force light mode even if phone is in dark mode on iOS 13+
+	plutil -insert  'UIUserInterfaceStyle' -string 'Light' -- ${infoplist}
 fi
 
 if [ -d overrides/ ]; then
@@ -170,7 +173,7 @@ cd scratch || exit 1
 git clone http://www.github.com/cculianu/rubicon-objc
 gitexit="$?"
 cd rubicon-objc
-git checkout send_super_fix
+git checkout "fe054117056d33059a5db8addbc14e8535f08d3b^{commit}" # from branch send_super_fix
 gitexit2="$?"
 cd ..
 cd ..

@@ -17,11 +17,14 @@ env/
 bin/
 /app.fil
 tmp/
-lib/*.so.0
+electroncash/*.so.0
+electroncash/*.dylib
+contrib/osx/*.dylib
 
 # tox files
 .cache/
 .coverage
+htmlcov
 
 # MacOSX
 .DS_Store/
@@ -31,6 +34,10 @@ xcuserdata/
 
 # IntelliJ Pycharm IDE
 /.idea
+# vs code
+.vscode/
+# mypy
+.mypy_cache/
 
 # osx build files
 libsecp256k1.0.dylib
@@ -40,8 +47,3 @@ libzbar.0.dylib
 tx_input_tests_gen.py
 tx_input_tests.json
 .python-version
-
-# Some people need to set up these symlinks to get their IDE completion working
-electroncash
-electroncash_gui
-electroncash_plugins

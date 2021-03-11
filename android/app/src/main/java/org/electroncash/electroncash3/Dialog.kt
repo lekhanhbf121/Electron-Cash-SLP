@@ -3,6 +3,7 @@ package org.electroncash.electroncash3
 import android.app.Dialog
 import android.content.DialogInterface
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.Menu
@@ -31,6 +32,8 @@ abstract class AlertDialogFragment : DialogFragment() {
     private val model: Model by viewModels()
 
     var started = false
+    var suppressView = false
+    var focusOnStop = View.NO_ID
 
     override fun onCreateDialog(savedInstanceState: Bundle?): AlertDialog {
         val builder = AlertDialog.Builder(context!!)
@@ -51,21 +54,31 @@ abstract class AlertDialogFragment : DialogFragment() {
         // make AlertDialog create its views.
         dialog.show()
 
-        // This isn't really documented...
-        val contentParent = dialog.findViewById<ViewGroup>(android.R.id.content)!!
-        val content = contentParent.getChildAt(0)
-
-        // ... so make sure we are returning the layout defined in
+        // The top-level view structure isn't really documented, so make sure we are returning
+        // the layout defined in
         // android/platform/frameworks/support/appcompat/res/layout/abc_alert_dialog_material.xml.
+        val content = dialog.findViewById<ViewGroup>(android.R.id.content)!!.getChildAt(0)
         val contentClassName = content.javaClass.name
         if (contentClassName != "androidx.appcompat.widget.AlertDialogLayout") {
             throw IllegalStateException("Unexpected content view $contentClassName")
         }
-
-        // The view will be re-added in DialogFragment.onActivityCreated.
-        contentParent.removeView(content)
         return content
     }
+
+    // Since we've implemented onCreateView, DialogFragment.onActivityCreated will attempt to
+    // add the view to the dialog, but AlertDialog has already done that. Stop this by
+    // overriding getView temporarily.
+    //
+    // Previously we worked around this by removing the view from the dialog in onCreateView
+    // and letting DialogFragment.onActivityCreated add it back, but that stops <requestFocus/>
+    // tags from working.
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
+        suppressView = true
+        super.onActivityCreated(savedInstanceState)
+        suppressView = false
+    }
+
+    override fun getView() = if (suppressView) null else super.getView()
 
     open fun onBuildDialog(builder: AlertDialog.Builder) {}
 
@@ -74,23 +87,61 @@ abstract class AlertDialogFragment : DialogFragment() {
     // So use one of the fragment lifecycle methods instead.
     override fun onStart() {
         super.onStart()
-        if (!started) {
-            started = true
-            onShowDialog()
-        }
-        if (!model.started) {
-            model.started = true
-            onFirstShowDialog()
+        focusOnStop = View.NO_ID
+
+        try {
+            if (!started) {
+                started = true
+                onShowDialog()
+            }
+            if (!model.started) {
+                model.started = true
+                onFirstShowDialog()
+            }
+        } catch (e: ToastException) {
+            e.show()
+            dismiss()
         }
     }
 
-    /** Can be used to do things like configure custom views, or attach listeners to buttons so
-     *  they don't always close the dialog. */
+    override fun onStop() {
+        focusOnStop = dialog.findViewById<View>(android.R.id.content)?.findFocus()?.id
+                      ?: View.NO_ID
+        super.onStop()
+    }
+
+    // When changing orientation on API level 28 or higher, onStop is called before
+    // onSaveInstanceState and the focus is lost (https://issuetracker.google.com/issues/152131900).
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (focusOnStop != View.NO_ID) {
+            val hierarchy = outState.getBundle("android:savedDialogState")
+                ?.getBundle("android:dialogHierarchy")
+            if (hierarchy == null) {
+                val message = "Failed to get android:dialogHierarchy"
+                if (BuildConfig.DEBUG) {
+                    throw Exception(message)
+                } else {
+                    Log.w("AlertDialogFragment", message)
+                }
+            } else {
+                hierarchy.putInt("android:focusedViewId", focusOnStop)
+            }
+        }
+    }
+
+    /** Called when the dialog is shown. If the dialog is recreated after a configuration
+     * change, it will be called again on the new instance.
+     *
+     * If this method throws a ToastException, it will be displayed, and the dialog will be
+     * closed. */
     open fun onShowDialog() {}
 
-    /** Unlike onShowDialog, this will only be called once, even if the dialog is recreated
-     * after a rotation. This can be used to do things like setting the initial state of
-     * editable views. */
+    /** Called after onShowDialog, but not after a configuration change. This can be used to
+     * set the initial state of editable views.
+     *
+     * If this method throws a ToastException, it will be displayed, and the dialog will be
+     * closed.*/
     open fun onFirstShowDialog() {}
 
     override fun getDialog(): AlertDialog {
@@ -195,8 +246,12 @@ abstract class TaskDialog<Result> : DialogFragment() {
     private fun onFinished(body: () -> Unit) {
         if (model.state == Thread.State.RUNNABLE) {
             model.state = Thread.State.TERMINATED
-            body()
-            dismiss()
+
+            // If we're inside onStart, fragment transactions are unsafe (#2154).
+            postToUiThread {
+                body()
+                dismiss()
+            }
         }
     }
 
@@ -212,21 +267,23 @@ abstract class TaskDialog<Result> : DialogFragment() {
     abstract fun doInBackground(): Result
 
     /** This method is called on the UI thread after doInBackground returns. Unlike
-     * onPreExecute, it may be called on a different fragment instance. */
+     * onPreExecute, it may be called on a different fragment instance.*/
     open fun onPostExecute(result: Result) {}
 }
 
 
 abstract class TaskLauncherDialog<Result> : AlertDialogFragment() {
+    var dismissAfterExecute = true
+
     override fun onShowDialog() {
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            // It's possible for multiple button clicks to be queued before the listener runs,
-            // but showDialog will ensure that the progress dialog (and therefore the task) is
-            // only created once.
-            showDialog(activity!!, LaunchedTaskDialog<Result>().apply {
-                setTargetFragment(this@TaskLauncherDialog, 0)
-            })
-        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { launchTask() }
+    }
+
+    fun launchTask() {
+        // It's possible for multiple button clicks to be queued before the listener runs,
+        // but showDialog will ensure that the progress dialog (and therefore the task) is
+        // only created once.
+        showDialog(this, LaunchedTaskDialog<Result>())
     }
 
     // See notes in TaskDialog.
@@ -245,7 +302,9 @@ class LaunchedTaskDialog<Result> : TaskDialog<Result>() {
 
     override fun onPostExecute(result: Result) {
         launcher.onPostExecute(result)
-        launcher.dismiss()
+        if (launcher.dismissAfterExecute) {
+            launcher.dismiss()
+        }
     }
 }
 
