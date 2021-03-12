@@ -25,6 +25,8 @@ import queue
 import traceback
 import weakref
 import collections
+import codecs
+import base64
 from abc import ABC, abstractmethod
 from .transaction import Transaction
 from .util import PrintError
@@ -918,15 +920,27 @@ class TokenGraph:
             n.set_validity(*proxyval)
             self.run_sched()
 
-    def get_valid_txids(self, limit=-1):
+    def get_valid_txids(self, max_size=-1, exclude=None, reverse=False):
         """
         Get a list of valid txids stored in this graph.
         """
         valid_txids = []
         nodes_copy = self._nodes.copy()
+
         for txid in nodes_copy:
+            if len(valid_txids) == max_size:
+                break
+
+            b = codecs.decode(txid, 'hex')
+            if reverse:
+                b = b[::-1]
+            b64 = base64.standard_b64encode(b).decode("ascii")
+            if b64 in exclude:
+                continue
+            
             if nodes_copy[txid].validity == 1:
                 valid_txids.append(txid)
+
         return valid_txids
 
 class Connection:

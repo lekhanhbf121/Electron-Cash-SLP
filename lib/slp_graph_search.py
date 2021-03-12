@@ -28,6 +28,7 @@ import json
 import base64
 import requests
 import codecs
+import random
 from operator import itemgetter
 from .transaction import Transaction
 from .caches import ExpiringCache
@@ -99,15 +100,27 @@ class _GraphSearchJob:
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
 
-    def get_job_cache(self, *, reverse=True, max_size=0):
-        gs_cache = []
+    def get_job_cache(self, *, reverse=True, max_size=-1, is_mint=False):
+        ''' Get validity cache for a token graph 
+            
+            reverse reverses the endianess of the txid
+            
+            max_size=-1 returns a cache with no size limit
 
+            is_mint is used to further limit which txids are included in the cache
+            for mint transactions, since other mint transactions are the only 
+            validation contributors
+        '''
+        if max_size == 0:
+            return []
+        
         wallet = self.valjob.ref()
         if not wallet:
-            return gs_cache
+            return []
 
         wallet_val = self.valjob.validitycache
         token_id = self.valjob.graph.validator.token_id_hex
+        gs_cache = []
 
         # pull valid txids from wallet storage
         for [key, val] in wallet.slpv1_validity.items():
@@ -120,21 +133,26 @@ class _GraphSearchJob:
                 gs_cache.append(b64)
 
         # pull valid txids from the shared in-memory token graph
-        for txid in self.valjob.graph.get_valid_txids():
-            b = codecs.decode(txid, 'hex')
-            if reverse:
-                b = b[::-1]
-            b64 = base64.standard_b64encode(b).decode("ascii")
-            gs_cache.append(b64)
+        # and prioritize items from the wallet validity cache
+        if not is_mint:
+            sample_size = -1
+            if max_size > 0 and len(gs_cache) < max_size:
+                sample_size = max_size - len(gs_cache)
+            if sample_size > 0:
+                for txid in self.valjob.graph.get_valid_txids(max_size=sample_size, exclude=gs_cache, reverse=reverse):
+                    gs_cache.append(txid)
 
         # TODO: pull valid txids from a "checkpoints" file shipped with the wallet
         #   these txids can be selected intelligently through graph analysis.  Tokens
         #   supported in the type of arrangement would likely be done through the
         #   support of the token issuer for the purpose of improving user experience.
 
+        # if required limit the size of the cache
         gs_cache = list(set(gs_cache))
-        if max_size > 0:
+        if gs_cache and max_size > 0:
             gs_cache = list(set(random.choices(gs_cache, k=max_size)))
+
+        # update the cache size variable used in the UI
         self.validity_cache_size = len(gs_cache)
 
         return gs_cache
@@ -314,7 +332,8 @@ class _SlpGraphSearchManager:
         elif kind == 'bchd':
             txid_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
             url = host + "/v1/GetSlpGraphSearch"
-            query_json = { "hash": txid_b64, "valid_hashes": job.get_job_cache(max_size=50) }
+            cache = job.get_job_cache(max_size=100)
+            query_json = { "hash": txid_b64, "valid_hashes": cache }  # TODO: can use is_mint to improve cache for mint transactions
             res_txns_key = 'txdata'
         else:
             raise Exception("unknown server kind")
