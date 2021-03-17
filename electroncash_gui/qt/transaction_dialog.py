@@ -770,7 +770,7 @@ class TxDialog(QDialog, MessageBoxMixin, PrintError):
 
         outputs = self.tx.outputs()
         post_office_output_index = 2
-        if self.slp_info and len(self.slp_info['token_output']) - 1 > 3:
+        if self.slp_info and self.slp_info.get('token_output') and len(self.slp_info['token_output']) - 1 > 3:
             if not self.wallet.is_change(outputs[-1]):
                 post_office_output_index = len(self.slp_info['token_output']) - 2
             else:
