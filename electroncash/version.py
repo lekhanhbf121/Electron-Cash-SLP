@@ -1,5 +1,6 @@
-PACKAGE_VERSION = '3.6.6'  # version of the client package
-PROTOCOL_VERSION = '1.4'     # protocol version requested
+PACKAGE_VERSION = '3.6.6'  # version of the client package, this is used by update_checker.py
+PRE_RELEASE_TAG = '3.6.7-dev1' # title bar tag used for pre-releases, doesn't affect update_checker.py
+PROTOCOL_VERSION = '1.4'   # protocol version requested
 EXTENSIONS = { 'SLP': "1" }
 
 # The hash of the Electrum mnemonic seed must begin with this

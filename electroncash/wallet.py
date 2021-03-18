@@ -190,6 +190,7 @@ class Abstract_Wallet(PrintError, SPVDelegate):
 
     def __init__(self, storage):
         self.electrum_version = PACKAGE_VERSION
+        self.pre_release_tag = PRE_RELEASE_TAG
         self.storage = storage
         self.thread = None  # this is used by the qt main_window to store a QThread. We just make sure it's always defined as an attribute here.
         self.network = None
