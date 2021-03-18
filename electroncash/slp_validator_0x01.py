@@ -17,8 +17,8 @@ from .slp_dagging import TokenGraph, ValidationJob, ValidationJobManager, Valida
 from .bitcoin import TYPE_SCRIPT
 from .util import PrintError
 
-from . import slp_proxying               # loading this module starts a thread.
-from .slp_graph_search import slp_gs_mgr # loading this module starts a thread.
+# from . import slp_proxying               # first time loading this module starts a thread.
+from .slp_graph_search import slp_gs_mgr # first time loading this module starts a thread.
 
 class GraphContext(PrintError):
     ''' Instance of the DAG cache. Uses a single per-instance
@@ -189,7 +189,7 @@ class GraphContext(PrintError):
 
             nonlocal first_fetch_complete
 
-            gs_job = slp_gs_mgr.new_search(val_job)
+            gs_job = slp_gs_mgr.get_gs_job(val_job)
 
             if not first_fetch_complete:
                 slp_gs_mgr.slp_validation_fetch_signal.emit(0)
@@ -204,7 +204,13 @@ class GraphContext(PrintError):
                     except KeyError: pass
             return l
 
+        wallet_ref = weakref.ref(wallet)
+
         def done_callback(job):
+
+            if not wallet_ref:
+                return
+
             # wait for proxy stuff to roll in
             results = {}
             try:
@@ -224,7 +230,7 @@ class GraphContext(PrintError):
             for t,n in job.nodes.items():
                 val = n.validity
                 if val != 0:
-                    wallet.slpv1_validity[t] = val
+                    wallet_ref().slpv1_validity[t] = val
 
 
         job = ValidationJob(graph, txid, network,

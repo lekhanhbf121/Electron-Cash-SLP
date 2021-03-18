@@ -400,13 +400,13 @@ class SlpSearchJobListWidget(QTreeWidget):
         self.setHeaderLabels([_("Job Id"), _("Txn Count"), _("Data"), _("Cache Size"), _("Status")])
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
-        slp_gs_mgr.slp_validation_fetch_signal.connect(self.update_list_data, Qt.QueuedConnection)
+        #slp_gs_mgr.slp_validation_fetch_signal.connect(self.update_list_data, Qt.QueuedConnection)
 
-    @rate_limited(1.0)
-    def update_list_data(self, total_data_received):
-        if total_data_received > 0:
-            self.parent.data_label.setText(self.humanbytes(total_data_received))
-        self.update()
+    # @rate_limited(5.0)
+    # def update_list_data(self, total_data_received):
+    #     if total_data_received > 0:
+    #         self.parent.total_data_txt.setText(self.humanbytes(total_data_received))
+    #     self.update()
 
     def create_menu(self, position):
         item = self.currentItem()
@@ -473,7 +473,7 @@ class SlpSearchJobListWidget(QTreeWidget):
         elif TB <= B:
             return '{0:.2f} TB'.format(B/TB)
 
-    @rate_limited(1.0, classlevel=True, ts_after=True) # We rate limit the refresh no more than 1 times every second
+    @rate_limited(2.0, classlevel=True, ts_after=True)
     def update(self):
         self.parent.slp_gs_enable_cb.setChecked(self.parent.config.get('slp_validator_graphsearch_enabled', False))
         selected_item_id = self.currentItem().data(0, Qt.UserRole) if self.currentItem() else None
@@ -483,6 +483,7 @@ class SlpSearchJobListWidget(QTreeWidget):
         working_item = None
         completed_items = []
         other_items = []
+        self.parent.total_data_txt.setText(self.humanbytes(slp_gs_mgr.bytes_downloaded))
         for k, job in jobs.items():
             if len(jobs) > 0:
                 tx_count = str(job.txn_count_progress)
@@ -857,8 +858,8 @@ class NetworkChoiceLayout(QObject, PrintError):
 
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel(_('GS Data Downloaded') + ':'))
-        self.data_label = QLabel('?')
-        hbox.addWidget(self.data_label)
+        self.total_data_txt = QLabel('?')
+        hbox.addWidget(self.total_data_txt)
         hbox.addStretch(1)
         grid.addLayout(hbox, 5, 0)
 

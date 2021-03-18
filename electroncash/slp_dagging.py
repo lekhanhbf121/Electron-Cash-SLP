@@ -25,6 +25,9 @@ import queue
 import traceback
 import weakref
 import collections
+import random
+import codecs
+import base64
 from abc import ABC, abstractmethod
 from .transaction import Transaction
 from .util import PrintError
@@ -918,15 +921,34 @@ class TokenGraph:
             n.set_validity(*proxyval)
             self.run_sched()
 
-    def get_valid_txids(self, limit=-1):
+    def get_valid_txids(self, max_size=-1, exclude=None):
         """
-        Get a list of valid txids stored in this graph.
+        Get a list of valid txids encoded as hex.
         """
         valid_txids = []
         nodes_copy = self._nodes.copy()
+
+        if max_size == 0:
+            return []
+
+        # filter out txids if node is waiting,
+        # is not valid, or is in the exclude list 
+        candidate_txids = []
         for txid in nodes_copy:
-            if nodes_copy[txid].validity == 1:
+            if nodes_copy[txid].status != 'waiting' and \
+                nodes_copy[txid].validity == 1 and \
+                    txid not in exclude:
+                candidate_txids.append(txid)
+
+        # depending on the number of txids available
+        # either return all txids, or return random txids
+        if len(candidate_txids) <= max_size:
+            valid_txids = candidate_txids
+        else:
+            while len(valid_txids) < max_size:
+                txid = random.choice(candidate_txids)
                 valid_txids.append(txid)
+
         return valid_txids
 
 class Connection:

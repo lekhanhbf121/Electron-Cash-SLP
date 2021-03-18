@@ -18,8 +18,8 @@ from .bitcoin import TYPE_SCRIPT
 from .util import print_error
 from .slp_validator_0x01 import Validator_SLP1, GraphContext
 
-from . import slp_proxying               # loading this module starts a thread.
-from .slp_graph_search import slp_gs_mgr # loading this module starts a thread.
+# from . import slp_proxying               # first time loading this module starts a thread.
+from .slp_graph_search import slp_gs_mgr # first time loading this module starts a thread.
 
 class GraphContext_NFT1(GraphContext):
     ''' Instance of the NFT1 DAG cache.  Uses a single per-instance
@@ -113,19 +113,39 @@ class GraphContext_NFT1(GraphContext):
                     newres[t] = (True, 3)
             proxyqueue.put(newres)
 
+        first_fetch_complete = False
+
         def fetch_hook(txids, val_job):
             l = []
 
-            # TODO: enable Graph Search for these types of tokens
-            for txid in txids:
-                try:
-                    l.append(wallet.transactions[txid])
-                except KeyError:
-                    pass
-            # if proxy_enable:
-            #     proxy.add_job(txids, proxy_cb)
-            #     nonlocal num_proxy_requests
-            #     num_proxy_requests += 1
+            if nft_type == 'SLP129':
+                nonlocal first_fetch_complete
+
+                gs_job = slp_gs_mgr.get_gs_job(val_job)
+
+                if not first_fetch_complete:
+                    first_fetch_complete = True
+                    slp_gs_mgr.slp_validation_fetch_signal.emit(0)
+
+                for txid in txids:
+                    txn = gs_job.get_tx(txid)
+                    if txn:
+                        l.append(txn)
+                    else:
+                        try: l.append(wallet.transactions[txid])
+                        except KeyError: pass
+            else:
+                # TODO: enable Graph Search for these types of tokens
+                for txid in txids:
+                    try:
+                        l.append(wallet.transactions[txid])
+                    except KeyError:
+                        pass
+                # if proxy_enable:
+                #     proxy.add_job(txids, proxy_cb)
+                #     nonlocal num_proxy_requests
+                #     num_proxy_requests += 1
+
             return l
 
         def done_callback(job):
@@ -410,8 +430,11 @@ class Validator_NFT1(ValidatorGeneric):
                 wallet.tx_tokinfo[nft_child_job.nft_parent_tx.txid_fast()]['validity'] = val
                 #wallet.tx_tokinfo[nft_child_job.genesis_tx.txid_fast()]['validity'] = val
                 wallet.save_transactions()
-            slp_gs_mgr.slp_validity_signal.emit(txid, val)
-            #slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), val)
+
+            if slp_gs_mgr.slp_validity_signal:
+                slp_gs_mgr.slp_validity_signal.emit(txid, val)
+                #slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), val)
+
             if done_callback:
                 done_callback(val)
             else:

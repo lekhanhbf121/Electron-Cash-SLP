@@ -28,6 +28,7 @@ import json
 import base64
 import requests
 import codecs
+import random
 from operator import itemgetter
 from .transaction import Transaction
 from .caches import ExpiringCache
@@ -99,45 +100,70 @@ class _GraphSearchJob:
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
 
-    def get_job_cache(self, *, reverse=True, max_size=0):
-        gs_cache = []
+    def get_job_cache(self, *, reverse=True, max_size=-1, is_mint=False):
+        ''' Get validity cache for a token graph 
+            
+            reverse reverses the endianess of the txid
+            
+            max_size=-1 returns a cache with no size limit
+
+            is_mint is used to further limit which txids are included in the cache
+            for mint transactions, since other mint transactions are the only 
+            validation contributors
+        '''
+        if max_size == 0:
+            return []
 
         wallet = self.valjob.ref()
         if not wallet:
-            return gs_cache
+            return []
+
+        if self.valjob.graph.validator.token_type == 129:
+            return []
 
         wallet_val = self.valjob.validitycache
         token_id = self.valjob.graph.validator.token_id_hex
+        gs_cache = []
 
         # pull valid txids from wallet storage
-        for [key, val] in wallet.slpv1_validity.items():
-            _token_id = wallet.tx_tokinfo.get(key, {}).get("token_id", None)
+        for [txid, val] in wallet.slpv1_validity.items():
+            _token_id = wallet.tx_tokinfo.get(txid, {}).get("token_id", None)
             if _token_id == token_id and val == 1:
-                b = codecs.decode(key, 'hex')
-                if reverse:
-                    b = b[::-1]
-                b64 = base64.standard_b64encode(b).decode("ascii")
-                gs_cache.append(b64)
+                gs_cache.append(txid)
 
         # pull valid txids from the shared in-memory token graph
-        for txid in self.valjob.graph.get_valid_txids():
-            b = codecs.decode(txid, 'hex')
-            if reverse:
-                b = b[::-1]
-            b64 = base64.standard_b64encode(b).decode("ascii")
-            gs_cache.append(b64)
+        # and prioritize items from the wallet validity cache
+        if not is_mint:
+            sample_size = -1
+            if max_size > 0 and len(gs_cache) < max_size:
+                sample_size = max_size - len(gs_cache)
+            if sample_size > 0:
+                for txid in self.valjob.graph.get_valid_txids(max_size=sample_size, exclude=gs_cache):
+                    gs_cache.append(txid)
 
         # TODO: pull valid txids from a "checkpoints" file shipped with the wallet
         #   these txids can be selected intelligently through graph analysis.  Tokens
         #   supported in the type of arrangement would likely be done through the
         #   support of the token issuer for the purpose of improving user experience.
 
+        # if required limit the size of the cache
         gs_cache = list(set(gs_cache))
-        if max_size > 0:
+        if gs_cache and max_size > 0 and len(gs_cache) > max_size:
             gs_cache = list(set(random.choices(gs_cache, k=max_size)))
+
+        # update the cache size variable used in the UI
         self.validity_cache_size = len(gs_cache)
 
-        return gs_cache
+        # return as base64, not hex
+        b64_hashes = []
+        for txid in gs_cache:
+            b = codecs.decode(txid, 'hex')
+            if reverse:
+                b = b[::-1]
+            b64 = base64.standard_b64encode(b).decode("ascii")
+            b64_hashes.append(b64)
+
+        return b64_hashes
 
     def _cancel(self):
         self.job_complete = True
@@ -195,17 +221,14 @@ class _SlpGraphSearchManager:
     def set_gs_host(self, host):
         self._gui_object().config.set_key('slp_validator_graphsearch_host', host)
 
-    def _emit_ui_update(self, data):
-        if not self.slp_validation_fetch_signal:
-            return
-        self.slp_validation_fetch_signal.emit(data)
+    # def _emit_ui_update(self, data):
+    #     if not self.slp_validation_fetch_signal:
+    #         return
+    #     self.slp_validation_fetch_signal.emit(data)
 
-    def new_search(self, valjob):
+    def get_gs_job(self, valjob):
         """
-        Starts a new thread to fetch GS metadata for a job.
-        Depending on the metadata results the job may end up being added to the GS queue.
-
-        Returns weakref of the new GS job object if new job is created.
+        Returns the GS job object, if new job is created it is added to the gs queue.
         """
         txid = valjob.root_txid
         with self.lock:
@@ -216,23 +239,28 @@ class _SlpGraphSearchManager:
             return self._search_jobs[txid]
 
     def toggle_graph_search(self, enable):
+        """
+        Used by the UI to enable/disable graph search
+
+        Since its called only by the UI no locks are being held.
+        """
         if self.gs_enabled == enable:
             return
 
         # get a weakref to each open wallet
         wallets = weakref.WeakSet()
-        with self.lock:
-            for [_, job] in self._search_jobs.items():
-                job.valjob.stop()
-                if job.valjob.ref():
-                    wallets.add(job.valjob.ref())
+        jobs_copy = self._search_jobs.copy()
+        for job_id in jobs_copy:
+            job = jobs_copy[job_id]
+            job.valjob.stop()
+            if job.valjob.ref and job.valjob.ref():
+                wallets.add(job.valjob.ref())
 
         # kill the current validator activity
         slp_validator_0x01.shared_context.kill()
 
         # delete all the gs jobs
-        with self.lock:
-            self._search_jobs.clear()
+        self._search_jobs.clear()
 
         self._set_gs_enabled(enable)
 
@@ -240,23 +268,8 @@ class _SlpGraphSearchManager:
         for wallet in wallets:
             if wallet: wallet.activate_slp()
 
-    def remove_search_job(self, root_txid):
-        with self.lock:
-            self._search_jobs.pop(root_txid, None)
-
-    def is_job_failed(self, root_txid):
-        with self.lock:
-            if root_txid in self._search_jobs.keys() \
-                and self._search_jobs[root_txid].job_complete \
-                and not self._search_jobs[root_txid].search_success:
-                return True
-            return False
-
     def find(self, root_txid):
-        with self.lock:
-            if root_txid in self._search_jobs.keys():
-                return self._search_jobs[root_txid]
-        return None
+        return self._search_jobs.get(root_txid, None)
 
     def jobs_copy(self):
         with self.lock:
@@ -264,7 +277,7 @@ class _SlpGraphSearchManager:
 
     def restart_search(self, job):
         def callback(job):
-            self.new_search(job.valjob)
+            self.get_gs_job(job.valjob)
             job = None
         if not job.job_complete:
             job.sched_cancel(callback, reason='job restarted')
@@ -289,7 +302,7 @@ class _SlpGraphSearchManager:
                 job.set_failed(str(e))
             finally:
                 job.valjob.wakeup.set()
-                self._emit_ui_update(self.bytes_downloaded)
+                #self._emit_ui_update(self.bytes_downloaded)
 
     def search_query(self, job):
         if job.waiting_to_cancel:
@@ -312,9 +325,10 @@ class _SlpGraphSearchManager:
             query_json = { "txid": txid } # TODO: handle 'validity_cache' exclusion from graph search (NOTE: this will impact total dl count)
             res_txns_key = 'txdata'
         elif kind == 'bchd':
-            txid_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
+            root_hash_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
             url = host + "/v1/GetSlpGraphSearch"
-            query_json = { "hash": txid_b64, "valid_hashes": job.get_job_cache(max_size=50) }
+            cache = job.get_job_cache(max_size=100)
+            query_json = { "hash": root_hash_b64, "valid_hashes": cache }  # TODO: can use is_mint to improve cache for mint transactions
             res_txns_key = 'txdata'
         else:
             raise Exception("unknown server kind")
@@ -327,13 +341,17 @@ class _SlpGraphSearchManager:
                 job.gs_response_size += len(chunk)
                 self.bytes_downloaded += len(chunk)
                 dat += chunk
-                t = time.perf_counter()
-                if (t - time_last_updated) > 3:
-                    self._emit_ui_update(self.bytes_downloaded)
-                    time_last_updated = t
+                # t = time.perf_counter()
+                # if (t - time_last_updated) > 5:
+                #     self._emit_ui_update(self.bytes_downloaded)
+                #     time_last_updated = t
                 if not job.valjob.running:
                     job.set_failed('validation job stopped')
                     return
+                # FIXME: for some reason weakref to wallet still exists after closing (o_O)
+                # if not job.valjob.ref():  
+                #     job.set_failed('wallet file closed')
+                #     return
                 elif job.waiting_to_cancel:
                     job._cancel()
                     return
