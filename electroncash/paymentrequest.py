@@ -54,10 +54,11 @@ from .util import FileImportFailed, FileImportFailedEncrypted
 from .transaction import Transaction
 
 
-REQUEST_HEADERS = {'Accept': 'application/bitcoincash-paymentrequest', 'User-Agent': 'Electron-Cash/' + version.PACKAGE_VERSION + version.get_extensions()}
-REQUEST_HEADERS_SLP = {'Accept': 'application/simpleledger-paymentrequest', 'User-Agent': 'Electron-Cash/' + version.PACKAGE_VERSION + version.get_extensions()}
-ACK_HEADERS = {'Content-Type':'application/bitcoincash-payment','Accept':'application/bitcoincash-paymentack','User-Agent':'Electron-Cash'}
-ACK_HEADERS_SLP = {'Content-Type':'application/simpleledger-payment','Accept':'application/simpleledger-paymentack','User-Agent':'Electron-Cash'}
+user_agent = 'Electron-Cash-SLP/' + version.PRE_RELEASE_TAG or version.PACKAGE_VERSION + version.get_extensions()
+REQUEST_HEADERS = {'Accept': 'application/bitcoincash-paymentrequest', 'User-Agent': user_agent}
+REQUEST_HEADERS_SLP = {'Accept': 'application/simpleledger-paymentrequest', 'User-Agent': user_agent}
+ACK_HEADERS = {'Content-Type':'application/bitcoincash-payment','Accept':'application/bitcoincash-paymentack','User-Agent': user_agent}
+ACK_HEADERS_SLP = {'Content-Type':'application/simpleledger-payment','Accept':'application/simpleledger-paymentack','User-Agent': user_agent}
 
 ca_path = requests.certs.where()
 ca_list = None
@@ -633,8 +634,8 @@ class PaymentRequest_BitPay20(PaymentRequest, PrintError):
     # Extra headers we attach to requests we send to BitPay, so they may
     # track us as a 'partner' (we actually get a small amount of revenue this way).
     HEADERS = { 'BP_PARTNER'         : 'ELECTRONCASH',
-                'BP_PARTNER_VERSION' : 'V' + version.PACKAGE_VERSION,
-                'User-Agent'         : 'Electron-Cash' }
+                'BP_PARTNER_VERSION' : 'V' + version.PRE_RELEASE_TAG or version.PACKAGE_VERSION,
+                'User-Agent'         : 'Electron-Cash-SLP' }
 
     Details = namedtuple('BitPay20Details', 'outputs, memo, payment_url, time, expires, network, currency, required_fee_rate')
 
