@@ -1,6 +1,7 @@
 from .util import NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp, print_error
 from . import slp
 from .slp import SlpParsingError, SlpInvalidOutputMessage, SlpUnsupportedSlpTokenType
+from .slp_preflight_check import SlpPreflightCheck
 from .transaction import Transaction
 from .address import Address
 
@@ -248,31 +249,14 @@ class SlpTransactionChecker:
                             raise BadSlpOutpointType('Transaction token receiver vout is not P2PKH' \
                                                         + ' or P2SH output type')
 
+        # perform slp pre-flight check before signing (this check run here and also at signing)
+        slp_preflight = SlpPreflightCheck.query(tx, selected_slp_coins=coins_to_burn, amt_to_burn=amt_to_burn)
+        if not slp_preflight['ok']:
+            raise Exception("slp pre-flight failed: %s"%slp_preflight['invalid_reason'])
+
         # return True if this check passes
         print_error("Final SLP check passed")
         return True
-
-        '''
-        Unit Testing Plan:
-            - [ ] Verify Non-SLP transaction with SLP inputs raises exception, use Burn Tool to burn ALL of a coin since that will produce a non-SLP output with SLP inputs
-                    - requires removing "slp_coins_to_burn" param from "slp_burn_token_dialog.py" broadcast_transaction()
-            - [ ] Verify SLP transaction with too high of SLP inputs raises exception, use Burn Tool to burn with token change, since that will have more inputs than outputs.
-                    - requires removing "slp_coins_to_burn" param from "slp_burn_token_dialog.py" broadcast_transaction()
-            - [ ] Verify token receiver outpoints are of p2pkh or p2sh type
-            - [ ] Verify baton receiver outpoints are of p2pkh or p2sh type
-            - [ ] Test SLP transaction with wrong SLP inputs throws
-            - [ ] Test SLP transaction with insufficient inputs throws
-            - [ ] Check BURN dialog
-            - [ ] Check BURN preview/broadcast
-            - [ ] Check MINT dialog
-            - [ ] Check MINT preview/broadcast
-            - [ ] Check SEND
-            - [ ] Check SEND preview/broadcast
-            - [ ] Check GENESIS
-            - [ ] Check GENESIS preview/broadcast
-            - [ ] Check BCH send
-            - [ ] Check BCH preview/broadcast
-        '''
 
 # Exceptions caused by malformed or unexpected data found in parsing.
 class SlpTransactionValidityError(Exception):

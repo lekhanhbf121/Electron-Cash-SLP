@@ -4,6 +4,7 @@ from functools import partial
 import json
 import threading
 import sys, traceback
+import codecs, base64
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -19,6 +20,7 @@ from .util import *
 from electroncash.util import bfh, format_satoshis_nofloat, format_satoshis_plain_nofloat, NotEnoughFunds, ExcessiveFee, finalization_print_error
 from electroncash.transaction import Transaction
 from electroncash.slp import SlpMessage, SlpParsingError, SlpMessage, SlpNoMintingBatonFound, SlpUnsupportedSlpTokenType, SlpInvalidOutputMessage, buildSendOpReturnOutput_V1
+from electroncash.slp_preflight_check import SlpPreflightCheck
 
 from .amountedit import SLPAmountEdit
 from .transaction_dialog import show_transaction
@@ -243,16 +245,24 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
         return fileName
 
     def burn_token(self, preview=False, multisig_tx_to_sign=None):
+        token_type = self.wallet.token_types[self.token_id_e.text()]['class']
         unfrozen_token_qty = self.wallet.get_slp_token_balance(self.token_id_e.text(), self.main_window.config)[3]
-        burn_amt = self.token_qty_e.get_amount()
-        if burn_amt < 0 or burn_amt == None:
+        desired_burn_amt = self.token_qty_e.get_amount()
+
+        selected_slp_coins = []
+
+        if desired_burn_amt == None or desired_burn_amt < 0:
             self.show_message(_("Enter a valid token quantity."))
             return
-        elif burn_amt > unfrozen_token_qty:
+        elif desired_burn_amt > unfrozen_token_qty:
             self.show_message(_("Cannot burn a quantity greater than your unfrozen token balance."))
             return
 
-        reply = QMessageBox.question(self, "Continue?", "Destroy " + self.token_qty_e.text() + " " + self.token_name.text() + " tokens?", QMessageBox.Yes, QMessageBox.No)
+        msg = "Destroy " + self.token_qty_e.text() + " " + self.token_name.text() + " tokens"
+        if self.token_burn_baton_cb.isChecked():
+            msg += " AND the MINTING BATON"
+        msg += "?!?"
+        reply = QMessageBox.question(self, "Continue?", msg, QMessageBox.Yes, QMessageBox.No)
         if reply == QMessageBox.Yes:
             pass
         else:
@@ -278,25 +288,24 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                         )
             if multisig_tx_to_sign is None:
                 selected_slp_coins = []
-                if burn_amt < unfrozen_token_qty:
+                if desired_burn_amt < unfrozen_token_qty:
                     total_amt_added = 0
                     for coin in slp_coins:
                         if coin['token_value'] != "MINT_BATON" and coin['token_validation_state'] == 1:
-                            if coin['token_value'] >= burn_amt:
+                            if coin['token_value'] >= desired_burn_amt:
                                 selected_slp_coins.append(coin)
                                 total_amt_added += coin['token_value']
                                 break
-                    if total_amt_added < burn_amt:
+                    if total_amt_added < desired_burn_amt:
                         for coin in slp_coins:
                             if coin['token_value'] != "MINT_BATON" and coin['token_validation_state'] == 1:
-                                if total_amt_added < burn_amt:
+                                if total_amt_added < desired_burn_amt:
                                     selected_slp_coins.append(coin)
                                     total_amt_added += coin['token_value']
-                    if total_amt_added > burn_amt:
-                        token_type = self.wallet.token_types[self.token_id_e.text()]['class']
+                    if total_amt_added > desired_burn_amt:
                         slp_op_return_msg = buildSendOpReturnOutput_V1(
                                                 self.token_id_e.text(), 
-                                                [total_amt_added - burn_amt], 
+                                                [total_amt_added - desired_burn_amt], 
                                                 token_type
                                                 )
                         outputs.append(slp_op_return_msg)
@@ -306,8 +315,6 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                         if coin['token_value'] != "MINT_BATON" and coin['token_validation_state'] == 1:
                             selected_slp_coins.append(coin)
             else:
-                selected_slp_coins = []
-                total_burn_amt = 0
                 try:
                     slp_msg = SlpMessage.parseSlpOutputScript(multisig_tx_to_sign.outputs()[0][1])
                 except SlpParsingError:
@@ -333,7 +340,7 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                         pass
                 if slp_msg:
                     total_burn_amt -= sum(slp_msg.op_return_fields['token_output'])
-                if total_burn_amt > burn_amt:
+                if total_burn_amt > desired_burn_amt:
                     if slp_msg:
                         self.show_message(_("Amount burned in transaction does not match the amount specified."))
                     else:
@@ -342,7 +349,7 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                     return
 
         except OPReturnTooLarge:
-            self.show_message(_("Optional string text causiing OP_RETURN greater than 223 bytes."))
+            self.show_message(_("Optional string text causing OP_RETURN greater than 223 bytes."))
             return
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
@@ -375,6 +382,12 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                                                 )
             else:
                 tx = multisig_tx_to_sign
+
+            # perform slp pre-flight check before signing (this check run here and also at signing)
+            slp_preflight = SlpPreflightCheck.query(tx, selected_slp_coins=selected_slp_coins, amt_to_burn=desired_burn_amt)
+            if not slp_preflight['ok']:
+                raise Exception("slp pre-flight failed: %s"%slp_preflight['invalid_reason'])
+
         except NotEnoughFunds:
             self.show_message(_("Insufficient funds"))
             return
@@ -387,7 +400,7 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
             return
 
         if preview:
-            show_transaction(tx, self.main_window, None, False, self, slp_coins_to_burn=selected_slp_coins, slp_amt_to_burn=burn_amt)
+            show_transaction(tx, self.main_window, None, False, self, slp_coins_to_burn=selected_slp_coins, slp_amt_to_burn=desired_burn_amt)
             return
 
         msg = []
@@ -411,7 +424,7 @@ class SlpBurnTokenDialog(QDialog, MessageBoxMixin):
                 else:
                     self.main_window.broadcast_transaction(tx, tx_desc)
 
-        self.main_window.sign_tx_with_password(tx, sign_done, password, slp_coins_to_burn=selected_slp_coins, slp_amt_to_burn=burn_amt)
+        self.main_window.sign_tx_with_password(tx, sign_done, password, slp_coins_to_burn=selected_slp_coins, slp_amt_to_burn=desired_burn_amt)
 
         self.burn_button.setDisabled(True)
         self.close()

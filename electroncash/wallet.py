@@ -1193,7 +1193,7 @@ class Abstract_Wallet(PrintError, SPVDelegate):
             tx_height, value, is_cb = v
             prevout_hash, prevout_n = txo.split(':')
             with self.lock:
-                val = self.tx_tokinfo[prevout_hash]['validity']
+                tok_info = self.tx_tokinfo[prevout_hash]
             x = {
                 'address': address,
                 'value': value,
@@ -1203,7 +1203,9 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 'coinbase': is_cb,
                 'is_frozen_coin': txo in self.frozen_coins or txo in self.frozen_coins_tmp,
                 'token_value': addrdict[prevout_hash][int(prevout_n)]['qty'],
-                'token_validation_state': val
+                'token_id_hex': tok_info['token_id'],
+                'token_type': tok_info['type'],
+                'token_validation_state': tok_info['validity']
             }
             out[txo] = x
         return out
