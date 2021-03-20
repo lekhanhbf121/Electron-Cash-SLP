@@ -118,9 +118,6 @@ class _GraphSearchJob:
         if not wallet:
             return []
 
-        if self.valjob.graph.validator.token_type == 129:
-            return []
-
         wallet_val = self.valjob.validitycache
         token_id = self.valjob.graph.validator.token_id_hex
         gs_cache = []
