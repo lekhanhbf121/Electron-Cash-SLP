@@ -13,7 +13,6 @@ import random
 from electroncash import networks
 from .slp import SlpMessage
 
-BCHD_NODES = [ host for host in networks.net.SLPDB_SERVERS if networks.net.SLPDB_SERVERS[host]['kind'] == 'bchd']
 BCHD_RESP_NON_SLP_WITH_BURNS = 'non-slp transaction, includes valid slp inputs'
 BCHD_RESP_NON_SLP_OK = 'non-slp transaction'
 
@@ -103,6 +102,7 @@ class SlpPreflightCheck:
             'use_spec_validity_judgement': False     # using safe judgement to avoid any required_burns
         }
 
+        BCHD_NODES = [ host for host in networks.net.SLPDB_SERVERS if networks.net.SLPDB_SERVERS[host]['kind'] == 'bchd']
         random.shuffle(BCHD_NODES)
 
         resp = { 'ok': False, 'invalid_reason': 'no bchd nodes available' }
