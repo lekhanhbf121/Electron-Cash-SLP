@@ -30,13 +30,10 @@ sudo port install coreutils
 
 ## 3. Use the provided script to begin building.
 
-    1) Remove .egg from previous build:
-        - rm -rf ~/Library/Python/3.6/lib/python/site-packages/Electron_Cash_SLP-*.egg
-
-    2) Remove items from previous build:
+    1) Remove items from previous build:
         - rm -rf ~/Library/Python/3.6 ~/.pyenv ~/Library/Caches/pip ~/Library/"Application Support"/pyinstaller
 
-    3) Build:
+    2) Build:
         - ./make_osx
 
     Or, if you wish to sign the app when building, provide an Apple developer identity installed on the system for signing:
