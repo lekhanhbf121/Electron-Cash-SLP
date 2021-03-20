@@ -217,6 +217,9 @@ plutil -insert 'CFBundleURLTypes' \
 '  <string>simpleledger</string> '\
 '  <key>CFBundleURLSchemes</key> '\
 '    <array><string>simpleledger</string></array> '\
+'</dict> '\
+'<dict> '\
+'  <key>CFBundleURLName</key> '\
 '  <string>CashAccount</string> '\
 '  <key>CFBundleURLSchemes</key> '\
 '    <array><string>cashacct</string></array> '\
