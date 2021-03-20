@@ -362,10 +362,7 @@ class _SlpGraphSearchManager:
             dat = json.loads(dat.decode('utf-8'))
             txns = dat[res_txns_key]
         except:
-            m = json.loads(dat)
-            if m["error"]:
-                raise Exception(m["error"])
-            raise Exception(m)
+            raise Exception(dat)
 
         for txn in txns:
             job.txn_count_progress += 1
