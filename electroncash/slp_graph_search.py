@@ -358,7 +358,12 @@ class _SlpGraphSearchManager:
         try:
             dat = json.loads(dat.decode('utf-8'))
             txns = dat[res_txns_key]
-        except:
+        except json.decoder.JSONDecodeError:
+            msg = '=> %s'%dat.decode('utf-8')
+            if len(dat.decode('utf-8')) > 100:
+                msg = 'message is too long'
+            raise Exception('server returned invalid json (%s)'%msg)
+        except KeyError:
             raise Exception(dat)
 
         for txn in txns:
