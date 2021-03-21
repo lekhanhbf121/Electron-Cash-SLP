@@ -3,19 +3,19 @@ from pprint import pprint
 from queue import Queue, Empty
 
 from time import sleep
-from lib.slp_validator_0x01_nft1 import ValidationJobNFT1Child
+from electroncash.slp_validator_0x01_nft1 import ValidationJobNFT1Child
 
-from lib.address import ScriptOutput
+from electroncash.address import ScriptOutput
 
-from lib.transaction import Transaction
+from electroncash.transaction import Transaction
 
 import json
 
-from lib import slp
-from lib import slp_validator_0x01
-from lib import slp_validator_0x01_nft1
-from lib.storage import WalletStorage
-from lib.wallet import Slp_ImportedAddressWallet
+from electroncash import slp
+from electroncash import slp_validator_0x01
+from electroncash import slp_validator_0x01_nft1
+from electroncash.storage import WalletStorage
+from electroncash.wallet import Slp_ImportedAddressWallet
 
 import requests
 import os
