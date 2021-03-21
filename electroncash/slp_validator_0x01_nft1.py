@@ -330,7 +330,12 @@ class Validator_NFT1(ValidatorGeneric):
             return (out_n > 0)
 
     def download_nft_genesis(self, nft_child_job, done_callback):
+
+        wallet = nft_child_job.ref()
+
         def dl_cb(resp):
+            if wallet == None:
+                return
             if resp.get('error', None):
                 #raise Exception(resp['error'].get('message'))
                 if done_callback:
@@ -340,7 +345,6 @@ class Validator_NFT1(ValidatorGeneric):
                 tx = Transaction(raw)
                 assert tx.txid_fast() == self.token_id_hex
                 txid = self.token_id_hex
-                wallet = nft_child_job.ref()
                 with wallet.lock:
                     if not wallet.transactions.get(txid, None):
                         wallet.transactions[txid] = tx
@@ -353,15 +357,24 @@ class Validator_NFT1(ValidatorGeneric):
                             'validity': 0,
                         }
                         wallet.tx_tokinfo[txid] = tti
-                    wallet.save_transactions()
+                wallet.save_transactions()
                 nft_child_job.genesis_tx = tx
                 if done_callback:
                     done_callback(True)
-        requests = [('blockchain.transaction.get', [self.token_id_hex]), ]
-        nft_child_job.network.send(requests, dl_cb)
+
+        if wallet.transactions.get(self.token_id_hex, None):
+            dl_cb({'result': wallet.transactions[self.token_id_hex].serialize()})
+        else:
+            requests = [('blockchain.transaction.get', [self.token_id_hex]), ]
+            nft_child_job.network.send(requests, dl_cb)
 
     def download_nft_parent_tx(self, nft_child_job, done_callback):
+
+        wallet = nft_child_job.ref()
+
         def dl_cb(resp):
+            if wallet == None:
+                return
             if resp.get('error'):
                 if done_callback:
                     done_callback(False)
@@ -369,7 +382,6 @@ class Validator_NFT1(ValidatorGeneric):
                 raw = resp.get('result')
                 tx = Transaction(raw)
                 txid = tx.txid_fast()
-                wallet = nft_child_job.ref()
                 with wallet.lock:
                     if not wallet.transactions.get(txid, None):
                         wallet.transactions[txid] = tx
@@ -388,13 +400,17 @@ class Validator_NFT1(ValidatorGeneric):
                             else:
                                 tti['token_id'] = slpMsg.op_return_fields['token_id_hex']
                             wallet.tx_tokinfo[txid] = tti
-                    wallet.save_transactions()
+                wallet.save_transactions()
                 nft_child_job.nft_parent_tx = tx
                 if done_callback:
                     done_callback(True)
+
         nft_parent_txid = nft_child_job.genesis_tx.inputs()[0]['prevout_hash']
-        requests = [('blockchain.transaction.get', [nft_parent_txid]), ]
-        nft_child_job.network.send(requests, dl_cb)
+        if wallet.transactions.get(nft_parent_txid, None):
+            dl_cb({'result': wallet.transactions[nft_parent_txid].serialize()})
+        else:
+            requests = [('blockchain.transaction.get', [nft_parent_txid]), ]
+            nft_child_job.network.send(requests, dl_cb)
 
     def start_NFT_parent_job(self, nft_child_job, done_callback):
         wallet = nft_child_job.ref()
@@ -429,7 +445,7 @@ class Validator_NFT1(ValidatorGeneric):
                 wallet.token_types[nft_child_job.genesis_tx.txid_fast()]['group_id'] = group_id
                 wallet.tx_tokinfo[nft_child_job.nft_parent_tx.txid_fast()]['validity'] = val
                 #wallet.tx_tokinfo[nft_child_job.genesis_tx.txid_fast()]['validity'] = val
-                wallet.save_transactions()
+            wallet.save_transactions()
 
             if slp_gs_mgr.slp_validity_signal:
                 slp_gs_mgr.slp_validity_signal.emit(txid, val)
@@ -454,7 +470,7 @@ class Validator_NFT1(ValidatorGeneric):
             raise Exception("NO JOB!")
             with wallet.lock:
                 wallet.tx_tokinfo[nft_child_job.genesis_tx.txid_fast()]['validity'] = 4
-                wallet.save_transactions()
+            wallet.save_transactions()
             slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), 4)
             if done_callback:
                 done_callback(4)
