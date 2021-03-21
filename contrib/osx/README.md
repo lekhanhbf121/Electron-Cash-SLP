@@ -3,9 +3,7 @@ Building Mac OS binaries
 
 ✗ _This script does not produce reproducible output (yet!)._
 
-This guide explains how to build Electron Cash binaries for macOS systems.
-We build our binaries on El Capitan (10.11.6) as building it on High Sierra
-makes the binaries incompatible with older versions.
+This guide explains how to build binaries for macOS High Sierra and later.
 
 This assumes that the Xcode Command Line tools (and thus git) are already installed. You can install older (and newer!) versions of Xcode from Apple provided you have a devloper account [from the Apple developer downloads site](https://developer.apple.com/download/more/).
 
