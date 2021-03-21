@@ -637,9 +637,9 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
 class DerivationPathScanner(QThread):
 
     DERIVATION_PATHS = [
+        "m/44'/245'/0'",
         "m/44'/145'/0'",
         "m/44'/0'/0'",
-        "m/44'/245'/0'",
         "m/144'/44'/0'",
         "m/144'/0'/0'",
         "m/44'/0'/0'/0",
