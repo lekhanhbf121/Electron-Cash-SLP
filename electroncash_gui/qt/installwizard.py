@@ -441,20 +441,6 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
         layout.addLayout(hbox)
         but.clicked.connect(but_action)
 
-    def _add_extra_button_to_layout(self, extra_button, layout):
-        if (not isinstance(extra_button, (list, tuple))
-                or not len(extra_button) == 2):
-            return
-        but_title, but_action = extra_button
-        hbox = QHBoxLayout()
-        hbox.setContentsMargins(12,24,12,12)
-        but = QPushButton(but_title)
-        hbox.addStretch(1)
-        hbox.addWidget(but)
-        layout.addLayout(hbox)
-        but.clicked.connect(but_action)
-
-
     @wizard_dialog
     def confirm_dialog(self, title, message, run_next, extra_button=None):
         self.confirm(message, title, extra_button=extra_button)
