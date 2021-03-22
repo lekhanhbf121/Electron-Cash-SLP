@@ -244,6 +244,11 @@ class ValidationJob:
 
     def run(self,):
         """ Wrapper for mainloop() to manage run state. """
+
+        # Check if we need to reset the graph due to having
+        # nodes in an undetermined state.
+        self.graph.maybe_reset()
+
         with self._statelock:
             if self.running:
                 raise RuntimeError("Job running already", self)
@@ -830,6 +835,16 @@ class TokenGraph:
                 n.conn_parents = []
             except:
                 pass
+
+    # This is used by a ValidationJob to determine if the graph
+    # should be reset.  At the beginning of a validation job
+    # having active nodes with validity==0 causes the job to fail.
+    def maybe_reset(self):
+        nodes = self._nodes.copy()
+        for node in nodes.values():
+            if node.validity == 0 and isinstance(node, Node):
+                self.reset()
+                return
 
     def debug(self, formatstr, *args):
         if self.debugging:
