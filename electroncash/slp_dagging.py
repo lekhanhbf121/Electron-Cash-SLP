@@ -68,7 +68,11 @@ class ValidatorGeneric(ABC):
     validity_states = {
         0: 'Unknown',
         1: 'Valid',
-        2: 'Invalid',
+        2: 'Invalid: not SLP / malformed SLP',
+        3: 'Invalid: insufficient valid inputs',
+      # 4: 'Invalid: <validator specific error>',
+      #  ...
+      # N: 'Invalid: <validator specific error>',
         }
 
     @abstractmethod
