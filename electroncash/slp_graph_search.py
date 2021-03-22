@@ -100,7 +100,7 @@ class _GraphSearchJob:
         txid = txid or Transaction._txid(tx.raw)  # optionally, caller can pass-in txid to save CPU time for hashing
         self._txdata.put(txid, tx)
 
-    def get_job_cache(self, *, reverse=True, max_size=-1, is_mint=False):
+    def get_job_cache(self, *, max_size=-1, is_mint=False):
         ''' Get validity cache for a token graph 
             
             reverse reverses the endianess of the txid
@@ -151,16 +151,7 @@ class _GraphSearchJob:
         # update the cache size variable used in the UI
         self.validity_cache_size = len(gs_cache)
 
-        # return as base64, not hex
-        b64_hashes = []
-        for txid in gs_cache:
-            b = codecs.decode(txid, 'hex')
-            if reverse:
-                b = b[::-1]
-            b64 = base64.standard_b64encode(b).decode("ascii")
-            b64_hashes.append(b64)
-
-        return b64_hashes
+        return gs_cache
 
     def _cancel(self):
         self.job_complete = True
@@ -315,6 +306,7 @@ class _SlpGraphSearchManager:
         # setup post url/query based on gs server kind
         kind = 'bchd'
         host = slp_gs_mgr.gs_host
+        cache = []
         if networks.net.SLPDB_SERVERS.get(host):
             kind = networks.net.SLPDB_SERVERS.get(host)["kind"]
         if kind == 'gs++':
@@ -325,7 +317,16 @@ class _SlpGraphSearchManager:
             root_hash_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
             url = host + "/v1/GetSlpGraphSearch"
             cache = job.get_job_cache(max_size=100)
-            query_json = { "hash": root_hash_b64, "valid_hashes": cache }  # TODO: can use is_mint to improve cache for mint transactions
+
+            # bchd needs the reverse txid and then use base64 encoding
+            tx_hashes = []
+            for txid_hex in cache:
+                txid = codecs.decode(txid_hex, 'hex')
+                tx_hash = txid[::-1]
+                tx_hash = base64.standard_b64encode(tx_hash).decode("ascii")
+                tx_hashes.append(tx_hash)
+
+            query_json = { "hash": root_hash_b64, "valid_hashes": tx_hashes }
             res_txns_key = 'txdata'
         else:
             raise Exception("unknown server kind")
@@ -365,6 +366,16 @@ class _SlpGraphSearchManager:
             raise Exception('server returned invalid json (%s)'%msg)
         except KeyError:
             raise Exception(dat)
+
+        # NOTE: THE FOLLOWING IS FOR DEBUG PURPOSES TO CHECK
+        # THE GRAPH SEARCH RESULTS AGAINST ANOTHER VALIDATOR
+        # USING THE SAME TX DATA AND TXID CACHE.
+        # 
+        # # save txdata and cache to file for debugging
+        # with open('%s-txdata.json'%job.root_txid, 'x') as json_file:
+        #     json.dump(dat, json_file)
+        # with open('%s-cache.json'%job.root_txid, 'x') as json_file:
+        #     json.dump({'cache': cache }, json_file)
 
         for txn in txns:
             job.txn_count_progress += 1
