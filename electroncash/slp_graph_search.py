@@ -365,6 +365,10 @@ class _SlpGraphSearchManager:
                 msg = 'message is too long'
             raise Exception('server returned invalid json (%s)'%msg)
         except KeyError:
+            if dat.get('message', None):
+                msg = dat['message']
+                if 'txid is missing from slp validity set' in msg:
+                    raise Exception('likely invalid slp')
             raise Exception(dat)
 
         # NOTE: THE FOLLOWING IS FOR DEBUG PURPOSES TO CHECK
@@ -372,10 +376,12 @@ class _SlpGraphSearchManager:
         # USING THE SAME TX DATA AND TXID CACHE.
         # 
         # # save txdata and cache to file for debugging
-        # with open('%s-txdata.json'%job.root_txid, 'x') as json_file:
-        #     json.dump(dat, json_file)
-        # with open('%s-cache.json'%job.root_txid, 'x') as json_file:
-        #     json.dump({'cache': cache }, json_file)
+        # try:
+        #     with open('%s-txdata.json'%job.root_txid, 'x') as json_file:
+        #         json.dump(dat, json_file)
+        #     with open('%s-cache.json'%job.root_txid, 'x') as json_file:
+        #         json.dump({'cache': cache }, json_file)
+        # except: pass
 
         for txn in txns:
             job.txn_count_progress += 1
