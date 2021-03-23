@@ -173,7 +173,7 @@ class GraphContext_NFT1(GraphContext):
         if nft_type == 'SLP65':
             job = ValidationJobNFT1Child(graph, txid, network,
                                 fetch_hook=fetch_hook,
-                                validitycache=None, #wallet.slpv1_validity,
+                                validitycache=wallet.slpv1_validity,
                                 download_limit=limit_dls,
                                 depth_limit=limit_depth,
                                 debug=debug,
@@ -183,7 +183,7 @@ class GraphContext_NFT1(GraphContext):
         elif nft_type == 'SLP129':
             job = ValidationJob(graph, txid, network,
                                 fetch_hook=fetch_hook,
-                                validitycache=None, #wallet.slpv1_validity,
+                                validitycache=wallet.slpv1_validity,
                                 download_limit=limit_dls,
                                 depth_limit=limit_depth,
                                 debug=debug,
@@ -481,7 +481,7 @@ class Validator_NFT1(ValidatorGeneric):
             try:
                 self.validation_jobmgr.unpause_job(nft_child_job)
             except:
-                nft_child_job.start()
+                nft_child_job.run()
 
         def start_nft_parent_validation(success):
             if success:
