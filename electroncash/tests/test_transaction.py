@@ -279,14 +279,16 @@ class TestTransaction(unittest.TestCase):
         # truncated in middle of PUSHDATA2's first argument
         tx = transaction.Transaction('01000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000024d0100000000')
         self.assertEqual(tx.outputs(), [(TYPE_SCRIPT, ScriptOutput(b'\x4d\x01'), 0)])
-        self.assertIn("Invalid script", tx.outputs()[0][1].to_ui_string())
+        # NOTE: commented out since ecslp's to_ui_string is slightly modified to return hex on script parse error
+        # self.assertIn("Invalid script", tx.outputs()[0][1].to_ui_string())
         self.assertEqual('72d8af8edcc603c6c64390ac5eb913b97a80efe0f5ae7c00ad5397eb5786cd33', tx.txid())
 
-    def test_parse_output_truncated1(self):
+    def test_parse_output_truncated2(self):
         # truncated in middle of PUSHDATA2's second argument
         tx = transaction.Transaction('01000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000044d0200ff00000000')
         self.assertEqual(tx.outputs(), [(TYPE_SCRIPT, ScriptOutput(b'\x4d\x02\x00\xff'), 0)])
-        self.assertIn("Invalid script", tx.outputs()[0][1].to_ui_string())
+        # NOTE: commented out since ecslp's to_ui_string is slightly modified to return hex on script parse error
+        # self.assertIn("Invalid script", tx.outputs()[0][1].to_ui_string())
         self.assertEqual('976667816c4955189973cc56ac839844da4ed32a8bd22a8c6217c2c04e69e9d7', tx.txid())
 
     def test_parse_output_empty(self):
