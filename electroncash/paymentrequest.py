@@ -79,7 +79,7 @@ PR_PAID    = 3     # send and propagated
 
 
 
-def get_payment_request(url, *, is_slp):
+def get_payment_request(url, *, is_slp=False):
     data = error = None
     try:
         u = urllib.parse.urlparse(url)
