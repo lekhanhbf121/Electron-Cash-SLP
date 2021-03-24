@@ -309,7 +309,7 @@ class BaseWizard(util.PrintError):
             _("If you want the wallet to use SLP addresses use m/44'/245'/0'"),
             _("The placeholder value of {} is the default derivation for {} wallets.").format(default_derivation, self.wallet_type),
         ])
-        scannable = True if self.wallet_type in ('standard', 'slp_standard') and seed else False
+        scannable = self.wallet_type in {"standard", "slp_standard"} and bool(seed)
         self.derivation_path_dialog(run_next=f, title=_('Derivation for {} wallet').format(self.wallet_type),
                                     message=message, default=default_derivation, test=bitcoin.is_bip32_derivation,
                                     seed=seed, scannable=scannable)
