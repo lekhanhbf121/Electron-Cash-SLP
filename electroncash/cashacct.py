@@ -293,7 +293,7 @@ class ScriptOutput(ScriptOutputBase):
         except Exception as e:
             raise ArgumentError('Bad CashAcct script', script_short.hex()) from e
         # Check for extra garbage at the end, too few items and/or other nonsense
-        if not ops or not len(ops) >= 2 or not all(len(op) == 2 and op[1] for op in ops):
+        if not ops or not len(ops) >= 2 or not all(not isinstance(op, int) and len(op) == 2 and op[1] for op in ops):
             raise ArgumentError('CashAcct script parse error', ops)
         name_bytes = ops[0][1]
         try:
