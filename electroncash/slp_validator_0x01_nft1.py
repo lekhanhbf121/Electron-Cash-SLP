@@ -170,12 +170,16 @@ class GraphContext_NFT1(GraphContext):
                 if val != 0:
                     wallet.slpv1_validity[t] = val
 
+        # get transaction block height
+        height = wallet.verified_tx.get(txid, (-1,None,None))[0]
+
         if nft_type == 'SLP65':
             job = ValidationJobNFT1Child(graph, txid, network,
                                 fetch_hook=fetch_hook,
                                 validitycache=wallet.slpv1_validity,
                                 download_limit=limit_dls,
                                 depth_limit=limit_depth,
+                                height=height,
                                 debug=debug,
                                 was_reset=reset,
                                 ref=wallet,
@@ -186,6 +190,7 @@ class GraphContext_NFT1(GraphContext):
                                 validitycache=wallet.slpv1_validity,
                                 download_limit=limit_dls,
                                 depth_limit=limit_depth,
+                                height=height,
                                 debug=debug,
                                 ref=wallet,
                                 **kwargs)
@@ -201,13 +206,14 @@ class ValidationJobNFT1Child(ValidationJob):
                     fetch_hook=None,
                     validitycache=None,
                     download_limit=None, depth_limit=None,
+                    height=-1,
                     debug=False, was_reset=False, ref=None):
         self.was_reset = was_reset
         self.genesis_tx = None
         self.nft_parent_tx = None
         self.nft_parent_validity = 0
         self.forced_failure_val = None
-        super().__init__(graph, txids, network, fetch_hook, validitycache, download_limit, depth_limit, debug, ref)
+        super().__init__(graph, txids, network, fetch_hook, validitycache, download_limit, depth_limit, height, debug, ref)
 
 # App-wide instance. Wallets share the results of the DAG lookups.
 # This instance is shared so that we don't redundantly verify tokens for each

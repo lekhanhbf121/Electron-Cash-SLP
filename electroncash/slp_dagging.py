@@ -26,6 +26,7 @@ import traceback
 import weakref
 import collections
 import random
+from itertools import count
 import codecs
 import base64
 from abc import ABC, abstractmethod
@@ -36,6 +37,7 @@ from .slp_graph_search import slp_gs_mgr
 
 INF_DEPTH=2147483646  # 'infinity' value for node depths. 2**31 - 2
 
+unique = count()
 
 class hardref:
     # a proper reference that mimics weakref interface
@@ -176,6 +178,7 @@ class ValidationJob:
                  fetch_hook=None,
                  validitycache=None,
                  download_limit=None, depth_limit=None,
+                 height=-1,
                  debug=False, ref=None):
         """
         graph should be a TokenGraph instance with the appropriate validator.
@@ -211,10 +214,12 @@ class ValidationJob:
         self.fetch_hook = fetch_hook
         self.validitycache = {} if validitycache is None else validitycache
         self.download_limit = download_limit
+        self.removed = False
         if depth_limit is None:
             self.depth_limit = INF_DEPTH - 1
         else:
             self.depth_limit = depth_limit
+        self.height = height
         self.callbacks = []
 
         self.debug = debug
@@ -593,7 +598,7 @@ class ValidationJobManager(PrintError):
         self.graph_context = graph_context
         self.jobs_lock = threading.Lock()
         self.job_current = None
-        self.jobs_pending  = []   # list of jobs waiting to run.
+        self.jobs_pending = queue.PriorityQueue()
         self.jobs_finished = weakref.WeakSet()   # set of jobs finished normally.
         self.jobs_stopped = weakref.WeakSet()  # set of jobs stopped by calling .stop(), or that terminated abnormally with an error and/or crash
         self.jobs_paused   = []   # list of jobs that stopped by calling .pause()
@@ -622,7 +627,7 @@ class ValidationJobManager(PrintError):
             if job in self.all_jobs:
                 raise ValueError
             self.all_jobs.add(job)
-            self.jobs_pending.append(job)
+            self.jobs_pending.put((job.height, next(unique), job))
         self.wakeup.set()
 
     def _stop_all_common(self, job):
@@ -635,7 +640,7 @@ class ValidationJobManager(PrintError):
             # Job wasn't running -- try and remove it from the
             # pending and paused lists
             try:
-                self.jobs_pending.remove(job)
+                job.removed = True
                 return True
             except ValueError:
                 pass
@@ -679,7 +684,7 @@ class ValidationJobManager(PrintError):
                     return False
             else:
                 try:
-                    self.jobs_pending.remove(job)
+                    job.removed = True
                 except ValueError:
                     return False
                 else:
@@ -692,7 +697,7 @@ class ValidationJobManager(PrintError):
         Throws ValueError if job is not in paused list. """
         with self.jobs_lock:
             self.jobs_paused.remove(job)
-            self.jobs_pending.append(job)
+            self.jobs_pending.put((job.height, next(unique), job))
         self.wakeup.set()
 
     def kill(self, ):
@@ -718,8 +723,10 @@ class ValidationJobManager(PrintError):
                     self.wakeup.clear()
                     has_paused_jobs = bool(len(self.jobs_paused))
                     try:
-                        self.job_current = self.jobs_pending.pop(0)
-                    except IndexError:
+                        _, _, self.job_current = self.jobs_pending.get(block=False)
+                        if self.job_current.removed:
+                            continue
+                    except (IndexError, queue.Empty):
                         # prepare to sleep, outside lock
                         self.job_current = None
                 if self.job_current is None:
@@ -750,7 +757,7 @@ class ValidationJobManager(PrintError):
                                 self.job_current.graph.reset()
                             except KeyError:
                                 pass
-                            self.jobs_pending.append(self.job_current)
+                            self.jobs_pending.put((job.height, next(unique), self.job_current))
                         elif retval == 'paused':
                             self.jobs_paused.append(self.job_current)
                         else:
