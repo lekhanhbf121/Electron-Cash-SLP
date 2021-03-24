@@ -193,15 +193,17 @@ class _SlpGraphSearchManager:
 
     @property
     def slp_validity_signal(self):
+        if not self._gui_object: return
         return self._gui_object().slp_validity_signal
 
     @property
     def slp_validation_fetch_signal(self):
+        if not self._gui_object: return
         return self._gui_object().slp_validation_fetch_signal
 
     @property
     def gs_enabled(self):
-        return self._gui_object().config.get('slp_validator_graphsearch_enabled', False)
+        return self._gui_object and self._gui_object().config.get('slp_validator_graphsearch_enabled', False)
 
     def _set_gs_enabled(self, enable):
         self._gui_object().config.set_key('slp_validator_graphsearch_enabled', enable)

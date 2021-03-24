@@ -136,7 +136,7 @@ class GraphContext(PrintError):
 
     @staticmethod
     def get_validation_config():
-        config = get_config()
+        config = get_config() or {}
         try:
             limit_dls    = config.get('slp_validator_download_limit', None)
             limit_depth  = config.get('slp_validator_depth_limit', None)
@@ -191,9 +191,9 @@ class GraphContext(PrintError):
 
             gs_job = slp_gs_mgr.get_gs_job(val_job)
 
-            if not first_fetch_complete:
-                slp_gs_mgr.slp_validation_fetch_signal.emit(0)
+            if not first_fetch_complete and slp_gs_mgr.slp_validation_fetch_signal:
                 first_fetch_complete = True
+                slp_gs_mgr.slp_validation_fetch_signal.emit(0)
 
             for txid in txids:
                 txn = gs_job.get_tx(txid)

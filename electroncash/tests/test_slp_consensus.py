@@ -129,6 +129,11 @@ class SLPConsensusTests(unittest.TestCase):
 
 
     def test_inputs(self):
+
+        # used as a final assertion on the number of results and errors
+        results_list = []
+        error_list = []
+
         try:
             with open(txintests_local) as f:
                 testlist = json.load(f)
@@ -142,7 +147,6 @@ class SLPConsensusTests(unittest.TestCase):
             description = test['description']
 
             given_validity  = {}
-            #should_validity = {}
             txes = {}
             for d in test['when']:
                 tx = Transaction(d['tx'])
@@ -160,12 +164,6 @@ class SLPConsensusTests(unittest.TestCase):
                 txid = tx.txid()
                 txes[txid] = tx
                 d['txid'] = txid
-                #if d['valid'] is True:
-                    #should_validity[txid] = 1
-                #elif d['valid'] is False:
-                    #should_validity[txid] = 2
-                #else:
-                    #raise ValueError(d['valid'])
 
             graph_context, graph_context_nft1 = slp_validator_0x01.GraphContext(), slp_validator_0x01_nft1.GraphContext_NFT1()
 
@@ -193,9 +191,8 @@ class SLPConsensusTests(unittest.TestCase):
                             try:
                                 l.append(txes[txid])
                             except KeyError:
-                                #raise Exception('KEY ERROR ' + txid)
                                 pass
-                        ### Call proxy here!
+                        ### Would call proxy here
                         return l
 
                     if slp_msg.token_type == 1:
@@ -206,27 +203,25 @@ class SLPConsensusTests(unittest.TestCase):
                         storage = WalletStorage(os.path.curdir, manual_upgrades=True, in_memory_only=True)
                         wallet = Slp_ImportedAddressWallet(storage)
                         wallet.slp_graph_0x01_nft = graph_context_nft1
-                        #raise Exception(txid)
                         job = slp_validator_0x01_nft1.ValidationJobNFT1Child(graph, txid, network,
-                                            fetch_hook=fetch_hook, validitycache=None, ref=wallet)
+                                            fetch_hook=fetch_hook, validitycache=given_validity, ref=wallet)
                     elif slp_msg.token_type == 129:
                         job = slp_validator_0x01_nft1.ValidationJob(graph, txid, None,
                                             fetch_hook=fetch_hook, validitycache=given_validity)
-                    #if txid == '8a08b78ae434de0b1a26e56ae7e78bb11b20f8240eb3d97371fd46a609df7fc3':
-                        #graph.debugging = True
-                        #job.debugging_graph_state = True
+
                     q = Queue()
                     job.add_callback(q.put)
                     job_mgr.add_job(job)
                     while True:
                         try:
-                            q.get(timeout=3) # unlimited timeout
+                            q.get(timeout=1)
                         except Empty:
-                            raise RuntimeError("Timeout during validation unit test")
-                        # if isinstance(job, ValidationJobNFT1Child) and not job.paused:# and job.stop_reason != 'inconclusive':
-                        #     raise Exception(job.stop_reason)
+                            err = RuntimeError("Timeout during validation unit test")
+                            error_list.append(err)
+                            raise err
                         if not job.paused and not job.running: # and job.stop_reason != 'inconclusive':
                             n = next(iter(job.nodes.values()))
+                            results_list.append(n.validity)
                             if d['valid'] is True:
                                 self.assertEqual(n.validity, 1)
                             elif d['valid'] is False:
@@ -235,10 +230,17 @@ class SLPConsensusTests(unittest.TestCase):
                                 else:
                                     self.assertIn(n.validity, (2,3,4))
                             else:
-                                raise ValueError(d['valid'])
+                                err = ValueError(d['valid'])
+                                error_list.append(err)
+                                raise err
                             break
                         else:
                             if len(job.callbacks) > 1:
-                                raise Exception("shouldn't have more than 1 callback")
+                                err = Exception("shouldn't have more than 1 callback")
+                                error_list.append(err)
+                                raise err
                             job.callbacks.clear()
                             job.add_callback(q.put, allow_run_cb_now=False)
+
+        self.assertEqual(len(results_list), 59)
+        self.assertEqual(len(error_list), 0)
