@@ -274,14 +274,26 @@ def parse_URI(uri, on_pr=None, *, net=None, strict=False, on_exc=None):
                     amounts['bch'] = { 'amount': int(amount), 'tokenflags': None }
         except (ValueError, decimal.InvalidOperation, TypeError) as e:
             raise BadURIParameter('amount', e) from e
-    if 'amount' in out:
-        out.pop('amount')
+
     if len(amounts) > 0:
         out['amounts'] = amounts
     if len(amounts) > 2:
         raise Exception('Too many amounts requested in the URI. SLP payment requests cannot send more than 1 BCH and 1 SLP payment simultaneously.')
     if 'message' in out:
         out['message'] = out['message']
+
+    if 'amount' in out:
+        try:
+            am = out['amount']
+            m = re.match(r'([0-9.]+)X([0-9]{2})', am)
+            if m:
+                k = int(m.group(2)) - 8
+                amount = decimal.Decimal(m.group(1)) * int(pow(10, k))
+            else:
+                amount = decimal.Decimal(am) * int(bitcoin.COIN)
+            out['amount'] = int(amount)
+        except (ValueError, decimal.InvalidOperation, TypeError) as e:
+            raise BadURIParameter('amount', e) from e
 
     if strict and 'memo' in out and 'message' in out:
         # these two args are equivalent and cannot both appear together
