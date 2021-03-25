@@ -118,13 +118,14 @@ class _GraphSearchJob:
         if not wallet:
             return []
 
-        wallet_val = self.valjob.validitycache
         token_id = self.valjob.graph.validator.token_id_hex
         gs_cache = []
 
         # pull valid txids from wallet storage
-        for [txid, val] in wallet.slpv1_validity.items():
-            _token_id = wallet.tx_tokinfo.get(txid, {}).get("token_id", None)
+        wallet_val = self.valjob.validitycache.copy()
+        wallet_tok_info = wallet.tx_tokinfo.copy()
+        for txid, val in wallet_val.items():
+            _token_id = wallet_tok_info.get(txid, {}).get("token_id", None)
             if _token_id == token_id and val == 1:
                 gs_cache.append(txid)
 

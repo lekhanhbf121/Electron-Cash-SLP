@@ -757,7 +757,7 @@ class ValidationJobManager(PrintError):
                                 self.job_current.graph.reset()
                             except KeyError:
                                 pass
-                            self.jobs_pending.put((job.height, next(unique), self.job_current))
+                            self.jobs_pending.put((self.job_current.height, next(unique), self.job_current))
                         elif retval == 'paused':
                             self.jobs_paused.append(self.job_current)
                         else:
