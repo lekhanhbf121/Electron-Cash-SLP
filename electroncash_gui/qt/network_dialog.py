@@ -545,6 +545,7 @@ class SlpGsServeListWidget(QTreeWidget):
         if not slp_gs_mgr.gs_host and networks.net.SLPDB_SERVERS:  # Note: testnet4 and scalenet may have empty SLPDB_SERVERS
             host = next(iter(networks.net.SLPDB_SERVERS))
             slp_gs_mgr.set_gs_host(host)
+        self.parent.slp_gs_server_host.setText(slp_gs_mgr.gs_host)
 
     def create_menu(self, position):
         item = self.currentItem()
@@ -574,22 +575,31 @@ class SlpGsServeListWidget(QTreeWidget):
         self.customContextMenuRequested.emit(pt)
 
     def update(self):
+        sel_item = self.currentItem()
+        sel = sel_item.data(0, Qt.UserRole) if sel_item else None
+        restore_sel = None
         self.clear()
         self.addChild = self.addTopLevelItem
         slp_gs_list = networks.net.SLPDB_SERVERS
         slp_gs_count = len(slp_gs_list)
-        for k, items in slp_gs_list.items():
+        for node_url, item in slp_gs_list.items():
             if slp_gs_count > 0:
-                star = ' ◀' if k == slp_gs_mgr.gs_host else ''
-                x = QTreeWidgetItem([k+star]) #, 'NA'])
-                x.setData(0, Qt.UserRole, k)
-                # x.setData(1, Qt.UserRole, k)
+                star = ' ◀' if node_url == slp_gs_mgr.gs_host else ''
+                x = QTreeWidgetItem([node_url+star])
+                x.setData(0, Qt.UserRole, node_url)
                 self.addTopLevelItem(x)
+                if node_url == sel:
+                    restore_sel = x
         h = self.header()
         h.setStretchLastSection(False)
         h.setSectionResizeMode(0, QHeaderView.Stretch)
-        #h.setSectionResizeMode(1, QHeaderView.ResizeToContents)
 
+        # restore selection
+        if restore_sel:
+            val = self.hasAutoScroll()
+            self.setAutoScroll(False)  # prevent automatic scrolling when we do this which may annoy user / appear glitchy
+            self.setCurrentItem(restore_sel)
+            self.setAutoScroll(val)
 
 class PostOfficeServeListWidget(QTreeWidget):
     def __init__(self, parent):
@@ -1142,7 +1152,6 @@ class NetworkChoiceLayout(QObject, PrintError):
 
         self.nodes_list_widget.update(self.network, self.servers)
         self.slp_gs_list_widget.update()
-        self.slp_gs_server_host.setText(slp_gs_mgr.gs_host)
         self.post_office_list_widget.update()
         self.use_post_office.setChecked(self.config.get('slp_post_office_enabled', False))
         self.slp_gs_enable_cb.setChecked(self.config.get('slp_validator_graphsearch_enabled', False))
