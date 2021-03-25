@@ -836,7 +836,7 @@ class NetworkChoiceLayout(QObject, PrintError):
 
         # SLP Validation Tab
         grid = QGridLayout(slp_tab)
-        self.slp_gs_enable_cb = QCheckBox(_('Use a Graph Search server to speed up validation'))
+        self.slp_gs_enable_cb = QCheckBox(_('Use Graph Search to speed up slp token validation'))
         self.slp_gs_enable_cb.clicked.connect(self.use_slp_gs)
         self.slp_gs_enable_cb.setChecked(self.config.get('slp_validator_graphsearch_enabled', False))
         grid.addWidget(self.slp_gs_enable_cb, 0, 0, 1, 3)

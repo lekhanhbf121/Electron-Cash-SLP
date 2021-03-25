@@ -232,12 +232,15 @@ class GraphContext(PrintError):
                 if val != 0:
                     wallet_ref().slpv1_validity[t] = val
 
+        # get transaction block height
+        height = wallet.verified_tx.get(txid, (-1,None,None))[0]
 
         job = ValidationJob(graph, txid, network,
                             fetch_hook=fetch_hook,
                             validitycache=wallet.slpv1_validity,
                             download_limit=limit_dls,
                             depth_limit=limit_depth,
+                            height=height,
                             debug=debug, ref=wallet,
                             **kwargs)
         job.add_callback(done_callback)
