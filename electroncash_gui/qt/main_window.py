@@ -85,7 +85,7 @@ from electroncash.util import format_satoshis_nofloat
 from .slp_create_token_genesis_dialog import SlpCreateTokenGenesisDialog
 from .bfp_download_file_dialog import BfpDownloadFileDialog
 from .bfp_upload_file_dialog import BitcoinFilesUploadDialog
-from electroncash.slp_post_office import SlpPostOffice, SlpPostOfficePr, SlpPostOfficeClient
+from electroncash.slp_post_office import SlpPostOffice, SlpPostOfficePr, slp_po
 from electroncash import networks
 
 try:
@@ -191,7 +191,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.wallet.use_change = True
             self.wallet.storage.put('use_change', self.wallet.use_change)
         self.network = gui_object.daemon.network
-        self.slp_post_office_client = SlpPostOfficeClient(hosts=networks.net.POST_OFFICE_SERVERS)
         self.fx = gui_object.daemon.fx
         self.invoices = wallet.invoices
         self.contacts = wallet.contacts
@@ -2886,7 +2885,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     return
             elif self.config.get('slp_post_office_enabled', False):
                 if self.slp_token_id:
-                    postage = self.slp_post_office_client.get_optimized_postage_data_for_token(self.slp_token_id)
+                    postage = slp_po.get_optimized_postage_data_for_token(self.slp_token_id)
                     try:
                         send_amount = self.slp_amount_e.get_amount()  # Probably a bad idea to call this here
                         old_slp_msg = slp.SlpMessage.parseSlpOutputScript(outputs[0][1])
@@ -3082,7 +3081,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
             elif self.postage_payment:
                 refund_address = self.wallet.get_receiving_addresses()[0]
-                payment_url = self.slp_post_office_client.get_optimized_post_office_url_for_token(self.slp_token_id)
+                payment_url = slp_po.get_optimized_post_office_url_for_token(self.slp_token_id)
                 ack_status, ack_msg = paymentrequest.send_postage_payment(str(tx), payment_url, refund_address)
                 if not ack_status:
                     if ack_msg == "no url":

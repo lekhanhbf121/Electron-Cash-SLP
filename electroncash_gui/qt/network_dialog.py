@@ -606,7 +606,7 @@ class PostOfficeServeListWidget(QTreeWidget):
         QTreeWidget.__init__(self)
         self.parent = parent
         self.network = parent.network
-        self.setHeaderLabels([_('Post Office Server')])
+        self.setHeaderLabels([_('Postage Server')])
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.create_menu)
 
@@ -682,7 +682,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         tabs.addTab(server_tab, _('Server'))
         tabs.addTab(proxy_tab, _('Proxy'))
         tabs.addTab(slp_tab, _('Graph Search'))
-        tabs.addTab(post_office_tab, _('Post Office'))
+        tabs.addTab(post_office_tab, _('Postage'))
 
         if wizard:
             tabs.setCurrentIndex(1)
@@ -873,20 +873,20 @@ class NetworkChoiceLayout(QObject, PrintError):
         hbox.addStretch(1)
         grid.addLayout(hbox, 5, 0)
 
-        # Post Office  Tab
+        # Postage Tab
         grid = QGridLayout(post_office_tab)
 
         hbox = QHBoxLayout()
         warnpm = QIcon(":icons/warning.png").pixmap(20,20)
         l = QLabel(); l.setPixmap(warnpm)
         hbox.addWidget(l)
-        hbox.addWidget(QLabel(_('WARNING: The Post Office protocol is an experimental feature.')))
+        hbox.addWidget(QLabel(_('WARNING: This is an experimental feature.')))
         l = QLabel(); l.setPixmap(warnpm)
         hbox.addStretch(1)
         hbox.addWidget(l)
         grid.addLayout(hbox, 1, 0)
 
-        self.use_post_office = QCheckBox(_('Enable Postage Protocol'))
+        self.use_post_office = QCheckBox(_('Enable Slp Postage Protocol'))
         self.use_post_office.setEnabled(self.config.is_modifiable('slp_post_office_enabled'))
         self.use_post_office.clicked.connect(self.set_slp_post_office_enabled)
         grid.addWidget(self.use_post_office, 2, 0, 1, 5)

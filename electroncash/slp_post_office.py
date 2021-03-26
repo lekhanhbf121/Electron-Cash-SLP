@@ -3,11 +3,11 @@ import threading
 import json
 import sys
 import time
-from .slp import SlpMessage, buildSendOpReturnOutput_V1
-from .slp_coinchooser import SlpCoinChooser
 
-from .transaction import Transaction
-
+from electroncash.networks import net
+from electroncash.slp import SlpMessage, buildSendOpReturnOutput_V1
+from electroncash.slp_coinchooser import SlpCoinChooser
+from electroncash.transaction import Transaction
 
 class SlpPostOfficePr:
 
@@ -214,12 +214,15 @@ class SlpPostOffice:
         # TODO
         return
 
-class SlpPostOfficeClient:
+class _SlpPostOfficeClient:
     """
     An SLP post office client to interact with a single post office server.
     """
-    def __init__(self, hosts=[], update_data_interval=100):
-        self.post_office_hosts = hosts
+    def __init__(self, update_data_interval=100):
+
+        self._gui_object = None
+        self.post_office_hosts = net.POST_OFFICE_SERVERS
+
         self.ban_list = []
         self.postage_data = {}
         self.optimized_rates = {}
@@ -241,19 +244,31 @@ class SlpPostOfficeClient:
         res = requests.get(host + "/postage", timeout=5)
         self._set_postage(host, res.text)
 
+    def bind_gui(self, gui):
+        self._gui_object = gui
+
     def mainloop(self):
         try:
             while True:
-                for host in self.post_office_hosts:
-                    try:
-                        self._fetch_postage_json(host)
-                        self.optimize_rates()
-                    except:
-                        print(
-                            "[SLP Post Office Client]: Failed to retrieve postage data from %s . Will retry in %d seconds." %
-                            (host, self.update_data_interval)
-                        )
+                # wait first so the electrum gui binds
                 time.sleep(self.update_data_interval)
+
+                # after the electrum gui binds we can check the user's po config
+                enabled = False
+                if self._gui_object:
+                    enabled = self._gui_object().config.get('slp_post_office_enabled', False)
+
+                # fetch postage rates
+                if enabled:
+                    for host in self.post_office_hosts:
+                        try:
+                            self._fetch_postage_json(host)
+                            self.optimize_rates()
+                        except:
+                            print(
+                                "[SLP Post Office Client]: Failed to retrieve postage data from %s . Will retry in %d seconds." %
+                                (host, self.update_data_interval)
+                            )
         finally:
             print("[SLP Post Office Client] Error: mainloop exited.", file=sys.stderr)
 
@@ -293,3 +308,5 @@ class SlpPostOfficeClient:
     def allow_post_office(self, url):
         if url in self.ban_list:
             self.ban_list.remove(url)
+
+slp_po = _SlpPostOfficeClient()

@@ -70,8 +70,6 @@ from electroncash.util import (UserCancelled, PrintError, print_error,
 from electroncash import version
 from electroncash.address import Address
 
-from electroncash.slp_post_office import SlpPostOfficeClient
-
 from .installwizard import InstallWizard, GoBack
 
 from . import icons # This needs to be imported once app-wide then the :icons/ namespace becomes available for Qt icon filenames.
@@ -82,6 +80,7 @@ from .exception_window import Exception_Hook
 from .update_checker import UpdateChecker
 
 from electroncash.slp_graph_search import slp_gs_mgr
+from electroncash.slp_post_office import slp_po
 
 class ElectrumGui(QObject, PrintError):
     new_window_signal = pyqtSignal(str, object)
@@ -175,8 +174,9 @@ class ElectrumGui(QObject, PrintError):
 
         self._check_and_warn_qt_version()
 
-        # provide graph search manager with a weak reference to access slp related pyqtSignals
+        # bind singletons with main qt gui for access to config and signals
         slp_gs_mgr.bind_gui(weakref.ref(self))
+        slp_po.bind_gui(weakref.ref(self))
 
     def __del__(self):
         stale = True
