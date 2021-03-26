@@ -633,19 +633,30 @@ class PostOfficeServeListWidget(QTreeWidget):
         self.customContextMenuRequested.emit(pt)
 
     def update(self):
+        sel_item = self.currentItem()
+        sel = sel_item.data(0, Qt.UserRole) if sel_item else None
+        restore_sel = None
         self.clear()
         self.addChild = self.addTopLevelItem
         post_office_list = networks.net.POST_OFFICE_SERVERS
         post_office_count = len(post_office_list)
         for server in post_office_list:
             if post_office_count > 0:
-                x = QTreeWidgetItem([server]) #, 'NA'])
+                x = QTreeWidgetItem([server])
                 x.setData(0, Qt.UserRole, server)
-                # x.setData(1, Qt.UserRole, server)
                 self.addTopLevelItem(x)
+                if server == sel:
+                    restore_sel = x
         h = self.header()
         h.setStretchLastSection(False)
         h.setSectionResizeMode(0, QHeaderView.Stretch)
+
+        # restore selection
+        if restore_sel:
+            val = self.hasAutoScroll()
+            self.setAutoScroll(False)
+            self.setCurrentItem(restore_sel)
+            self.setAutoScroll(val)
 
 class NetworkChoiceLayout(QObject, PrintError):
 
