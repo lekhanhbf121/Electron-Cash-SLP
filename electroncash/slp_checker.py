@@ -1,3 +1,4 @@
+import json
 from .util import NotEnoughFundsSlp, NotEnoughUnfrozenFundsSlp, print_error
 from . import slp
 from .slp import SlpParsingError, SlpInvalidOutputMessage, SlpUnsupportedSlpTokenType
@@ -252,7 +253,7 @@ class SlpTransactionChecker:
         # perform slp pre-flight check before signing (this check run here and also at signing)
         slp_preflight = SlpPreflightCheck.query(tx, selected_slp_coins=coins_to_burn, amt_to_burn=amt_to_burn)
         if not slp_preflight['ok']:
-            raise Exception("slp pre-flight failed: %s"%slp_preflight['invalid_reason'])
+            raise Exception("slp pre-flight check failed: %s\n\n(node: %s)"%(slp_preflight.get('invalid_reason', json.dumps(slp_preflight)), slp_preflight['node']))
 
         # return True if this check passes
         print_error("Final SLP check passed")
