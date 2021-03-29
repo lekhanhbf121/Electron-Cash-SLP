@@ -465,7 +465,7 @@ def process_config_options(args):
 
     if config_options.get("portable"):
         config_options["electron_cash_path"] = os.path.join(
-            os.path.dirname(os.path.realpath(__file__)), "electron_cash_data"
+            os.path.dirname(os.path.realpath(__file__)), "electron_cash_slp_data"
         )
 
     set_verbosity(config_options.get("verbose"))
