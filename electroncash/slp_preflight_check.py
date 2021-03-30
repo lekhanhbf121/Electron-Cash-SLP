@@ -116,6 +116,7 @@ class SlpPreflightCheck:
                 print('slp pre-flight check failed for %s:\n%s'%(node, e), file=sys.stderr)
                 continue
             else:
+                resp['node'] = node
                 if resp.get('is_valid'):             # this happens when bchd says all is good.
                     resp['ok'] = True
                     break
