@@ -121,28 +121,23 @@ class _GraphSearchJob:
         token_id = self.valjob.graph.validator.token_id_hex
         gs_cache = []
 
+        # get valid txid cache from the graph
+        gs_cache = self.valjob.graph.get_valid_txids(max_size=max_size, exclude=gs_cache)
+
         # pull valid txids from wallet storage
-        wallet_val = self.valjob.validitycache.copy()
-        wallet_tok_info = wallet.tx_tokinfo.copy()
-        for txid, val in wallet_val.items():
-            _token_id = wallet_tok_info.get(txid, {}).get("token_id", None)
-            if _token_id == token_id and val == 1:
-                gs_cache.append(txid)
-
-        # pull valid txids from the shared in-memory token graph
-        # and prioritize items from the wallet validity cache
-        if not is_mint:
-            sample_size = -1
-            if max_size > 0 and len(gs_cache) < max_size:
-                sample_size = max_size - len(gs_cache)
-            if sample_size > 0:
-                for txid in self.valjob.graph.get_valid_txids(max_size=sample_size, exclude=gs_cache):
+        sample_size = 0
+        if max_size > 0 and len(gs_cache) < max_size:
+            sample_size = max_size - len(gs_cache)
+        if sample_size > 0:
+            wallet_val = self.valjob.validitycache.copy()
+            wallet_tok_info = wallet.tx_tokinfo.copy()
+            for txid, val in wallet_val.items():
+                _token_id = wallet_tok_info.get(txid, {}).get("token_id", None)
+                if _token_id == token_id and val == 1:
+                    sample_size -= 1
+                    if sample_size < 0:
+                        break
                     gs_cache.append(txid)
-
-        # TODO: pull valid txids from a "checkpoints" file shipped with the wallet
-        #   these txids can be selected intelligently through graph analysis.  Tokens
-        #   supported in the type of arrangement would likely be done through the
-        #   support of the token issuer for the purpose of improving user experience.
 
         # if required limit the size of the cache
         gs_cache = list(set(gs_cache))
@@ -319,7 +314,7 @@ class _SlpGraphSearchManager:
         elif kind == 'bchd':
             root_hash_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
             url = host + "/v1/GetSlpGraphSearch"
-            cache = job.get_job_cache(max_size=100)
+            cache = job.get_job_cache(max_size=1000)
 
             # bchd needs the reverse txid and then use base64 encoding
             tx_hashes = []
