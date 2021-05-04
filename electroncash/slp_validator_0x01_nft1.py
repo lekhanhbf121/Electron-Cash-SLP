@@ -422,7 +422,7 @@ class Validator_NFT1(ValidatorGeneric):
             requests = [('blockchain.transaction.get', [nft_parent_txid]), ]
             nft_child_job.network.send(requests, dl_cb)
 
-    def start_NFT_parent_job(self, nft_child_job, done_callback):
+    def start_NFT_parent_job(self, nft_child_job, restart_nft_job_cb):
         wallet = nft_child_job.ref()
         network = nft_child_job.network
 
@@ -431,10 +431,10 @@ class Validator_NFT1(ValidatorGeneric):
                 slp_gs_mgr.slp_validity_signal.emit(nft_child_job.nft_parent_tx.txid_fast(), nft_child_job.nft_parent_validity)
                 slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), 4)
                 slp_gs_mgr.slp_validity_signal.emit(nft_child_job.root_txid, 4)
-            if done_callback:
-                done_callback(nft_child_job.nft_parent_validity)
+            if restart_nft_job_cb:
+                restart_nft_job_cb(nft_child_job.nft_parent_validity)
             else:
-                raise Exception("no done_callback")
+                raise Exception("no restart_nft_job_cb")
             return
 
         def callback(job):
@@ -462,10 +462,10 @@ class Validator_NFT1(ValidatorGeneric):
                 slp_gs_mgr.slp_validity_signal.emit(txid, val)
                 #slp_gs_mgr.slp_validity_signal.emit(nft_child_job.genesis_tx.txid_fast(), val)
 
-            if done_callback:
-                done_callback(val)
+            if restart_nft_job_cb:
+                restart_nft_job_cb(val)
             else:
-                raise Exception("no done_callback")
+                raise Exception("no restart_nft_job_cb")
 
         tx = nft_child_job.nft_parent_tx
         job = self.validation_jobmgr.graph_context and \
@@ -492,14 +492,14 @@ class Validator_NFT1(ValidatorGeneric):
             nft_child_job.nft_parent_validity = val
             try:
                 self.validation_jobmgr.unpause_job(nft_child_job)
-            except:
+            except ValueError:
                 if nft_child_job.running:
                     nft_child_job.paused = False
                 else: nft_child_job.run()
 
         def start_nft_parent_validation(success):
             if success:
-                self.start_NFT_parent_job(nft_child_job, done_callback=restart_nft_job)
+                self.start_NFT_parent_job(nft_child_job, restart_nft_job_cb=restart_nft_job)
             else:
                 restart_nft_job(4)
 
@@ -520,7 +520,7 @@ class Validator_NFT1(ValidatorGeneric):
             nft_child_job = current_job
         else:
             raise Exception("This should never happen. myinfo: " + str(myinfo) + ", inputs_info: " + str(inputs_info))
-        
+
         if nft_child_job.nft_parent_validity > 1:
             return (False, nft_child_job.nft_parent_validity)
 
