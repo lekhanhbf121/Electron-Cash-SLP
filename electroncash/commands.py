@@ -162,6 +162,16 @@ class Commands(PrintError):
             d[k] = DoChk(d[k])
         return d
 
+    @staticmethod
+    def address_from_string_check_slp(address, wallet):
+        addr_str = address
+        address = Address.from_string(address)
+        assert not isinstance(address, str)
+        slp_addr_str = address.to_full_string(Address.FMT_SLPADDR)
+        if addr_str in slp_addr_str and not wallet.is_slp:
+            raise BaseException('Cannot check SLP addresses with a non-SLP type wallet.')
+        return address
+
     @command('')
     def addressconvert(self, address):
         """Convert to/from Legacy <-> Cash Address.  Address can be either
@@ -376,31 +386,23 @@ class Commands(PrintError):
         address = bitcoin.hash160_to_p2sh(hash_160(bfh(redeem_script)))
         return {'address':address, 'redeemScript':redeem_script}
 
-    def address_from_string_check_slp(address, wallet):
-        address = Address.from_string(address)
-        assert not isinstance(address, str)
-        slp_addr_str = address.to_full_string(Address.FMT_SLPADDR)
-        if address in slp_addr_str and not wallet.is_slp:
-            raise BaseException('Cannot check SLP addresses with a non-SLP type wallet.')
-        return address
-
     @command('w')
     def freeze(self, address):
         """Freeze address. Freeze the funds at one of your wallet\'s addresses"""
-        address = address_from_string_check_slp(address, self.wallet)
+        address = self.address_from_string_check_slp(address, self.wallet)
         return self.wallet.set_frozen_state([address], True)
 
     @command('w')
     def unfreeze(self, address):
         """Unfreeze address. Unfreeze the funds at one of your wallet\'s address"""
-        address = address_from_string_check_slp(address, self.wallet)
+        address = self.address_from_string_check_slp(address, self.wallet)
         return self.wallet.set_frozen_state([address], False)
 
     @command('wp')
     def getprivatekeys(self, address, password=None):
         """Get private keys of addresses. You may pass a single wallet address, or a list of wallet addresses."""
         def get_pk(address):
-            address = address_from_string_check_slp(address, self.wallet)
+            address = self.address_from_string_check_slp(address, self.wallet)
             return self.wallet.export_private_key(address, password)
 
         if isinstance(address, str):
@@ -411,7 +413,7 @@ class Commands(PrintError):
     @command('w')
     def ismine(self, address):
         """Check if address is in wallet. Return true if and only address is in wallet"""
-        address = address_from_string_check_slp(address, self.wallet)
+        address = self.address_from_string_check_slp(address, self.wallet)
         return self.wallet.is_mine(address)
 
     @command('')
@@ -427,7 +429,7 @@ class Commands(PrintError):
     @command('w')
     def getpubkeys(self, address):
         """Return the public keys for a wallet address. """
-        address = address_from_string_check_slp(address, self.wallet)
+        address = self.address_from_string_check_slp(address, self.wallet)
         return self.wallet.get_public_keys(address)
 
     @command('w')
@@ -549,7 +551,7 @@ class Commands(PrintError):
     def signmessage(self, address, message, password=None):
         """Sign a message with a key. Use quotes if your message contains
         whitespaces"""
-        address = address_from_string_check_slp(address, self.wallet)
+        address = self.address_from_string_check_slp(address, self.wallet)
         sig = self.wallet.sign_message(address, message, password)
         return base64.b64encode(sig).decode('ascii')
 
@@ -1019,13 +1021,13 @@ class Commands(PrintError):
         alias_addr = (data and data.get('address')) or None
         if not alias_addr:
             raise RuntimeError('Alias could not be resolved')
-        address_from_string_check_slp(address, self.wallet)  # throws with slp address format in non-slp wallets
+        self.address_from_string_check_slp(address, self.wallet)  # throws with slp address format in non-slp wallets
         self.wallet.sign_payment_request(address, alias, alias_addr, password)
 
     @command('w')
     def rmrequest(self, address):
         """Remove a payment request"""
-        address_from_string_check_slp(address, self.wallet)  # throws with slp address format in non-slp wallets
+        self.address_from_string_check_slp(address, self.wallet)  # throws with slp address format in non-slp wallets
         return self.wallet.remove_payment_request(address, self.config)
 
     @command('w')
