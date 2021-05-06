@@ -187,6 +187,28 @@ class Commands(PrintError):
         }
 
     @command('')
+    def addressconvert_slp(self, address):
+        """Convert to/from Legacy <-> Cash Address or slp Address.  Address can be either
+        a legacy or a Cash Address and both forms will be returned as a JSON
+        dict."""
+        try:
+            addr = Address.from_string(address)
+        except Exception as e:
+            raise AddressError(f'Invalid address: {address}') from e
+
+        if self.config.get("allow_cli_slp_address_conversion") != True:
+            print("WARNING: If you are converting from legacy or cash address to slp format you need \n" + 
+                "to make sure the receiving wallet is compatible with slp tokens protocol. If the wallet \n" +
+                "is not compatible with slp, the receiver's wallet will easily burn tokens. To enable slp \n" +
+                "address conversion you must set the config key 'allow_cli_slp_address_conversion' to 'true'.")
+        else:
+            return {
+                'cashaddr' : addr.to_full_string(Address.FMT_CASHADDR),
+                'legacy'   : addr.to_full_string(Address.FMT_LEGACY),
+                'slpaddr'  : addr.to_full_string(Address.FMT_SLPADDR),
+            }
+
+    @command('')
     def commands(self):
         """List of commands"""
         return ' '.join(sorted(known_commands.keys()))
