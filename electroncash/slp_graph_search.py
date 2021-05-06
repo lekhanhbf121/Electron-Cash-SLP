@@ -125,24 +125,23 @@ class _GraphSearchJob:
         gs_cache = self.valjob.graph.get_valid_txids(max_size=max_size, exclude=gs_cache)
 
         # pull valid txids from wallet storage
-        sample_size = 0
-        if max_size > 0 and len(gs_cache) < max_size:
-            sample_size = max_size - len(gs_cache)
-        if sample_size > 0:
-            wallet_val = self.valjob.validitycache.copy()
-            wallet_tok_info = wallet.tx_tokinfo.copy()
-            for txid, val in wallet_val.items():
-                _token_id = wallet_tok_info.get(txid, {}).get("token_id", None)
-                if _token_id == token_id and val == 1:
-                    sample_size -= 1
-                    if sample_size < 0:
-                        break
-                    gs_cache.append(txid)
+        wallet_cache = []
+        wallet_val = self.valjob.validitycache.copy()
+        wallet_tok_info = wallet.tx_tokinfo.copy()
+        for txid, val in wallet_val.items():
+            _token_id = wallet_tok_info.get(txid, {}).get("token_id", None)
+            if _token_id == token_id and val == 1:
+                wallet_cache.append(txid)
 
         # if required limit the size of the cache
         gs_cache = list(set(gs_cache))
-        if gs_cache and max_size > 0 and len(gs_cache) > max_size:
-            gs_cache = list(set(random.choices(gs_cache, k=max_size)))
+        if gs_cache and max_size > 0 and len(gs_cache) + len(wallet_cache) > max_size:
+            gs_cache = random.choices(gs_cache, k=max_size)
+
+        # guarantee inclusion of txids in cache
+        for txid in wallet_cache:
+            gs_cache.append(txid)
+        gs_cache = list(set(gs_cache))
 
         # update the cache size variable used in the UI
         self.validity_cache_size = len(gs_cache)

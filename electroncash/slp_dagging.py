@@ -631,9 +631,8 @@ class ValidationJobManager(PrintError):
     def add_job(self, job):
         """ Throws ValueError if job is already pending. """
         with self.jobs_lock:
-            if job.root_txid in [ j.root_txid for j in self.all_jobs ]:
+            if job in self.all_jobs:
                 raise ValueError
-                #return
             self.all_jobs.add(job)
         self.jobs_pending.put((job.height, next(unique), job))
         self.wakeup.set()
