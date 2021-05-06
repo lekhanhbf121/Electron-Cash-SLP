@@ -1004,8 +1004,16 @@ class Commands(PrintError):
         """Returns the first unused address of the wallet, or None if all addresses are used.
         An address is considered as used if it has received a transaction, or if it is used in a payment request."""
         fmt = Address.FMT_CASHADDR
-        if self.wallet.is_slp:
-            fmt = Address.FMT_SLPADDR
+        addr = self.wallet.get_unused_address()
+        if addr:
+            return addr.to_full_string(fmt)
+        return None
+
+    @command('w')
+    def getunusedaddress_slp(self):
+        """Returns the first unused address of the wallet using slp format, or None if all addresses are used.
+        An address is considered as used if it has received a transaction, or if it is used in a payment request."""
+        fmt = Address.FMT_SLPADDR
         addr = self.wallet.get_unused_address()
         if addr:
             return addr.to_full_string(fmt)
