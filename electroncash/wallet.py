@@ -1858,7 +1858,7 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 tti['validity'] = val
                 slp_gs_mgr.slp_validity_signal.emit(txid, val)
 
-            if tti['type'] in ['SLP1']:
+            if tti['type'] == 'SLP1':
                 job = self.slp_graph_0x01.make_job(tx, self, self.network,
                                                         debug=2 if is_verbose else 1,  # set debug=2 here to see the verbose dag when running with -v
                                                         reset=False)
