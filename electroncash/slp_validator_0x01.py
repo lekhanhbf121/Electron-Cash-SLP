@@ -208,7 +208,9 @@ class GraphContext(PrintError):
 
         def done_callback(job):
 
-            if not wallet_ref:
+            # make sure the wallet is still allocated
+            wallet = wallet_ref()
+            if wallet is None:
                 return
 
             # wait for proxy stuff to roll in
@@ -230,7 +232,7 @@ class GraphContext(PrintError):
             for t,n in job.nodes.items():
                 val = n.validity
                 if val != 0:
-                    wallet_ref().slpv1_validity[t] = val
+                    wallet.slpv1_validity[t] = val
 
         # get transaction block height
         height = wallet.verified_tx.get(txid, (-1,None,None))[0]

@@ -146,7 +146,15 @@ class GraphContext_NFT1(GraphContext):
 
             return l
 
+        wallet_ref = weakref.ref(wallet)
+
         def done_callback(job):
+
+            # make sure the wallet is still allocated
+            wallet = wallet_ref()
+            if wallet is None:
+                return
+
             # wait for proxy stuff to roll in
             results = {}
             try:
