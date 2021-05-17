@@ -139,7 +139,7 @@ if sys.platform in ('win32', 'cygwin'):
     }
 
 setup(
-    name=os.environ.get('EC_PACKAGE_NAME') or "Electron Cash SLP",
+    name=os.environ.get('EC_PACKAGE_NAME') or "ECash SLPDB",
     version=os.environ.get('EC_PACKAGE_VERSION') or version.PACKAGE_VERSION,
     install_requires=requirements,
     extras_require={
@@ -178,6 +178,8 @@ setup(
             'servers_scalenet.json',
             'servers_slpdb.json',
             'servers_slpdb_testnet.json',
+            'servers_gs.json',
+            'servers_gs_testnet.json',
             'servers_post_office.json',
             'servers_post_office_testnet.json',
             'currencies.json',

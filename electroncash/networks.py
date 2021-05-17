@@ -58,9 +58,10 @@ class MainNet(AbstractNet):
     GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
     DEFAULT_PORTS = {'t': '50001', 's': '50002'}
     DEFAULT_SERVERS = _read_json_dict('servers.json')  # DO NOT MODIFY IN CLIENT CODE
-    SLPDB_SERVERS = _read_json_dict('servers_slpdb.json')
+    SLP_GS_SERVERS = _read_json_dict('servers_gs.json')
+    SLP_SLPDB_SERVERS = _read_json_dict('servers_slpdb.json')
     POST_OFFICE_SERVERS = _read_json_dict('servers_post_office.json')
-    TITLE = 'Electron Cash SLP'
+    TITLE = 'ECash SLPDB'
 
     # Bitcoin Cash fork block specification
     BITCOIN_CASH_FORK_BLOCK_HEIGHT = 478559
@@ -109,9 +110,10 @@ class TestNet(AbstractNet):
     GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"
     DEFAULT_PORTS = {'t':'51001', 's':'51002'}
     DEFAULT_SERVERS = _read_json_dict('servers_testnet.json')  # DO NOT MODIFY IN CLIENT CODE
-    SLPDB_SERVERS = _read_json_dict('servers_slpdb_testnet.json')
+    SLP_GS_SERVERS = _read_json_dict('servers_gs_testnet.json')
+    SLP_SLPDB_SERVERS = _read_json_dict('servers_slpdb_testnet.json')
     POST_OFFICE_SERVERS = _read_json_dict('servers_post_office_testnet.json')
-    TITLE = 'Electron Cash SLP Testnet'
+    TITLE = 'ECash SLPDB Testnet'
     BASE_UNITS = {'tBCH': 8, 'mtBCH': 5, 'tbits': 2}
     DEFAULT_UNIT = "tBCH"
 
@@ -140,12 +142,12 @@ class TestNet(AbstractNet):
 
 class TestNet4(TestNet):
     GENESIS = "000000001dd410c49a788668ce26751718cc797474d3152a5fc073dd44fd9f7b"
-    TITLE = 'Electron Cash Testnet4'
+    TITLE = 'ECash SLPDB Testnet4'
 
     HEADERS_URL = "http://bitcoincash.com/files/testnet4_headers"  # Unused
 
     DEFAULT_SERVERS = _read_json_dict('servers_testnet4.json')  # DO NOT MODIFY IN CLIENT CODE
-    SLPDB_SERVERS = _read_json_dict('servers_slpdb_testnet4.json')  # Does not yet exist
+    SLP_GS_SERVERS = _read_json_dict('servers_gs_testnet4.json')  # Does not yet exist
     DEFAULT_PORTS = {'t': '62001', 's': '62002'}
 
     BITCOIN_CASH_FORK_BLOCK_HEIGHT = 6
@@ -163,7 +165,7 @@ class TestNet4(TestNet):
 
 class ScaleNet(TestNet):
     GENESIS = "00000000e6453dc2dfe1ffa19023f86002eb11dbb8e87d0291a4599f0430be52"
-    TITLE = 'Electron Cash Scalenet'
+    TITLE = 'ECash SLPDB Scalenet'
     BASE_UNITS = {'sBCH': 8, 'msBCH': 5, 'sbits': 2}
     DEFAULT_UNIT = "tBCH"
 
@@ -172,7 +174,7 @@ class ScaleNet(TestNet):
     HEADERS_URL = "http://bitcoincash.com/files/scalenet_headers"  # Unused
 
     DEFAULT_SERVERS = _read_json_dict('servers_scalenet.json')  # DO NOT MODIFY IN CLIENT CODE
-    SLPDB_SERVERS = _read_json_dict('servers_slpdb_scalenet.json')  # Does not yet exist
+    SLPDB_GS_SERVERS = _read_json_dict('servers_gs_scalenet.json')  # Does not yet exist
     DEFAULT_PORTS = {'t': '63001', 's': '63002'}
 
     BITCOIN_CASH_FORK_BLOCK_HEIGHT = 6

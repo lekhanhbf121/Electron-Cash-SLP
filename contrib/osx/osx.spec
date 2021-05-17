@@ -3,7 +3,7 @@
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 import sys, os
 
-PACKAGE='Electron-Cash-SLP'
+PACKAGE='ECash-SLPDB'
 BUNDLE_IDENTIFIER='io.simpleledger.' + PACKAGE # Used for info.plist
 PYPKG='electroncash'
 MAIN_SCRIPT='electron-cash'
@@ -35,6 +35,8 @@ datas = [
     (home+'electroncash/servers_scalenet.json', PYPKG),
     (home+'electroncash/servers_slpdb.json', PYPKG),
     (home+'electroncash/servers_slpdb_testnet.json', PYPKG),
+    (home+'electroncash/servers_gs.json', PYPKG),
+    (home+'electroncash/servers_gs_testnet.json', PYPKG),
     (home+'electroncash/servers_post_office.json', PYPKG),
     (home+'electroncash/servers_post_office_testnet.json', PYPKG),
     (home+'electroncash/wordlist/english.txt', PYPKG + '/wordlist'),
