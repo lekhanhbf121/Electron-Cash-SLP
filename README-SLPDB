@@ -33,8 +33,8 @@ Removing SLPDB Endpoints
 
 Help, my tokens still arent validating!
 =======================================
-If your wallet doesnt seem to be validating, it could be running the internal 
-default validation. 
+If your wallet doesnt seem to be validating, it could be running the internal
+default validation.
 
 Enable SLPDB in the Network menu, under SLPDB Validation and restart the client.
 
@@ -66,20 +66,9 @@ Youtube Guides
 ===============
 
 Recover SLP NFTs accidentally sent to Bitcoin.com Wallet
- 
+
 https://youtu.be/IqnLoLtpslU
 
 Fix Unvalidated NFTs in Electron Cash SLP
 
 https://www.youtube.com/watch?v=nKlF9TWgGyY
-
-
-Contact Us
-============
-If you have any additional questions please contact us at 
-
-https://gitter.im/ActorForth/community
-
-or email us at:
-
-ecashslpdb@biggestfan.net

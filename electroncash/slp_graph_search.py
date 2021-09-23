@@ -11,7 +11,7 @@ a Graph Search server see:
 This class is currently only used by slp_validator_0x01.py.
 The NFT1 validator has not yet been attached to the NFT1 validator.
 
-Servers can be added or removed using "lib/servers_gs.json" and 
+Servers can be added or removed using "lib/servers_gs.json" and
 "lib/servers_gs_testnet.json".  Currently only the bchd has been tested
 with the validation cache excludes.
 
@@ -101,14 +101,14 @@ class _GraphSearchJob:
         self._txdata.put(txid, tx)
 
     def get_job_cache(self, *, max_size=-1, is_mint=False):
-        ''' Get validity cache for a token graph 
-            
+        ''' Get validity cache for a token graph
+
             reverse reverses the endianess of the txid
-            
+
             max_size=-1 returns a cache with no size limit
 
             is_mint is used to further limit which txids are included in the cache
-            for mint transactions, since other mint transactions are the only 
+            for mint transactions, since other mint transactions are the only
             validation contributors
         '''
         if max_size == 0:
@@ -171,7 +171,7 @@ class _SlpGraphSearchManager:
         self.threadname = threadname
         self.search_thread = threading.Thread(target=self.mainloop, name=self.threadname+'/search', daemon=True)
         self.search_thread.start()
-        
+
         self.bytes_downloaded = 0 # this is the total number of bytes downloaded by graph search
 
     def bind_gui(self, gui):
@@ -253,7 +253,7 @@ class _SlpGraphSearchManager:
             confirmations = self._gui_object().config.get('slp_validator_slpdb_confirmations', len(self.slpdb_host))
             if not confirmations: self.set_slpdb_host(confirmations)
         return confirmations
-    
+
     def set_slpdb_confirmations(self, amount):
         self._gui_object().config.set_key('slp_validator_slpdb_confirmations', amount)
 
@@ -316,6 +316,10 @@ class _SlpGraphSearchManager:
         self.toggle_graph_search(False)
 
         self._set_slpdb_validation_enabled(enable)
+
+    def disable_validation(self):
+        self._set_slpdb_validation_enabled(False)
+        self._set_gs_enabled(False)
 
     def remove_search_job(self, root_txid):
         with self.lock:
@@ -380,7 +384,7 @@ class _SlpGraphSearchManager:
         kind = 'bchd'
         host = slp_gs_mgr.gs_host
         cache = []
-        
+
         if networks.net.SLP_GS_SERVERS.get(host):
             kind = networks.net.SLP_GS_SERVERS.get(host)["kind"]
         if kind == 'gs++':
@@ -388,7 +392,7 @@ class _SlpGraphSearchManager:
             query_json = { "txid": txid } # TODO: handle 'validity_cache' exclusion from graph search (NOTE: this will impact total dl count)
             res_txns_key = 'txdata'
         elif kind == 'bchd':
-            root_hash_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii") 
+            root_hash_b64 = base64.standard_b64encode(codecs.decode(job.root_txid,'hex')[::-1]).decode("ascii")
             url = host + "/v1/GetSlpGraphSearch"
             cache = job.get_job_cache(max_size=1000)
 
@@ -421,7 +425,7 @@ class _SlpGraphSearchManager:
                     job.set_failed('validation job stopped')
                     return
                 # FIXME: for some reason weakref to wallet still exists after closing (o_O)
-                # if not job.valjob.ref():  
+                # if not job.valjob.ref():
                 #     job.set_failed('wallet file closed')
                 #     return
                 elif job.waiting_to_cancel:
@@ -448,7 +452,7 @@ class _SlpGraphSearchManager:
         # NOTE: THE FOLLOWING IS FOR DEBUG PURPOSES TO CHECK
         # THE GRAPH SEARCH RESULTS AGAINST ANOTHER VALIDATOR
         # USING THE SAME TX DATA AND TXID CACHE.
-        # 
+        #
         # # save txdata and cache to file for debugging
         # try:
         #     with open('%s-txdata.json'%job.root_txid, 'x') as json_file:

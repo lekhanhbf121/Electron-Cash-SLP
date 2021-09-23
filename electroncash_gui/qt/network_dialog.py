@@ -31,6 +31,7 @@ import queue
 import socket
 import codecs
 from functools import partial
+from urllib.parse import urlparse
 
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
@@ -915,7 +916,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         grid.addWidget(self.proxy_password, 7, 3)
         grid.setRowStretch(8, 1)
 
-        # SLP GS Validation Tab
+        # SLP GS Validation
         grid = QGridLayout(val_method_tab)
         self.slp_gs_enable_cb = QCheckBox(_('Use Graph Search to validate your tx'))
         self.slp_gs_enable_cb.clicked.connect(self.use_slp_gs)
@@ -949,7 +950,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         hbox.addStretch(1)
         grid.addLayout(hbox, 5, 0)
 
-        # SLP SLPDB Validation Tab
+        # SLP SLPDB Validation
         self.slp_slpdb_enable_cb = QCheckBox(_('Use SLPDB to validate your tx'))
         self.slp_slpdb_enable_cb.clicked.connect(self.slpdb_msg_box)
         self.slpdb_is_checked()
@@ -973,7 +974,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.add_slpdb_server_button = QPushButton("Add Endpoint")
         self.add_slpdb_server_button.setFixedWidth(130)
         self.add_slpdb_server_button.clicked.connect(lambda: self.slpdb_endpoint_msg_box())
-        self.add_slpdb_server_button.setContentsMargins(10,0,0,0)
+        self.add_slpdb_server_button.setContentsMargins(10, 0, 0, 0)
         grid.addWidget(self.add_slpdb_server_button, 1, 1, 1, 1)
 
         self.slp_slider = QSlider(Qt.Horizontal)
@@ -986,14 +987,14 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.slp_slider.valueChanged.connect(self.value_change)
 
         if self.slp_gs_enable_cb.isChecked():
-            self.hideSLPDBWidgets()
-            self.showGSWidgets()
+            self.hide_slpdb_widgets()
+            self.show_gs_widgets()
         elif self.slp_slpdb_enable_cb.isChecked():
-            self.hideGSWidgets()
-            self.showSLPDBWidgets()
+            self.hide_gs_widgets()
+            self.show_slpdb_widgets()
         elif not self.slp_gs_enable_cb.isChecked() and not self.slp_slpdb_enable_cb.isChecked():
-            self.hideGSWidgets()
-            self.hideSLPDBWidgets()
+            self.hide_gs_widgets()
+            self.hide_slpdb_widgets()
 
         # Post Office  Tab
         grid = QGridLayout(post_office_tab)
@@ -1116,7 +1117,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.fill_in_proxy_settings()
         self.update()
 
-    def hideGSWidgets(self):
+    def hide_gs_widgets(self):
         self.slp_gs_server_host.hide()
         self.slp_gs_list_widget.hide()
         self.slp_search_job_list_widget.hide()
@@ -1125,7 +1126,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.gs_jobs_label.hide()
         self.gs_data_downloaded_label.hide()
 
-    def showGSWidgets(self):
+    def show_gs_widgets(self):
         self.slp_gs_server_host.show()
         self.slp_gs_list_widget.show()
         self.slp_search_job_list_widget.show()
@@ -1134,7 +1135,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.gs_jobs_label.show()
         self.gs_data_downloaded_label.show()
 
-    def hideSLPDBWidgets(self):
+    def hide_slpdb_widgets(self):
         self.slp_slpdb_server_host.hide()
         self.slp_slpdb_list_widget.hide()
         self.add_slpdb_server_button.hide()
@@ -1143,7 +1144,7 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.slpdb_server_label.hide()
         self.slpdb_enter_amount_label.hide()
 
-    def showSLPDBWidgets(self):
+    def show_slpdb_widgets(self):
         self.slp_slpdb_server_host.show()
         self.slp_slpdb_list_widget.show()
         self.add_slpdb_server_button.show()
@@ -1162,10 +1163,10 @@ class NetworkChoiceLayout(QObject, PrintError):
         self.slp_slpdb_enable_cb.setChecked(False)
         self.slp_gs_list_widget.update()
         if self.slp_gs_enable_cb.isChecked():
-            self.hideSLPDBWidgets()
-            self.showGSWidgets()
+            self.hide_slpdb_widgets()
+            self.show_gs_widgets()
         else:
-            self.hideGSWidgets()
+            self.hide_gs_widgets()
 
     def slpdb_msg_box(self):
         # Msg box should only appear if the checkbox is enabled
@@ -1192,7 +1193,7 @@ class NetworkChoiceLayout(QObject, PrintError):
             else:
                 self.slp_slpdb_enable_cb.setChecked(False)
         else:
-            self.hideSLPDBWidgets()
+            self.hide_slpdb_widgets()
             slp_gs_mgr.toggle_slpdb_validation(False)
 
     def slpdb_is_checked(self):
@@ -1208,25 +1209,44 @@ class NetworkChoiceLayout(QObject, PrintError):
 
         self.slp_slpdb_enable_cb.setChecked(False)
 
+    def is_url(self, url):
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except ValueError:
+            return False
+
     def slpdb_endpoint_msg_box(self):
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle("Add SLPDB Endpoint")
-        msg.setInformativeText(
-            "Are you sure you want to add this endpoint?\n"
-            + self.slp_slpdb_server_host.text()
+        if self.is_url(self.slp_slpdb_server_host.text()):
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Add SLPDB Endpoint")
+            msg.setInformativeText(
+                "Are you sure you want to add this endpoint?\n"
+                + self.slp_slpdb_server_host.text()
             )
-        msg.setDetailedText(
-            "Currently NFTs do not always validate through the graph search, "
-            + "using SLPDB will validate the transactions quickly, at the "
-            + "tradeoff of trusting the servers listed."
+            msg.setDetailedText(
+                "Currently NFTs do not always validate through the graph search, "
+                + "using SLPDB will validate the transactions quickly, at the "
+                + "tradeoff of trusting the servers listed."
             )
-        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-        return_value = msg.exec()
-        if return_value == QMessageBox.Ok:
-            self.update_slp_slpdb_server(server=self.slp_slpdb_server_host.text(), add=True)
+            msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+            return_value = msg.exec()
+            if return_value == QMessageBox.Ok:
+                self.update_slp_slpdb_server(server=self.slp_slpdb_server_host.text(), add=True)
+            else:
+                return
         else:
-            return
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setWindowTitle("Error")
+            msg.setText(
+                "URL is not in correct format."
+            )
+            msg.setStandardButtons(QMessageBox.Ok)
+            return_value = msg.exec()
+            if return_value == QMessageBox.Ok:
+                return
 
     # Obsolete
     def gs_and_slpdb_checked_msg_box(self):
@@ -1254,12 +1274,11 @@ class NetworkChoiceLayout(QObject, PrintError):
             self.slp_gs_enable_cb.setChecked(False)
             self.slp_slpdb_enable_cb.setChecked(False)
 
-
     def use_slp_slpdb(self):
         slp_gs_mgr.toggle_slpdb_validation(self.slp_slpdb_enable_cb.isChecked())
         self.slp_slpdb_list_widget.update()
-        self.hideGSWidgets()
-        self.showSLPDBWidgets()
+        self.hide_gs_widgets()
+        self.show_slpdb_widgets()
 
     _tor_client_names = {
         TorController.BinaryType.MISSING: _('Tor'),
