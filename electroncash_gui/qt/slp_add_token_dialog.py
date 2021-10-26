@@ -276,7 +276,7 @@ class SlpAddTokenDialog(QDialog, MessageBoxMixin):
 
         # try to auto-fill name input
         name_ext = ''
-        for key in [ 'ticker', 'token_name' ]:
+        for key in [ 'token_name', 'ticker' ]:
             if self.token_name_e.text() == '' and slpMsg.op_return_fields[key] != b'':
                 try:
                     base_name = slpMsg.op_return_fields[key].decode("utf-8")
