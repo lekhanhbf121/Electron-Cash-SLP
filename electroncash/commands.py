@@ -197,7 +197,7 @@ class Commands(PrintError):
             raise AddressError(f'Invalid address: {address}') from e
 
         if self.config.get("allow_cli_slp_address_conversion") != True:
-            print("WARNING: If you are converting from legacy or cash address to slp format you need \n" + 
+            print("WARNING: If you are converting from legacy or cash address to slp format you need \n" +
                 "to make sure the receiving wallet is compatible with slp tokens protocol. If the wallet \n" +
                 "is not compatible with slp, the receiver's wallet will easily burn tokens. To enable slp \n" +
                 "address conversion you must set the config key 'allow_cli_slp_address_conversion' to 'true'.")
@@ -328,10 +328,10 @@ class Commands(PrintError):
         return self.network.synchronous_get(('blockchain.scripthash.get_history', [sh]))
 
     @command('w')
-    def listunspent(self):
+    def listunspent(self, include_slp=False):
         """List unspent outputs. Returns the list of unspent transaction
         outputs in your wallet."""
-        l = self.wallet.get_utxos(exclude_frozen=False)
+        l = self.wallet.get_utxos(exclude_frozen=False, exclude_slp=not include_slp)
         for i in l:
             v = i["value"]
             i["value"] = str(PyDecimal(v)/COIN) if v is not None else None
@@ -1165,6 +1165,7 @@ command_options = {
     'use_net':     (None, "Go out to network for accurate fiat value and/or fee calculations for history. If not specified only the wallet's cache is used which may lead to inaccurate/missing fees and/or FX rates."),
     'wallet_path': (None, "Wallet path(create/restore commands)"),
     'year':        (None, "Show history for a given year"),
+    'include_slp': (None, "Include SLP UTXOs"),
 }
 
 
