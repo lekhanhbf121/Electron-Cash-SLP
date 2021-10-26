@@ -984,6 +984,16 @@ class Commands(PrintError):
         return list(map(self._format_request, out))
 
     @command('w')
+    def listslptokens(self):
+        """ Return list of wallet tokens """
+        token_types = self.wallet.token_types
+        token_list = list()
+        for token in token_types:
+            token_list.append({'name': token_types[token]['name'], 'token_id': token})
+
+        return token_list
+
+    @command('w')
     def maintainaddressgap(self, enable):
         """Enable or disable the automatic address gap maintenance for receiving addresses."""
         if not isinstance(self.wallet, Deterministic_Wallet):
