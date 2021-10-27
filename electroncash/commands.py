@@ -728,6 +728,8 @@ class Commands(PrintError):
         if not isinstance(decimals, int):
             # token is unverified or other funny business -- has decimals field as '?'
             raise RuntimeError("Unverified token-id; please verify this token before proceeding")
+        for o in outputs:
+            o[1] = PyDecimal(o[1])
         amount_slp = get_satoshis_nofloat(str(sum([o[1] for o in outputs])), decimals)
         assert amount_slp > 0
         domain = [Address.from_string(a.strip()) for a in from_addr.split(',')] if from_addr else None  # may raise -- note that domain may be any address not just SLP address in wallet.
