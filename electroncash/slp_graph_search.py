@@ -365,7 +365,7 @@ class _SlpGraphSearchManager:
             if dat.get('message', None):
                 msg = dat['message']
                 if 'txid is missing from slp validity set' in msg:
-                    raise Exception('likely invalid slp')
+                    raise Exception("maybe invalid slp (gs returned: 'txid is missing from slp validity set')")
             raise Exception(dat)
 
         # NOTE: THE FOLLOWING IS FOR DEBUG PURPOSES TO CHECK

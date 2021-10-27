@@ -1851,12 +1851,11 @@ class Abstract_Wallet(PrintError, SPVDelegate):
             is_new = False
         if tti['validity'] == 0 and tti['token_id'] in self.token_types and not is_new and tti['type'] in ['SLP1','SLP65','SLP129']:
             def callback(job):
-                if slp_gs_mgr.slp_validity_signal == None:
-                    return
                 (txid,node), = job.nodes.items()
                 val = node.validity
                 tti['validity'] = val
-                slp_gs_mgr.slp_validity_signal.emit(txid, val)
+                if slp_gs_mgr.slp_validity_signal is not None:
+                    slp_gs_mgr.slp_validity_signal.emit(txid, val)
 
             if tti['type'] == 'SLP1':
                 job = self.slp_graph_0x01.make_job(tx, self, self.network,
