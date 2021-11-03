@@ -952,7 +952,8 @@ class Commands(PrintError):
             PR_EXPIRED: 'Expired',
         }
         out['address'] = out.get('address').to_ui_string()
-        out['amount (BCH)'] = format_satoshis(out.get('amount'))
+        if not out.get('token_id'):
+            out['amount (BCH)'] = format_satoshis(out.get('amount'))
         out['status'] = pr_str[out.get('status', PR_UNKNOWN)]
         return out
 
@@ -1032,7 +1033,7 @@ class Commands(PrintError):
         return None
 
     @command('w')
-    def addrequest(self, amount, memo='', expiration=None, force=False, payment_url=None, index_url=None):
+    def addrequest(self, amount, memo='', token_id=None, expiration=None, force=False, payment_url=None, index_url=None):
         """Create a payment request, using the first unused address of the wallet.
         The address will be considered as used after this operation.
         If no payment is received, the address will be considered as unused if the payment request is deleted from the wallet."""
@@ -1046,9 +1047,12 @@ class Commands(PrintError):
             else:
                 self.wallet.print_error("Unable to find an unused address. Try running with the --force option to create new addresses.")
                 return False
-        amount = satoshis(amount)
+        if not token_id:
+            amount = satoshis(amount)
         expiration = int(expiration) if expiration else None
-        req = self.wallet.make_payment_request(addr, amount, memo, expiration, payment_url = payment_url, index_url = index_url)
+        req = self.wallet.make_payment_request(
+            addr, amount, memo, expiration, payment_url=payment_url, token_id=token_id, index_url=index_url
+        )
         self.wallet.add_payment_request(req, self.config)
         out = self.wallet.get_payment_request(addr, self.config)
         return self._format_request(out)
@@ -1152,6 +1156,7 @@ command_options = {
     'funded':      (None, "Show only funded addresses"),
     'imax':        (None, "Maximum number of inputs"),
     'index_url':   (None, 'Override the URL where you would like users to be shown the BIP70 Payment Request'),
+    'token_id':    (None, "SLP Token ID"),
     'labels':      ("-l", "Show the labels of listed addresses"),
     'language':    ("-L", "Default language for wordlist"),
     'locktime':    (None, "Set locktime block number"),
