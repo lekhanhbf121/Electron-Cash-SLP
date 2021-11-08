@@ -2987,7 +2987,8 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 out['URI'] = '{}:{}?amount={}-{}'.format(networks.net.SLPADDR_PREFIX,
                                                          addr_text, amount_text, token_id)
             else:
-                out['URI'] = '{}:{}?amount={}'.format(networks.net.SLPADDR_PREFIX,
+                addr.show_cashaddr(addr.FMT_CASHADDR)
+                out['URI'] = '{}:{}?amount={}'.format(networks.net.CASHADDR_PREFIX,
                                                       addr_text, amount_text)
         status, conf = self.get_request_status(addr)
         out['status'] = status

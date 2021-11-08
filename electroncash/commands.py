@@ -197,7 +197,7 @@ class Commands(PrintError):
             raise AddressError(f'Invalid address: {address}') from e
 
         if self.config.get("allow_cli_slp_address_conversion") != True:
-            print("WARNING: If you are converting from legacy or cash address to slp format you need \n" + 
+            print("WARNING: If you are converting from legacy or cash address to slp format you need \n" +
                 "to make sure the receiving wallet is compatible with slp tokens protocol. If the wallet \n" +
                 "is not compatible with slp, the receiver's wallet will easily burn tokens. To enable slp \n" +
                 "address conversion you must set the config key 'allow_cli_slp_address_conversion' to 'true'.")
@@ -328,10 +328,10 @@ class Commands(PrintError):
         return self.network.synchronous_get(('blockchain.scripthash.get_history', [sh]))
 
     @command('w')
-    def listunspent(self):
+    def listunspent(self, include_slp=False):
         """List unspent outputs. Returns the list of unspent transaction
         outputs in your wallet."""
-        l = self.wallet.get_utxos(exclude_frozen=False)
+        l = self.wallet.get_utxos(exclude_frozen=False, exclude_slp=not include_slp)
         for i in l:
             v = i["value"]
             i["value"] = str(PyDecimal(v)/COIN) if v is not None else None
@@ -728,6 +728,8 @@ class Commands(PrintError):
         if not isinstance(decimals, int):
             # token is unverified or other funny business -- has decimals field as '?'
             raise RuntimeError("Unverified token-id; please verify this token before proceeding")
+        for o in outputs:
+            o[1] = PyDecimal(o[1])
         amount_slp = get_satoshis_nofloat(str(sum([o[1] for o in outputs])), decimals)
         assert amount_slp > 0
         domain = [Address.from_string(a.strip()) for a in from_addr.split(',')] if from_addr else None  # may raise -- note that domain may be any address not just SLP address in wallet.
@@ -950,7 +952,8 @@ class Commands(PrintError):
             PR_EXPIRED: 'Expired',
         }
         out['address'] = out.get('address').to_ui_string()
-        out['amount (BCH)'] = format_satoshis(out.get('amount'))
+        if not out.get('token_id'):
+            out['amount (BCH)'] = format_satoshis(out.get('amount'))
         out['status'] = pr_str[out.get('status', PR_UNKNOWN)]
         return out
 
@@ -982,6 +985,16 @@ class Commands(PrintError):
         if f is not None:
             out = list(filter(lambda x: x.get('status')==f, out))
         return list(map(self._format_request, out))
+
+    @command('w')
+    def listslptokens(self):
+        """ Return list of wallet tokens """
+        token_types = self.wallet.token_types
+        token_list = list()
+        for token in token_types:
+            token_list.append({'name': token_types[token]['name'], 'token_id': token})
+
+        return token_list
 
     @command('w')
     def maintainaddressgap(self, enable):
@@ -1020,7 +1033,7 @@ class Commands(PrintError):
         return None
 
     @command('w')
-    def addrequest(self, amount, memo='', expiration=None, force=False, payment_url=None, index_url=None):
+    def addrequest(self, amount, memo='', token_id=None, expiration=None, force=False, payment_url=None, index_url=None):
         """Create a payment request, using the first unused address of the wallet.
         The address will be considered as used after this operation.
         If no payment is received, the address will be considered as unused if the payment request is deleted from the wallet."""
@@ -1034,9 +1047,12 @@ class Commands(PrintError):
             else:
                 self.wallet.print_error("Unable to find an unused address. Try running with the --force option to create new addresses.")
                 return False
-        amount = satoshis(amount)
+        if not token_id:
+            amount = satoshis(amount)
         expiration = int(expiration) if expiration else None
-        req = self.wallet.make_payment_request(addr, amount, memo, expiration, payment_url = payment_url, index_url = index_url)
+        req = self.wallet.make_payment_request(
+            addr, amount, memo, expiration, payment_url=payment_url, token_id=token_id, index_url=index_url
+        )
         self.wallet.add_payment_request(req, self.config)
         out = self.wallet.get_payment_request(addr, self.config)
         return self._format_request(out)
@@ -1140,6 +1156,7 @@ command_options = {
     'funded':      (None, "Show only funded addresses"),
     'imax':        (None, "Maximum number of inputs"),
     'index_url':   (None, 'Override the URL where you would like users to be shown the BIP70 Payment Request'),
+    'token_id':    (None, "SLP Token ID"),
     'labels':      ("-l", "Show the labels of listed addresses"),
     'language':    ("-L", "Default language for wordlist"),
     'locktime':    (None, "Set locktime block number"),
@@ -1165,6 +1182,7 @@ command_options = {
     'use_net':     (None, "Go out to network for accurate fiat value and/or fee calculations for history. If not specified only the wallet's cache is used which may lead to inaccurate/missing fees and/or FX rates."),
     'wallet_path': (None, "Wallet path(create/restore commands)"),
     'year':        (None, "Show history for a given year"),
+    'include_slp': (None, "Include SLP UTXOs"),
 }
 
 
