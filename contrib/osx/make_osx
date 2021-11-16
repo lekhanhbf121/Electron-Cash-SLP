@@ -188,6 +188,7 @@ contrib/make_zlib && contrib/make_libevent && contrib/make_openssl && contrib/ma
 
 
 info "Installing requirements..."
+python3 -m pip install -r ./contrib/deterministic-build/requirements-pip.txt --user || fail "Could not install pip"
 python3 -m pip install -r ./contrib/deterministic-build/requirements-osx.txt --user || fail "Could not install requirements"
 python3 -m pip install -r ./contrib/deterministic-build/${REQUIREMENTS_BINARIES} --user || fail "Could not install binary requirements"
 
