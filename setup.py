@@ -139,6 +139,9 @@ if sys.platform in ('win32', 'cygwin'):
     }
 
 setup(
+    cmdclass={
+        'sdist': MakeAllBeforeSdist,
+    },
     name=os.environ.get('EC_PACKAGE_NAME') or "Electron Cash SLP",
     version=os.environ.get('EC_PACKAGE_VERSION') or version.PACKAGE_VERSION,
     install_requires=requirements,
