@@ -32,7 +32,7 @@ import random
 from operator import itemgetter
 from .transaction import Transaction
 from .caches import ExpiringCache
-from electroncash import networks
+from electroncash import networks, simple_config
 
 from . import slp_validator_0x01
 
@@ -192,26 +192,26 @@ class _SlpGraphSearchManager:
         return self._gui_object and self._gui_object().config.get('slp_validator_graphsearch_enabled', False)
 
     def _set_gs_enabled(self, enable):
-        self._gui_object().config.set_key('slp_validator_graphsearch_enabled', enable)
+        simple_config.config.set_key('slp_validator_graphsearch_enabled', enable)
 
     @property
     def slpdb_validation_enabled(self):
-        return self._gui_object().config.get('slp_validator_slpdb_validation_enabled', False)
+        return simple_config.config.get('slp_validator_slpdb_validation_enabled', False)
 
     def _set_slpdb_validation_enabled(self, enable):
-        self._gui_object().config.set_key('slp_validator_slpdb_validation_enabled', enable)
+        simple_config.config.set_key('slp_validator_slpdb_validation_enabled', enable)
 
     @property
     def gs_host(self):
-        host = self._gui_object().config.get('slp_validator_graphsearch_host', '')
+        host = simple_config.config.get('slp_validator_graphsearch_host', '')
         # handle case for upgraded config key name
         if not host:
-            host = self._gui_object().config.get('slp_gs_host', '')
+            host = simple_config.config.get('slp_gs_host', '')
             if not host: self.set_gs_host(host)
         return host
 
     def set_gs_host(self, host):
-        self._gui_object().config.set_key('slp_validator_graphsearch_host', host)
+        simple_config.config.set_key('slp_validator_graphsearch_host', host)
 
     # def _emit_ui_update(self, data):
     #     if not self.slp_validation_fetch_signal:
@@ -220,18 +220,18 @@ class _SlpGraphSearchManager:
 
     @property
     def slpdb_host(self):
-        host = self._gui_object().config.get('slp_validator_slpdb_host', '')
+        host = simple_config.config.get('slp_validator_slpdb_host', '')
         if not host:
             host = networks.net.SLP_SLPDB_SERVERS
             self.set_slpdb_host(host)
         return host
 
     def set_slpdb_host(self, host):
-        self._gui_object().config.set_key('slp_validator_slpdb_host', host)
-        host2 = self._gui_object().config.get('slp_validator_slpdb_host', '')
+        simple_config.config.set_key('slp_validator_slpdb_host', host)
+        host2 = simple_config.config.get('slp_validator_slpdb_host', '')
 
     def update_slpdb_host(self, endpoint, add=False, remove=False):
-        host = self._gui_object().config.get('slp_validator_slpdb_host', '')
+        host = simple_config.config.get('slp_validator_slpdb_host', '')
         if add:
             host.append(endpoint)
             self.set_slpdb_host(host)
@@ -247,15 +247,15 @@ class _SlpGraphSearchManager:
         if server_list_count > 1:
             # possible that one endpoint may be outdated, defaults to n-1
             default_confirmations = server_list_count-1
-        confirmations = self._gui_object().config.get('slp_validator_slpdb_confirmations', default_confirmations)
+        confirmations = simple_config.config.get('slp_validator_slpdb_confirmations', default_confirmations)
         # handle case for upgraded config key name
         if not confirmations:
-            confirmations = self._gui_object().config.get('slp_validator_slpdb_confirmations', len(self.slpdb_host))
+            confirmations = simple_config.config.get('slp_validator_slpdb_confirmations', len(self.slpdb_host))
             if not confirmations: self.set_slpdb_host(confirmations)
         return confirmations
 
     def set_slpdb_confirmations(self, amount):
-        self._gui_object().config.set_key('slp_validator_slpdb_confirmations', amount)
+        simple_config.config.set_key('slp_validator_slpdb_confirmations', amount)
 
     def _emit_ui_update(self, data):
         if not self.slp_validation_fetch_signal:
