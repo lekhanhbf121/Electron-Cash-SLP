@@ -1856,39 +1856,40 @@ class Abstract_Wallet(PrintError, SPVDelegate):
         except:
             is_new = False
         if tti['validity'] == 0 and tti['token_id'] in self.token_types and not is_new and tti['type'] in ['SLP1','SLP65','SLP129']:
-            def callback(job):
-                (txid,node), = job.nodes.items()
-                val = node.validity
-                tti['validity'] = val
-                if slp_gs_mgr.slp_validity_signal is not None:
-                    slp_gs_mgr.slp_validity_signal.emit(txid, val)
 
             if slp_gs_mgr.slpdb_validation_enabled:
-                try:
-                    result = slp_slpdb_validator.check_validity(tx_hash)
-                    if result >= slp_gs_mgr.slpdb_confirmations:
-                        tti['validity'] = 1
-                        return
-                    else:
-                        tti['validity'] = 2
-                        return
-                except Exception as e:
-                    raise Exception(f"Exception: {str(e)}")
+                def slpdb_validation_callback(validation_job):
+                    val = validation_job.validity
+                    tti['validity'] = val
+                    if slp_gs_mgr.slp_validity_signal is not None:
+                        slp_gs_mgr.slp_validity_signal.emit(validation_job.txid, val)
 
-            if tti['type'] in ['SLP1']:
-                job = self.slp_graph_0x01.make_job(tx, self, self.network,
-                                                        debug=2 if is_verbose else 1,  # set debug=2 here to see the verbose dag when running with -v
-                                                        reset=False)
-            elif tti['type'] in ['SLP65', 'SLP129']:
-                job = self.slp_graph_0x01_nft.make_job(tx, self, self.network, nft_type=tti['type'],
-                                                        debug=2 if is_verbose else 1,  # set debug=2 here to see the verbose dag when running with -v
-                                                        reset=False)
+                validation_job = slp_slpdb_validator.SLPDBValidationJob(
+                    tx_hash, slp_gs_mgr.slpdb_confirmations, slpdb_validation_callback
+                )
+                self.slpdb_validator.add_job(validation_job)
+            else:
+                def callback(job):
+                    (txid, node), = job.nodes.items()
+                    val = node.validity
+                    tti['validity'] = val
+                    if slp_gs_mgr.slp_validity_signal is not None:
+                        slp_gs_mgr.slp_validity_signal.emit(txid, val)
 
-            if job is not None:
-                job.add_callback(callback)
-                # This was commented out because it spammed the log so badly
-                # it impacted performance. SLP validation can create a *lot* of jobs!
-                #finalization_print_error(job, f"[{self.basename()}] Job for {tx_hash} type {tti['type']} finalized")
+                if tti['type'] in ['SLP1']:
+                    job = self.slp_graph_0x01.make_job(tx, self, self.network,
+                                                            debug=2 if is_verbose else 1,  # set debug=2 here to see the verbose dag when running with -v
+                                                            reset=False)
+                elif tti['type'] in ['SLP65', 'SLP129']:
+                    job = self.slp_graph_0x01_nft.make_job(tx, self, self.network, nft_type=tti['type'],
+                                                            debug=2 if is_verbose else 1,  # set debug=2 here to see the verbose dag when running with -v
+                                                            reset=False)
+
+                if job is not None:
+                    job.add_callback(callback)
+                    # This was commented out because it spammed the log so badly
+                    # it impacted performance. SLP validation can create a *lot* of jobs!
+                    #finalization_print_error(job, f"[{self.basename()}] Job for {tx_hash} type {tti['type']} finalized")
 
     def rebuild_slp(self,):
         """Wipe away old SLP transaction data and rerun on the entire tx set.
@@ -2663,6 +2664,7 @@ class Abstract_Wallet(PrintError, SPVDelegate):
                 # before SLP objects are properly constructed.
                 self.slp_graph_0x01 = slp_validator_0x01.shared_context
                 self.slp_graph_0x01_nft = slp_validator_0x01_nft1.shared_context_nft1
+                self.slpdb_validator = slp_slpdb_validator.SLPDBValidationJobManager()
                 self.activate_slp()
                 self.network.register_callback(self._slp_callback_on_status, ['status'])
             self.start_pruned_txo_cleaner_thread()

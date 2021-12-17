@@ -741,7 +741,7 @@ class Commands(PrintError):
         tx = self._mktx_slp(token_id, outputs, tx_fee, change_addr, domain, unsigned, password, locktime)
         return tx.as_dict()
 
-    @command('wp')
+    @command('wpn')
     def slp_add_token(self, token_id, password=None):
         """ Add an SLP token to this wallet, kicking off validation if appropriate.
         Returns True on success. """

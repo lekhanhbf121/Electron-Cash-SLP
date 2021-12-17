@@ -181,9 +181,9 @@ class HistoryList(MyTreeWidget):
         elif validity in (None,2,3):
             icon=QIcon(":icons/expired.svg")
             if validity is None:
-                icontooltip = "non-SLP (tokens burned!)"
+                icontooltip = "non-SLP (it is possible that tokens have been burned!)"
             else:
-                icontooltip = "SLP invalid (tokens burned!)"
+                icontooltip = "SLP invalid (it is possible that tokens have been burned!)"
         elif validity == 4:
             icon=QIcon(":icons/expired.svg")
             icontooltip = "Bad NFT1 Group"

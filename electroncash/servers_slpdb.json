@@ -1,6 +1,5 @@
-{
-    "https://bchd-mainnet.electroncash.de": { "kind": "bchd" },
-    "https://bchd.fountainhead.cash": { "kind": "bchd" },
-    "https://bchd.imaginary.cash/proxy": {"kind": "bchd" },
-    "https://slpdb.bch.actorforth.org/q/": {"kind": "bchd" }
-}
+[
+    "https://slpdb.electroncash.de/q/",
+    "https://slpdb.fountainhead.cash/q/",
+    "https://slpdb.bch.actorforth.org/q/"
+]
